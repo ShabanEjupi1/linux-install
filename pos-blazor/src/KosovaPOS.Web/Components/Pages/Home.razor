@@ -1,0 +1,78 @@
+@page "/"
+@attribute [Authorize]
+@rendermode InteractiveServer
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Authorization
+@using KosovaPOS.Core.Services
+@using KosovaPOS.Models
+@inject TenantService Tenant
+
+<PageTitle>KosovaPOS</PageTitle>
+
+<div class="dashboard">
+    <header class="topbar">
+        <div>
+            <h1>@(_settings?.BusinessName ?? "KosovaPOS")</h1>
+            <span class="badge">@ProfileLabel</span>
+        </div>
+        <div class="user">
+            <span>@_fullName (@_role)</span>
+            <form method="post" action="/auth/logout">
+                <AntiforgeryToken />
+                <button type="submit" class="btn-ghost">Dil</button>
+            </form>
+        </div>
+    </header>
+
+    <p class="muted">
+        Mirë se erdhe. Ky është skeleti i web-aplikacionit — moduli i parë
+        (shitja) vjen më pas. Profili aktual përcakton menutë e disponueshme.
+    </p>
+
+    <div class="tiles">
+        <a href="/sale" class="tile-link"><div class="tile">🛒 Shitje</div></a>
+        <div class="tile">📦 Artikuj</div>
+        <div class="tile">🧾 Faturat</div>
+        <div class="tile">📥 Blerjet</div>
+        @if (_isRestaurant)
+        {
+            <div class="tile">🍽️ Tavolinat</div>
+            <div class="tile">👨‍🍳 Kuzhina</div>
+        }
+        <div class="tile">📊 Raportet</div>
+    </div>
+</div>
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private BusinessSettings? _settings;
+    private bool _isRestaurant;
+    private string _fullName = "";
+    private string _role = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is not null)
+        {
+            var user = (await AuthState).User;
+            _fullName = user.FindFirst(AuthService.FullNameClaim)?.Value
+                        ?? user.Identity?.Name ?? "";
+            _role = user.FindFirst(ClaimTypes.Role)?.Value ?? "";
+        }
+
+        _settings = await Tenant.GetSettingsAsync();
+        _isRestaurant = await Tenant.IsRestaurantAsync();
+    }
+
+    private string ProfileLabel => _settings?.Profile switch
+    {
+        BusinessProfile.FoodAndBeverage => "Restorant",
+        BusinessProfile.Hospitality => "Hoteleri",
+        BusinessProfile.Wholesale => "Shumicë",
+        BusinessProfile.Pharmacy => "Farmaci",
+        BusinessProfile.Rental => "Qira",
+        BusinessProfile.Services => "Shërbime",
+        _ => "Dyqan (Retail)"
+    };
+}

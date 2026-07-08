@@ -1,0 +1,253 @@
+@page "/sale"
+@attribute [Authorize]
+@rendermode InteractiveServer
+@using System.Security.Claims
+@using KosovaPOS.Core.Services
+@using KosovaPOS.Models
+@inject CatalogService Catalog
+@inject SalesService Sales
+@inject TenantService Tenant
+
+<PageTitle>Shitje — KosovaPOS</PageTitle>
+
+<div class="sale">
+    <!-- Left: catalogue -->
+    <section class="catalogue">
+        <div class="search-row">
+            <input @bind="_search" @bind:event="oninput" @onkeydown="OnSearchKey"
+                   placeholder="Kërko emër ose skano barkod…" class="search-box" autofocus />
+            @if (_categories.Count > 0)
+            {
+                <select @bind="_activeCategory" class="cat-select">
+                    <option value="">Të gjitha</option>
+                    @foreach (var c in _categories)
+                    {
+                        <option value="@c">@c</option>
+                    }
+                </select>
+            }
+        </div>
+
+        <div class="grid">
+            @if (_loading)
+            {
+                <p class="muted">Duke ngarkuar artikujt…</p>
+            }
+            else
+            {
+                @foreach (var a in FilteredArticles)
+                {
+                    <button class="prod" @onclick="() => AddToCart(a)">
+                        <span class="prod-name">@a.Name</span>
+                        <span class="prod-price">@a.SalesPrice.ToString("0.00") €</span>
+                        <span class="prod-stock @(a.StockQuantity <= 0 ? "out" : "")">@a.StockQuantity.ToString("0.##")</span>
+                    </button>
+                }
+                @if (!FilteredArticles.Any())
+                {
+                    <p class="muted">Asnjë artikull.</p>
+                }
+            }
+        </div>
+    </section>
+
+    <!-- Right: cart -->
+    <section class="cart">
+        <h2>Fatura</h2>
+        <div class="cart-items">
+            @if (_cart.Count == 0)
+            {
+                <p class="muted">Shporta është bosh.</p>
+            }
+            @foreach (var line in _cart)
+            {
+                <div class="cart-line">
+                    <div class="cl-name">@line.ArticleName</div>
+                    <div class="cl-qty">
+                        <button @onclick="() => ChangeQty(line, -1)">−</button>
+                        <span>@line.Quantity.ToString("0.##")</span>
+                        <button @onclick="() => ChangeQty(line, 1)">+</button>
+                    </div>
+                    <div class="cl-price">@line.TotalValue.ToString("0.00") €</div>
+                    <button class="cl-del" @onclick="() => Remove(line)">×</button>
+                </div>
+            }
+        </div>
+
+        <div class="totals">
+            <div class="t-row"><span>Nën-total</span><span>@Subtotal.ToString("0.00") €</span></div>
+            <div class="t-row"><span>TVSH</span><span>@VatTotal.ToString("0.00") €</span></div>
+            <div class="t-row grand"><span>TOTALI</span><span>@Total.ToString("0.00") €</span></div>
+        </div>
+
+        <div class="pay">
+            <div class="pay-methods">
+                @foreach (var m in _methods)
+                {
+                    <button class="pm @(_payment == m ? "active" : "")" @onclick="() => _payment = m">@m</button>
+                }
+            </div>
+            <div class="pay-row">
+                <label>Paguar</label>
+                <input type="number" step="0.01" @bind="_paid" class="paid-box" />
+            </div>
+            <div class="pay-row change">
+                <span>Kusuri</span>
+                <span>@Change.ToString("0.00") €</span>
+            </div>
+
+            @if (!string.IsNullOrEmpty(_message))
+            {
+                <div class="sale-msg @(_success ? "ok" : "err")">@_message</div>
+            }
+
+            <button class="complete" disabled="@(_cart.Count == 0 || _busy)" @onclick="Complete">
+                @(_busy ? "Duke ruajtur…" : "PËRFUNDO (F12)")
+            </button>
+        </div>
+    </section>
+</div>
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private List<Article> _articles = new();
+    private List<string> _categories = new();
+    private readonly List<ReceiptItem> _cart = new();
+    private readonly string[] _methods = { "Para në dorë", "Kartë", "Transfer" };
+
+    private string _search = "";
+    private string _activeCategory = "";
+    private string _payment = "Para në dorë";
+    private decimal _paid;
+    private bool _loading = true, _busy, _success;
+    private string? _message;
+    private string _cashierName = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is not null)
+        {
+            var u = (await AuthState).User;
+            _cashierName = u.FindFirst(AuthService.FullNameClaim)?.Value ?? u.Identity?.Name ?? "";
+        }
+        _articles = await Catalog.GetAllArticlesAsync();
+        _categories = await Catalog.GetCategoriesAsync();
+        _loading = false;
+    }
+
+    private IEnumerable<Article> FilteredArticles
+    {
+        get
+        {
+            IEnumerable<Article> q = _articles;
+            if (!string.IsNullOrWhiteSpace(_activeCategory))
+                q = q.Where(a => a.Category == _activeCategory);
+            if (!string.IsNullOrWhiteSpace(_search))
+            {
+                var s = _search.Trim();
+                q = q.Where(a => a.Name.Contains(s, StringComparison.OrdinalIgnoreCase)
+                              || a.Barcode.Contains(s, StringComparison.OrdinalIgnoreCase));
+            }
+            return q.Take(60);
+        }
+    }
+
+    private async Task OnSearchKey(KeyboardEventArgs e)
+    {
+        if (e.Key != "Enter" || string.IsNullOrWhiteSpace(_search)) return;
+        // Exact barcode scan → add directly
+        var hit = _articles.FirstOrDefault(a => a.Barcode == _search.Trim())
+                  ?? await Catalog.FindByBarcodeAsync(_search.Trim());
+        if (hit is not null)
+        {
+            AddToCart(hit);
+            _search = "";
+        }
+    }
+
+    private void AddToCart(Article a)
+    {
+        var existing = _cart.FirstOrDefault(l => l.ArticleId == a.Id);
+        if (existing is not null)
+        {
+            existing.Quantity += 1;
+        }
+        else
+        {
+            _cart.Add(new ReceiptItem
+            {
+                ArticleId = a.Id,
+                Barcode = a.Barcode,
+                ArticleName = a.Name,
+                Price = a.SalesPrice,
+                Quantity = 1,
+                VATRate = a.VATRate
+            });
+        }
+        _message = null;
+        SyncPaid();
+    }
+
+    private void ChangeQty(ReceiptItem line, decimal delta)
+    {
+        line.Quantity += delta;
+        if (line.Quantity <= 0) _cart.Remove(line);
+        SyncPaid();
+    }
+
+    private void Remove(ReceiptItem line)
+    {
+        _cart.Remove(line);
+        SyncPaid();
+    }
+
+    // Keep "paid" defaulted to the total for quick cash sales until the user overrides.
+    private void SyncPaid() => _paid = Total;
+
+    private decimal Subtotal => _cart.Sum(l => l.TotalValue - l.VATValue);
+    private decimal VatTotal => _cart.Sum(l => l.VATValue);
+    private decimal Total => _cart.Sum(l => l.TotalValue);
+    private decimal Change => Math.Max(0, _paid - Total);
+
+    private async Task Complete()
+    {
+        if (_cart.Count == 0) return;
+        _busy = true;
+        _message = null;
+        try
+        {
+            var receiptNo = await Sales.GetNextReceiptNumberAsync();
+            var receipt = new Receipt
+            {
+                ReceiptNumber = receiptNo,
+                Date = DateTime.Now,
+                CashierName = _cashierName,
+                PaymentMethod = _payment,
+                TotalAmount = Total,
+                PaidAmount = _paid < Total ? Total : _paid,
+                LeftAmount = Change,
+                Items = _cart.ToList()
+            };
+
+            var savedNumri = await Sales.SaveReceiptAsync(receipt);
+            if (savedNumri is null)
+            {
+                _success = false;
+                _message = "Ruajtja dështoi. Provo përsëri.";
+                return;
+            }
+
+            _success = true;
+            _message = $"Fatura #{savedNumri} u ruajt · Kusuri {Change:0.00} €";
+            _cart.Clear();
+            _paid = 0;
+            // Refresh stock counts shown in the grid
+            _articles = await Catalog.GetAllArticlesAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

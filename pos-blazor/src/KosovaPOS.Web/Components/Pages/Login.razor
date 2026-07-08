@@ -1,0 +1,61 @@
+@page "/login"
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Authentication.Cookies
+@using KosovaPOS.Core.Services
+@inject AuthService Auth
+@inject NavigationManager Nav
+
+<PageTitle>Kyçu — KosovaPOS</PageTitle>
+
+<div class="login-shell">
+    <div class="login-card">
+        <h1>KosovaPOS</h1>
+        <p class="subtitle">Kyçu në sistem</p>
+
+        <EditForm Model="Model" OnValidSubmit="TryLogin" FormName="login" method="post">
+            <DataAnnotationsValidator />
+            <div class="field">
+                <label>Përdoruesi</label>
+                <InputText @bind-Value="Model.Username" class="input" autocomplete="username" />
+            </div>
+            <div class="field">
+                <label>Fjalëkalimi</label>
+                <InputText type="password" @bind-Value="Model.Password" class="input" autocomplete="current-password" />
+            </div>
+
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <div class="error">@_error</div>
+            }
+
+            <button type="submit" class="btn">Kyçu</button>
+        </EditForm>
+    </div>
+</div>
+
+@code {
+    [CascadingParameter] public HttpContext HttpContext { get; set; } = default!;
+    [SupplyParameterFromForm] private LoginModel Model { get; set; } = new();
+    private string? _error;
+
+    private async Task TryLogin()
+    {
+        var user = await Auth.AuthenticateAsync(Model.Username, Model.Password);
+        if (user is null)
+        {
+            _error = "Përdoruesi ose fjalëkalimi është gabim.";
+            return;
+        }
+
+        var principal = AuthService.BuildPrincipal(user, CookieAuthenticationDefaults.AuthenticationScheme);
+        await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal);
+        Nav.NavigateTo("/", forceLoad: true);
+    }
+
+    public class LoginModel
+    {
+        public string Username { get; set; } = "";
+        public string Password { get; set; } = "";
+    }
+}

@@ -1,0 +1,21 @@
+# KosovaPOS Blazor web — deploy on Ampere alongside the existing stack.
+# The DB connection points at your Postgres (Supabase pos DB or a dedicated
+# Postgres). Set POS_DB_CONNECTION in a .env file next to this compose file.
+services:
+  pos-blazor:
+    build: .
+    image: kosovapos-web:latest
+    container_name: pos-blazor
+    restart: unless-stopped
+    environment:
+      # e.g. Host=host.docker.internal;Port=5432;Database=kosovapos;Username=...;Password=...
+      POS_DB_CONNECTION: ${POS_DB_CONNECTION}
+      POS_KEYS_DIR: /keys
+      ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
+    volumes:
+      - pos-keys:/keys
+    ports:
+      - "127.0.0.1:8121:8080"   # nginx/tunnel proxies to this (pos-web uses 8120)
+
+volumes:
+  pos-keys:
