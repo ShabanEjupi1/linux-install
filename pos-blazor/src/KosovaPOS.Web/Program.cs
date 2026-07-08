@@ -30,6 +30,8 @@ builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<TenantService>();
 builder.Services.AddScoped<CatalogService>();
 builder.Services.AddScoped<SalesService>();
+builder.Services.AddScoped<PurchaseService>();
+builder.Services.AddScoped<ReportService>();
 
 // ── Authentication (cookie) ─────────────────────────────────────────────
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)

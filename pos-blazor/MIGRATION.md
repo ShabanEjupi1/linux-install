@@ -45,6 +45,33 @@ pos-blazor/
   cart with qty +/−, live VAT/subtotal/total, payment method + change, complete →
   posts to BMD `DitariD` journal + decrements `Artikujt` stock (ported `SalesService`
   + `CatalogService`). Verified end-to-end on Postgres: journal rows, stock, today-summary.
+- **Articles + Receipts** (`/articles`, `/faturat`) done: Articles is a searchable,
+  category-filtered table with a modal add/edit form (VAT-type select, live stock) and
+  a delete-confirm modal; Receipts lists recent journals (newest first) with a click-to-
+  open line-item detail modal. Ported `CatalogService.SaveArticle/Delete/FindById/Count`
+  (desktop's raw-SQL stock write dropped — no BMD trigger on Postgres) and
+  `SalesService.GetRecentSales/GetReceiptDetail` (group-by aggregation moved to memory —
+  Npgsql can't translate the desktop `g.First()` projection). Home tiles now link through.
+  Verified: service harness PASS (insert 5→6, round-trip, edit price/stock, categories,
+  delete 6→5, recent sales, detail summing 6.50€) + SSR render of both pages with live data.
+- **Purchases** (`/blerjet`) done — the mirror of the Sale screen: catalogue picker on
+  the left, editable line table (qty / purchase price / sales price / VAT) + supplier
+  dropdown + invoice no. + type + paid flag on the right; a header toggle flips to a
+  recent-purchases list with a line-item detail modal. New `PurchaseService` (ported from
+  `PurchaseEditWindow.xaml.cs`) posts to the BMD `DitariH` journal and **increments**
+  `Artikujt` stock while refreshing purchase/sales price, in a transaction. Verified E2E:
+  stock 200→210 / 30→35, prices refreshed, journal total 18.48€ (18% + 8% VAT), recent
+  list + detail correct; page SSR-renders the entry form with live catalogue.
+- **Stock** (`/stoku`) done: read-only valuation table over `Artikujt` (reuses
+  `CatalogService`) — search + all/low/out filter + adjustable low-stock threshold, per-row
+  cost/retail value, and summary tiles (total cost value, retail value, low count, out count).
+- **Reports** (`/raportet`) done via new `ReportService` (ported from `ZReportService`
+  + `SalesDataService.GetSalesForDateRange`, read-only — no ZReport persistence / fiscal /
+  ATK export): a **daily Z-style report** (sales with/without VAT, 18/8/0 VAT split by the
+  vat/net-ratio heuristic, cash vs card, transaction count) and a **date-range summary**
+  (sales + purchases totals, per-day breakdown, top-10 articles by revenue). Verified E2E:
+  daily 6.50€ = 5.33 net + 1.17 VAT@18%, cross-checks `GetTodaySummary`; range shows
+  sales 6.50 + purchases 18.48 + top articles; stock 280€ cost / 608€ retail. Both SSR-render.
 - **Gotcha fixed:** Npgsql rejects `Kind=Local` on `timestamptz`. Set
   `Npgsql.EnableLegacyTimestampBehavior` (in `PosDbContext` static ctor) → DateTime maps
   to `timestamp without time zone`, so `DateTime.Now/Today` in ported code works unchanged.
@@ -57,7 +84,7 @@ pos-blazor/
 | 1 Core port | Models + DbContext on Postgres | ✅ |
 | 2 First slice | Login + shell, tenant-aware, **cookie auth** | ✅ |
 | 3 Sale screen | cart, categories/search, barcode, payment/change, receipt→DitariD + stock | ✅ |
-| 4 Management | Articles, Receipts, Purchases, Stock, Reports (port window-by-window) | ⬜ |
+| 4 Management | Articles CRUD, Receipts, Purchases, Stock, Reports — all done | ✅ |
 | 5 Hardware agent | fiscal/receipt/barcode printers, scale via a local PC agent (browser → agent bridge) | ⬜ |
 | 6 Deploy | Docker on Ampere behind nginx/tunnel, alongside existing stack | ⬜ |
 

@@ -48,6 +48,58 @@ public class CatalogService
         return art is null ? null : MapToArticle(art);
     }
 
+    public async Task<Article?> FindByIdAsync(int id)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var art = await db.Artikujt.AsNoTracking().FirstOrDefaultAsync(a => a.Id == id);
+        return art is null ? null : MapToArticle(art);
+    }
+
+    public async Task<int> GetArticleCountAsync()
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.Artikujt.CountAsync();
+    }
+
+    /// <summary>
+    /// Insert or update an article. Ported from ArticleDataService.SaveArticle,
+    /// but the desktop's raw-SQL stock write (needed to satisfy a BMD SQL Server
+    /// AFTER-UPDATE trigger) is dropped: Postgres has no such trigger, so stock is
+    /// written straight through EF change tracking. Returns the article id.
+    /// Exceptions propagate so the UI can surface the real message.
+    /// </summary>
+    public async Task<int> SaveArticleAsync(Article article)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+
+        var art = article.Id > 0
+            ? await db.Artikujt.FirstOrDefaultAsync(a => a.Id == (long)article.Id)
+            : null;
+
+        if (art is null)
+        {
+            art = MapToArtikujt(article);
+            db.Artikujt.Add(art);
+            await db.SaveChangesAsync();
+            return (int)art.Id;
+        }
+
+        UpdateArtikujtFromArticle(art, article);
+        await db.SaveChangesAsync();
+        return (int)art.Id;
+    }
+
+    /// <summary>Delete an article by id. Returns false if not found.</summary>
+    public async Task<bool> DeleteArticleAsync(int id)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var art = await db.Artikujt.FirstOrDefaultAsync(a => a.Id == id);
+        if (art is null) return false;
+        db.Artikujt.Remove(art);
+        await db.SaveChangesAsync();
+        return true;
+    }
+
     public async Task<List<string>> GetCategoriesAsync()
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
@@ -97,4 +149,72 @@ public class CatalogService
         Branch = art.Filiala?.ToString(),
         PhotoPath = art.PhotoPath
     };
+
+    // Ported from ArticleDataService.MapToArtikujt (insert path).
+    private static Artikujt MapToArtikujt(Article a) => new()
+    {
+        Barkodi = a.Barcode ?? "",
+        Emertimi = a.Name ?? "",
+        NjesiaP = a.Unit,
+        NjesiaSH = a.SalesUnit,
+        Paketimi = (double)a.Pack,
+        CFurnizimit = (double)a.PurchasePrice,
+        Marzha = (double)a.Margin,
+        CPaketimit = (double)a.PackagePrice,
+        CShumices = (double)a.WholesalePrice,
+        CShitjes = (double)a.SalesPrice,
+        CShitjes1 = (double)a.SalesPrice1,
+        Tatimi = (double)a.VATRate,
+        Vat = a.VATType,
+        Kategoria = a.Category,
+        Furnitori = a.SupplierId > 0 ? a.SupplierId : null,
+        Sasia = (double)a.StockQuantity,
+        SasiaHyrje = (double)a.StockIn,
+        SasiaDalje = (double)a.StockOut,
+        CMesatarShites = (double)a.AverageSalesPrice,
+        CMesatarFurnizues = (double)a.AveragePurchasePrice,
+        Afati = a.ExpiryDate,
+        PaBarkod = a.HasBarcode ? "N" : "Y",
+        Peshore = a.IsWeighed,
+        Tipi = a.ProductType,
+        KategoriaPosId = a.POSCategoryId,
+        Verejtje = a.Notes,
+        Vendi = a.Location,
+        Prodhuesi = a.Brand,
+        Importuesi = a.Importer,
+        Sektori = a.Sector,
+        PhotoPath = a.PhotoPath
+    };
+
+    // Ported from ArticleDataService.UpdateArtikujtFromArticle (update path).
+    private static void UpdateArtikujtFromArticle(Artikujt art, Article a)
+    {
+        art.Barkodi = a.Barcode ?? "";
+        art.Emertimi = a.Name ?? "";
+        art.NjesiaP = a.Unit;
+        art.NjesiaSH = a.SalesUnit;
+        art.Paketimi = (double)a.Pack;
+        art.CFurnizimit = (double)a.PurchasePrice;
+        art.Marzha = (double)a.Margin;
+        art.CPaketimit = (double)a.PackagePrice;
+        art.CShumices = (double)a.WholesalePrice;
+        art.CShitjes = (double)a.SalesPrice;
+        art.CShitjes1 = (double)a.SalesPrice1;
+        art.Tatimi = (double)a.VATRate;
+        art.Vat = a.VATType;
+        art.Kategoria = a.Category;
+        art.Furnitori = a.SupplierId > 0 ? a.SupplierId : null;
+        art.Sasia = (double)a.StockQuantity;
+        art.Afati = a.ExpiryDate;
+        art.PaBarkod = a.HasBarcode ? "N" : "Y";
+        art.Peshore = a.IsWeighed;
+        art.Tipi = a.ProductType;
+        art.KategoriaPosId = a.POSCategoryId;
+        art.Verejtje = a.Notes;
+        art.Vendi = a.Location;
+        art.Prodhuesi = a.Brand;
+        art.Importuesi = a.Importer;
+        art.Sektori = a.Sector;
+        art.PhotoPath = a.PhotoPath;
+    }
 }

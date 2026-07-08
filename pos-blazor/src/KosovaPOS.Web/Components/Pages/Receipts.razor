@@ -1,0 +1,138 @@
+@page "/faturat"
+@attribute [Authorize]
+@rendermode InteractiveServer
+@using KosovaPOS.Core.Services
+@inject SalesService Sales
+
+<PageTitle>Faturat — KosovaPOS</PageTitle>
+
+<div class="mgmt">
+    <header class="mgmt-head">
+        <div>
+            <a href="/" class="back">← Ballina</a>
+            <h1>Faturat e fundit</h1>
+            <span class="muted">@_sales.Count fatura</span>
+        </div>
+        <button class="btn-ghost" @onclick="Reload">↻ Rifresko</button>
+    </header>
+
+    <div class="table-wrap">
+        @if (_loading)
+        {
+            <p class="muted">Duke ngarkuar…</p>
+        }
+        else
+        {
+            <table class="grid-table">
+                <thead>
+                    <tr>
+                        <th>Nr.</th>
+                        <th>Data</th>
+                        <th>Ora</th>
+                        <th>Arkëtari</th>
+                        <th>Pagesa</th>
+                        <th class="num">Artikuj</th>
+                        <th class="num">Totali</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var s in _sales)
+                    {
+                        <tr class="clickable" @onclick="() => Open(s.ReceiptNumber)">
+                            <td class="mono">#@s.ReceiptNumber</td>
+                            <td>@s.Date.ToString("dd.MM.yyyy")</td>
+                            <td>@s.Time</td>
+                            <td>@s.Cashier</td>
+                            <td>@s.PaymentMethod</td>
+                            <td class="num">@s.ItemCount</td>
+                            <td class="num strong">@s.TotalAmount.ToString("0.00") €</td>
+                            <td class="actions"><button class="btn-mini">👁️</button></td>
+                        </tr>
+                    }
+                    @if (!_sales.Any())
+                    {
+                        <tr><td colspan="8" class="muted center">Asnjë faturë ende.</td></tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
+
+@if (_detailNumber is not null)
+{
+    <div class="modal-backdrop" @onclick="() => _detailNumber = null">
+        <div class="modal" @onclick:stopPropagation="true">
+            <h2>Fatura #@_detailNumber</h2>
+            @if (_detailLoading)
+            {
+                <p class="muted">Duke ngarkuar…</p>
+            }
+            else
+            {
+                <table class="grid-table">
+                    <thead>
+                        <tr>
+                            <th>Artikulli</th>
+                            <th class="num">Sasia</th>
+                            <th class="num">Çmimi</th>
+                            <th class="num">Totali</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var l in _detail)
+                        {
+                            <tr>
+                                <td>@l.Name</td>
+                                <td class="num">@l.Quantity.ToString("0.##")</td>
+                                <td class="num">@l.Price.ToString("0.00") €</td>
+                                <td class="num">@l.Total.ToString("0.00") €</td>
+                            </tr>
+                        }
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td colspan="3" class="num strong">TVSH</td>
+                            <td class="num strong">@_detail.Sum(l => l.VATValue).ToString("0.00") €</td>
+                        </tr>
+                        <tr>
+                            <td colspan="3" class="num strong">TOTALI</td>
+                            <td class="num strong">@_detail.Sum(l => l.Total).ToString("0.00") €</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            }
+            <div class="modal-actions">
+                <button class="btn-ghost" @onclick="() => _detailNumber = null">Mbyll</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<SalesSummary> _sales = new();
+    private bool _loading = true;
+
+    private long? _detailNumber;
+    private List<ReceiptLine> _detail = new();
+    private bool _detailLoading;
+
+    protected override async Task OnInitializedAsync() => await Reload();
+
+    private async Task Reload()
+    {
+        _loading = true;
+        _sales = await Sales.GetRecentSalesAsync(100);
+        _loading = false;
+    }
+
+    private async Task Open(string receiptNumber)
+    {
+        if (!long.TryParse(receiptNumber, out var numri)) return;
+        _detailNumber = numri;
+        _detailLoading = true;
+        _detail = await Sales.GetReceiptDetailAsync(numri);
+        _detailLoading = false;
+    }
+}

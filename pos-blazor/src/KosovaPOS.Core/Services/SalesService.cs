@@ -111,6 +111,63 @@ public class SalesService
         return (revenue, transactions, rows.Count);
     }
 
+    /// <summary>
+    /// Recent receipts, newest first. Ported from SalesDataService.GetRecentSales,
+    /// but the group-by aggregation runs in memory (Npgsql can't translate the
+    /// desktop's <c>g.First()</c> projection inside GroupBy).
+    /// </summary>
+    public async Task<List<SalesSummary>> GetRecentSalesAsync(int count = 50)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+
+        var recentNumbers = await db.DitariD.AsNoTracking()
+            .Select(d => d.Numri)
+            .Distinct()
+            .OrderByDescending(n => n)
+            .Take(count)
+            .ToListAsync();
+
+        var rows = await db.DitariD.AsNoTracking()
+            .Where(d => recentNumbers.Contains(d.Numri))
+            .Select(d => new { d.Numri, d.Data, d.Ora, d.VleraMeTvsh, d.Punetori, d.MetodaP })
+            .ToListAsync();
+
+        return rows
+            .GroupBy(d => d.Numri)
+            .Select(g => new SalesSummary
+            {
+                ReceiptNumber = g.Key?.ToString() ?? "",
+                Date = g.Max(d => d.Data) ?? DateTime.MinValue,
+                Time = g.Select(d => d.Ora).FirstOrDefault(o => !string.IsNullOrEmpty(o)) ?? "",
+                TotalAmount = (decimal)g.Sum(d => d.VleraMeTvsh ?? 0),
+                ItemCount = g.Count(),
+                Cashier = g.Select(d => d.Punetori).FirstOrDefault(p => !string.IsNullOrEmpty(p)) ?? "",
+                PaymentMethod = PaymentMethodName(g.Select(d => d.MetodaP).FirstOrDefault() ?? 1)
+            })
+            .OrderByDescending(s => s.Date)
+            .ToList();
+    }
+
+    /// <summary>All line items for a single receipt (journal number), in order.</summary>
+    public async Task<List<ReceiptLine>> GetReceiptDetailAsync(long numri)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var rows = await db.DitariD.AsNoTracking()
+            .Where(d => d.Numri == numri)
+            .OrderBy(d => d.NrRendor)
+            .Select(d => new ReceiptLine
+            {
+                Name = d.Artikulli ?? "",
+                Barcode = d.Barkodi ?? "",
+                Quantity = (decimal)(d.Sasia ?? 0),
+                Price = (decimal)(d.Qmimi ?? 0),
+                Total = (decimal)(d.VleraMeTvsh ?? 0),
+                VATValue = (decimal)(d.Tvsh ?? 0)
+            })
+            .ToListAsync();
+        return rows;
+    }
+
     private static int GetPaymentMethodId(string method) => method?.ToLowerInvariant() switch
     {
         "para në dorë" or "cash" => 1,
@@ -118,4 +175,34 @@ public class SalesService
         "transfer" or "bankar" => 3,
         _ => 1
     };
+
+    private static string PaymentMethodName(int id) => id switch
+    {
+        2 => "Kartë",
+        3 => "Transfer",
+        _ => "Para në dorë"
+    };
+}
+
+/// <summary>One-row-per-receipt summary for the receipts list (ported from POS2 SalesSummary).</summary>
+public class SalesSummary
+{
+    public string ReceiptNumber { get; set; } = "";
+    public DateTime Date { get; set; }
+    public string Time { get; set; } = "";
+    public decimal TotalAmount { get; set; }
+    public int ItemCount { get; set; }
+    public string Cashier { get; set; } = "";
+    public string PaymentMethod { get; set; } = "";
+}
+
+/// <summary>One journal line within a receipt, for the detail view.</summary>
+public class ReceiptLine
+{
+    public string Name { get; set; } = "";
+    public string Barcode { get; set; } = "";
+    public decimal Quantity { get; set; }
+    public decimal Price { get; set; }
+    public decimal Total { get; set; }
+    public decimal VATValue { get; set; }
 }

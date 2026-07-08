@@ -1,0 +1,369 @@
+@page "/blerjet"
+@attribute [Authorize]
+@rendermode InteractiveServer
+@using System.Security.Claims
+@using KosovaPOS.Core.Services
+@using KosovaPOS.Models
+@inject CatalogService Catalog
+@inject PurchaseService PurchaseSvc
+
+<PageTitle>Blerjet — KosovaPOS</PageTitle>
+
+@if (_view == View.Entry)
+{
+    <div class="sale">
+        <!-- Left: catalogue to pick articles from -->
+        <section class="catalogue">
+            <div class="search-row">
+                <input @bind="_search" @bind:event="oninput" @onkeydown="OnSearchKey"
+                       placeholder="Kërko emër ose skano barkod…" class="search-box" autofocus />
+                <a href="/" class="btn-ghost">← Ballina</a>
+                <button class="btn-ghost" @onclick="ShowRecent">Blerjet e fundit</button>
+            </div>
+            <div class="grid">
+                @if (_loading)
+                {
+                    <p class="muted">Duke ngarkuar…</p>
+                }
+                else
+                {
+                    @foreach (var a in FilteredArticles)
+                    {
+                        <button class="prod" @onclick="() => AddLine(a)">
+                            <span class="prod-name">@a.Name</span>
+                            <span class="prod-price">@a.PurchasePrice.ToString("0.00") €</span>
+                            <span class="prod-stock">stok @a.StockQuantity.ToString("0.##")</span>
+                        </button>
+                    }
+                    @if (!FilteredArticles.Any())
+                    {
+                        <p class="muted">Asnjë artikull.</p>
+                    }
+                }
+            </div>
+        </section>
+
+        <!-- Right: purchase document -->
+        <section class="cart">
+            <h2>Blerje e re #@_docNumber</h2>
+            <div class="pur-head">
+                <div class="field">
+                    <label>Furnizuesi</label>
+                    <select class="input" @bind="_supplierId">
+                        <option value="0">— pa furnizues —</option>
+                        @foreach (var s in _suppliers)
+                        {
+                            <option value="@s.Id">@s.Name</option>
+                        }
+                    </select>
+                </div>
+                <div class="field">
+                    <label>Nr. faturës</label>
+                    <input class="input" @bind="_invoiceNumber" />
+                </div>
+                <div class="field">
+                    <label>Lloji</label>
+                    <select class="input" @bind="_purchaseType">
+                        <option value="Vendore">Vendore</option>
+                        <option value="Import">Import</option>
+                        <option value="Shpenzime">Shpenzime</option>
+                    </select>
+                </div>
+                <label class="chk"><input type="checkbox" @bind="_isPaid" /> E paguar</label>
+            </div>
+
+            <div class="cart-items pur-lines">
+                @if (_lines.Count == 0)
+                {
+                    <p class="muted">Zgjidh artikuj nga e majta.</p>
+                }
+                else
+                {
+                    <table class="lines-table">
+                        <thead>
+                            <tr><th>Artikulli</th><th>Sasia</th><th>Furn.</th><th>Shitje</th><th>TVSH</th><th></th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var l in _lines)
+                            {
+                                <tr>
+                                    <td class="ln-name">@l.ArticleName</td>
+                                    <td><input type="number" step="0.001" class="ln-in" @bind="l.Quantity" /></td>
+                                    <td><input type="number" step="0.01" class="ln-in" @bind="l.PurchasePrice" /></td>
+                                    <td><input type="number" step="0.01" class="ln-in" @bind="l.SalesPrice" /></td>
+                                    <td>
+                                        <select class="ln-in" @bind="l.VATRate">
+                                            <option value="18">18</option>
+                                            <option value="8">8</option>
+                                            <option value="0">0</option>
+                                        </select>
+                                    </td>
+                                    <td><button class="cl-del" @onclick="() => _lines.Remove(l)">×</button></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+
+            <div class="totals">
+                <div class="t-row"><span>Nën-total</span><span>@Subtotal.ToString("0.00") €</span></div>
+                <div class="t-row"><span>TVSH</span><span>@VatTotal.ToString("0.00") €</span></div>
+                <div class="t-row grand"><span>TOTALI</span><span>@Total.ToString("0.00") €</span></div>
+            </div>
+
+            @if (!string.IsNullOrEmpty(_message))
+            {
+                <div class="sale-msg @(_success ? "ok" : "err")">@_message</div>
+            }
+
+            <button class="complete" disabled="@(_lines.Count == 0 || _busy)" @onclick="Save">
+                @(_busy ? "Duke ruajtur…" : "RUAJ BLERJEN")
+            </button>
+        </section>
+    </div>
+}
+else
+{
+    <div class="mgmt">
+        <header class="mgmt-head">
+            <div>
+                <a href="/" class="back">← Ballina</a>
+                <h1>Blerjet e fundit</h1>
+                <span class="muted">@_recent.Count blerje</span>
+            </div>
+            <button class="btn-primary" @onclick="ShowEntry">+ Blerje e re</button>
+        </header>
+        <div class="table-wrap">
+            @if (_recentLoading)
+            {
+                <p class="muted">Duke ngarkuar…</p>
+            }
+            else
+            {
+                <table class="grid-table">
+                    <thead>
+                        <tr>
+                            <th>Nr.</th><th>Fatura</th><th>Data</th><th>Ora</th>
+                            <th>Lloji</th><th class="num">Artikuj</th><th class="num">Totali</th><th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var p in _recent)
+                        {
+                            <tr class="clickable" @onclick="() => OpenDetail(p.DocumentNumber)">
+                                <td class="mono">#@p.DocumentNumber</td>
+                                <td>@p.InvoiceNumber</td>
+                                <td>@p.Date.ToString("dd.MM.yyyy")</td>
+                                <td>@p.Time</td>
+                                <td>@p.PurchaseType</td>
+                                <td class="num">@p.ItemCount</td>
+                                <td class="num strong">@p.TotalAmount.ToString("0.00") €</td>
+                                <td class="actions"><button class="btn-mini">👁️</button></td>
+                            </tr>
+                        }
+                        @if (!_recent.Any())
+                        {
+                            <tr><td colspan="8" class="muted center">Asnjë blerje ende.</td></tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </div>
+}
+
+@if (_detailNumber is not null)
+{
+    <div class="modal-backdrop" @onclick="() => _detailNumber = null">
+        <div class="modal" @onclick:stopPropagation="true">
+            <h2>Blerja #@_detailNumber</h2>
+            @if (_detailLoading)
+            {
+                <p class="muted">Duke ngarkuar…</p>
+            }
+            else
+            {
+                <table class="grid-table">
+                    <thead>
+                        <tr><th>Artikulli</th><th class="num">Sasia</th><th class="num">Çmimi furn.</th><th class="num">Totali</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var l in _detail)
+                        {
+                            <tr>
+                                <td>@l.Name</td>
+                                <td class="num">@l.Quantity.ToString("0.##")</td>
+                                <td class="num">@l.PurchasePrice.ToString("0.00") €</td>
+                                <td class="num">@l.Total.ToString("0.00") €</td>
+                            </tr>
+                        }
+                    </tbody>
+                    <tfoot>
+                        <tr><td colspan="3" class="num strong">TOTALI</td><td class="num strong">@_detail.Sum(l => l.Total).ToString("0.00") €</td></tr>
+                    </tfoot>
+                </table>
+            }
+            <div class="modal-actions">
+                <button class="btn-ghost" @onclick="() => _detailNumber = null">Mbyll</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private enum View { Entry, Recent }
+
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private View _view = View.Entry;
+
+    // Entry state
+    private List<Article> _articles = new();
+    private List<Supplier> _suppliers = new();
+    private readonly List<PurchaseDraftItem> _lines = new();
+    private string _search = "";
+    private string _docNumber = "";
+    private string _invoiceNumber = "";
+    private string _purchaseType = "Vendore";
+    private int _supplierId;
+    private bool _isPaid;
+    private bool _loading = true, _busy, _success;
+    private string? _message;
+    private string _worker = "";
+
+    // Recent state
+    private List<PurchaseSummary> _recent = new();
+    private bool _recentLoading;
+    private long? _detailNumber;
+    private List<PurchaseLineView> _detail = new();
+    private bool _detailLoading;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is not null)
+        {
+            var u = (await AuthState).User;
+            _worker = u.FindFirst(AuthService.FullNameClaim)?.Value ?? u.Identity?.Name ?? "";
+        }
+        _articles = await Catalog.GetAllArticlesAsync();
+        _suppliers = await PurchaseSvc.GetSuppliersAsync();
+        _docNumber = await PurchaseSvc.GetNextDocumentNumberAsync();
+        _loading = false;
+    }
+
+    private IEnumerable<Article> FilteredArticles
+    {
+        get
+        {
+            IEnumerable<Article> q = _articles;
+            if (!string.IsNullOrWhiteSpace(_search))
+            {
+                var s = _search.Trim();
+                q = q.Where(a => a.Name.Contains(s, StringComparison.OrdinalIgnoreCase)
+                              || a.Barcode.Contains(s, StringComparison.OrdinalIgnoreCase));
+            }
+            return q.Take(60);
+        }
+    }
+
+    private async Task OnSearchKey(KeyboardEventArgs e)
+    {
+        if (e.Key != "Enter" || string.IsNullOrWhiteSpace(_search)) return;
+        var hit = _articles.FirstOrDefault(a => a.Barcode == _search.Trim())
+                  ?? await Catalog.FindByBarcodeAsync(_search.Trim());
+        if (hit is not null)
+        {
+            AddLine(hit);
+            _search = "";
+        }
+    }
+
+    private void AddLine(Article a)
+    {
+        var existing = _lines.FirstOrDefault(l => l.ArticleId == a.Id);
+        if (existing is not null)
+        {
+            existing.Quantity += 1;
+        }
+        else
+        {
+            _lines.Add(new PurchaseDraftItem
+            {
+                ArticleId = a.Id,
+                Barcode = a.Barcode,
+                ArticleName = a.Name,
+                Quantity = 1,
+                PurchasePrice = a.PurchasePrice,
+                SalesPrice = a.SalesPrice,
+                VATRate = a.VATRate
+            });
+        }
+        _message = null;
+    }
+
+    // Net (pre-VAT) value of a line, after discount.
+    private static decimal Net(PurchaseDraftItem l) =>
+        l.PurchasePrice * (1 - l.DiscountPercent / 100) * l.Quantity;
+    private decimal Subtotal => _lines.Sum(Net);
+    private decimal VatTotal => _lines.Sum(l => Net(l) * l.VATRate / 100);
+    private decimal Total => Subtotal + VatTotal;
+
+    private async Task Save()
+    {
+        if (_lines.Count == 0) return;
+        _busy = true;
+        _message = null;
+        try
+        {
+            var draft = new PurchaseDraft
+            {
+                DocumentNumber = string.IsNullOrWhiteSpace(_invoiceNumber) ? _docNumber : _invoiceNumber,
+                Date = DateTime.Now,
+                SupplierId = _supplierId,
+                PurchaseType = _purchaseType,
+                IsPaid = _isPaid,
+                Worker = _worker,
+                Items = _lines.ToList()
+            };
+            var savedNumri = await PurchaseSvc.SavePurchaseAsync(draft);
+            if (savedNumri is null)
+            {
+                _success = false;
+                _message = "Ruajtja dështoi. Provo përsëri.";
+                return;
+            }
+            _success = true;
+            _message = $"Blerja #{savedNumri} u ruajt · stoku u përditësua.";
+            _lines.Clear();
+            _invoiceNumber = "";
+            _isPaid = false;
+            // Refresh catalogue stock + next doc number for the following entry.
+            _articles = await Catalog.GetAllArticlesAsync();
+            _docNumber = await PurchaseSvc.GetNextDocumentNumberAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task ShowRecent()
+    {
+        _view = View.Recent;
+        _recentLoading = true;
+        _recent = await PurchaseSvc.GetRecentPurchasesAsync(100);
+        _recentLoading = false;
+    }
+
+    private void ShowEntry() => _view = View.Entry;
+
+    private async Task OpenDetail(string documentNumber)
+    {
+        if (!long.TryParse(documentNumber, out var numri)) return;
+        _detailNumber = numri;
+        _detailLoading = true;
+        _detail = await PurchaseSvc.GetPurchaseDetailAsync(numri);
+        _detailLoading = false;
+    }
+}

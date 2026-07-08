@@ -1,0 +1,133 @@
+@page "/raportet"
+@attribute [Authorize]
+@rendermode InteractiveServer
+@using KosovaPOS.Core.Services
+@inject ReportService ReportSvc
+
+<PageTitle>Raportet — KosovaPOS</PageTitle>
+
+<div class="mgmt">
+    <header class="mgmt-head">
+        <div>
+            <a href="/" class="back">← Ballina</a>
+            <h1>Raportet</h1>
+        </div>
+    </header>
+
+    <!-- ── Daily (Z-report style) ─────────────────────────────── -->
+    <section class="report-block">
+        <div class="block-head">
+            <h2>Raporti ditor</h2>
+            <div class="controls">
+                <input type="date" class="input" @bind="_day" />
+                <button class="btn-primary" @onclick="LoadDaily" disabled="@_dayBusy">Shfaq</button>
+            </div>
+        </div>
+
+        @if (_daily is not null)
+        {
+            <div class="stat-row">
+                <div class="stat"><span class="stat-label">Shitje me TVSH</span><span class="stat-val">@_daily.TotalWithVat.ToString("0.00") €</span></div>
+                <div class="stat"><span class="stat-label">Pa TVSH</span><span class="stat-val">@_daily.TotalWithoutVat.ToString("0.00") €</span></div>
+                <div class="stat"><span class="stat-label">TVSH</span><span class="stat-val">@_daily.TotalVat.ToString("0.00") €</span></div>
+                <div class="stat"><span class="stat-label">Transaksione</span><span class="stat-val">@_daily.Transactions</span></div>
+            </div>
+            <table class="grid-table compact">
+                <tbody>
+                    <tr><td>Baza 18%</td><td class="num">@_daily.Base18.ToString("0.00") €</td><td>TVSH 18%</td><td class="num">@_daily.Vat18.ToString("0.00") €</td></tr>
+                    <tr><td>Baza 8%</td><td class="num">@_daily.Base8.ToString("0.00") €</td><td>TVSH 8%</td><td class="num">@_daily.Vat8.ToString("0.00") €</td></tr>
+                    <tr><td>Baza 0%</td><td class="num">@_daily.Base0.ToString("0.00") €</td><td>Artikuj të shitur</td><td class="num">@_daily.ItemLines</td></tr>
+                    <tr><td>Para në dorë</td><td class="num strong">@_daily.Cash.ToString("0.00") €</td><td>Kartë</td><td class="num strong">@_daily.Card.ToString("0.00") €</td></tr>
+                </tbody>
+            </table>
+        }
+    </section>
+
+    <!-- ── Date range ─────────────────────────────────────────── -->
+    <section class="report-block">
+        <div class="block-head">
+            <h2>Përmbledhje periudhe</h2>
+            <div class="controls">
+                <input type="date" class="input" @bind="_from" />
+                <span>–</span>
+                <input type="date" class="input" @bind="_to" />
+                <button class="btn-primary" @onclick="LoadRange" disabled="@_rangeBusy">Shfaq</button>
+            </div>
+        </div>
+
+        @if (_range is not null)
+        {
+            <div class="stat-row">
+                <div class="stat"><span class="stat-label">Shitje totale</span><span class="stat-val">@_range.SalesTotal.ToString("0.00") €</span></div>
+                <div class="stat"><span class="stat-label">TVSH</span><span class="stat-val">@_range.SalesVat.ToString("0.00") €</span></div>
+                <div class="stat"><span class="stat-label">Transaksione</span><span class="stat-val">@_range.Transactions</span></div>
+                <div class="stat"><span class="stat-label">Blerje totale</span><span class="stat-val">@_range.PurchasesTotal.ToString("0.00") €</span></div>
+            </div>
+
+            <div class="two-col">
+                <div>
+                    <h3>Shitjet sipas ditës</h3>
+                    <table class="grid-table compact">
+                        <thead><tr><th>Data</th><th class="num">Transaksione</th><th class="num">Totali</th></tr></thead>
+                        <tbody>
+                            @foreach (var d in _range.Days)
+                            {
+                                <tr><td>@d.Date.ToString("dd.MM.yyyy")</td><td class="num">@d.Transactions</td><td class="num strong">@d.Total.ToString("0.00") €</td></tr>
+                            }
+                            @if (!_range.Days.Any())
+                            {
+                                <tr><td colspan="3" class="muted center">Asnjë shitje.</td></tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <div>
+                    <h3>Artikujt më të shitur</h3>
+                    <table class="grid-table compact">
+                        <thead><tr><th>Artikulli</th><th class="num">Sasia</th><th class="num">Vlera</th></tr></thead>
+                        <tbody>
+                            @foreach (var a in _range.TopArticles)
+                            {
+                                <tr><td>@a.Name</td><td class="num">@a.Quantity.ToString("0.##")</td><td class="num strong">@a.Revenue.ToString("0.00") €</td></tr>
+                            }
+                            @if (!_range.TopArticles.Any())
+                            {
+                                <tr><td colspan="3" class="muted center">Asnjë.</td></tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
+    </section>
+</div>
+
+@code {
+    private DateTime _day = DateTime.Today;
+    private DateTime _from = new(DateTime.Today.Year, DateTime.Today.Month, 1);
+    private DateTime _to = DateTime.Today;
+
+    private DailyReport? _daily;
+    private RangeSummary? _range;
+    private bool _dayBusy, _rangeBusy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDaily();
+        await LoadRange();
+    }
+
+    private async Task LoadDaily()
+    {
+        _dayBusy = true;
+        try { _daily = await ReportSvc.GetDailyReportAsync(_day); }
+        finally { _dayBusy = false; }
+    }
+
+    private async Task LoadRange()
+    {
+        _rangeBusy = true;
+        try { _range = await ReportSvc.GetRangeSummaryAsync(_from, _to); }
+        finally { _rangeBusy = false; }
+    }
+}

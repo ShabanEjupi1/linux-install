@@ -1,0 +1,117 @@
+@page "/stoku"
+@attribute [Authorize]
+@rendermode InteractiveServer
+@using KosovaPOS.Core.Services
+@using KosovaPOS.Models
+@inject CatalogService Catalog
+
+<PageTitle>Stoku — KosovaPOS</PageTitle>
+
+<div class="mgmt">
+    <header class="mgmt-head">
+        <div>
+            <a href="/" class="back">← Ballina</a>
+            <h1>Gjendja e stokut</h1>
+            <span class="muted">@_all.Count artikuj</span>
+        </div>
+    </header>
+
+    <div class="stat-row">
+        <div class="stat"><span class="stat-label">Vlera e stokut (furnizim)</span><span class="stat-val">@StockCostValue.ToString("0.00") €</span></div>
+        <div class="stat"><span class="stat-label">Vlera me çmim shitje</span><span class="stat-val">@StockRetailValue.ToString("0.00") €</span></div>
+        <div class="stat warn"><span class="stat-label">Nën minimum (≤ @_threshold)</span><span class="stat-val">@LowCount</span></div>
+        <div class="stat danger"><span class="stat-label">Pa stok</span><span class="stat-val">@OutCount</span></div>
+    </div>
+
+    <div class="search-row">
+        <input @bind="_search" @bind:event="oninput" placeholder="Kërko emër ose barkod…" class="search-box" />
+        <select @bind="_filter" class="cat-select">
+            <option value="all">Të gjitha</option>
+            <option value="low">Nën minimum</option>
+            <option value="out">Pa stok</option>
+        </select>
+        <label class="chk">Pragu <input type="number" class="thresh" @bind="_threshold" /></label>
+    </div>
+
+    <div class="table-wrap">
+        @if (_loading)
+        {
+            <p class="muted">Duke ngarkuar…</p>
+        }
+        else
+        {
+            <table class="grid-table">
+                <thead>
+                    <tr>
+                        <th>Barkodi</th>
+                        <th>Emërtimi</th>
+                        <th>Kategoria</th>
+                        <th class="num">Stoku</th>
+                        <th class="num">Çm. furn.</th>
+                        <th class="num">Vlera furn.</th>
+                        <th class="num">Çm. shitje</th>
+                        <th class="num">Vlera shitje</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var a in Filtered)
+                    {
+                        <tr>
+                            <td class="mono">@a.Barcode</td>
+                            <td>@a.Name</td>
+                            <td>@a.Category</td>
+                            <td class="num @StockClass(a)">@a.StockQuantity.ToString("0.##")</td>
+                            <td class="num">@a.PurchasePrice.ToString("0.00")</td>
+                            <td class="num">@((a.StockQuantity * a.PurchasePrice).ToString("0.00"))</td>
+                            <td class="num">@a.SalesPrice.ToString("0.00")</td>
+                            <td class="num">@((a.StockQuantity * a.SalesPrice).ToString("0.00"))</td>
+                        </tr>
+                    }
+                    @if (!Filtered.Any())
+                    {
+                        <tr><td colspan="8" class="muted center">Asnjë artikull.</td></tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
+
+@code {
+    private List<Article> _all = new();
+    private string _search = "";
+    private string _filter = "all";
+    private decimal _threshold = 5;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _all = await Catalog.GetAllArticlesAsync();
+        _loading = false;
+    }
+
+    private IEnumerable<Article> Filtered
+    {
+        get
+        {
+            IEnumerable<Article> q = _all;
+            if (_filter == "out") q = q.Where(a => a.StockQuantity <= 0);
+            else if (_filter == "low") q = q.Where(a => a.StockQuantity > 0 && a.StockQuantity <= _threshold);
+            if (!string.IsNullOrWhiteSpace(_search))
+            {
+                var s = _search.Trim();
+                q = q.Where(a => a.Name.Contains(s, StringComparison.OrdinalIgnoreCase)
+                              || a.Barcode.Contains(s, StringComparison.OrdinalIgnoreCase));
+            }
+            return q.OrderBy(a => a.StockQuantity).ThenBy(a => a.Name).Take(300);
+        }
+    }
+
+    private string StockClass(Article a) =>
+        a.StockQuantity <= 0 ? "out" : a.StockQuantity <= _threshold ? "low" : "";
+
+    private decimal StockCostValue => _all.Sum(a => a.StockQuantity * a.PurchasePrice);
+    private decimal StockRetailValue => _all.Sum(a => a.StockQuantity * a.SalesPrice);
+    private int LowCount => _all.Count(a => a.StockQuantity > 0 && a.StockQuantity <= _threshold);
+    private int OutCount => _all.Count(a => a.StockQuantity <= 0);
+}

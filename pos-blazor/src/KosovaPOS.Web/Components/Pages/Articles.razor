@@ -1,0 +1,300 @@
+@page "/articles"
+@attribute [Authorize]
+@rendermode InteractiveServer
+@using KosovaPOS.Core.Services
+@using KosovaPOS.Models
+@inject CatalogService Catalog
+
+<PageTitle>Artikujt — KosovaPOS</PageTitle>
+
+<div class="mgmt">
+    <header class="mgmt-head">
+        <div>
+            <a href="/" class="back">← Ballina</a>
+            <h1>Artikujt</h1>
+            <span class="muted">@_all.Count artikuj gjithsej</span>
+        </div>
+        <button class="btn-primary" @onclick="() => OpenEditor(null)">+ Artikull i ri</button>
+    </header>
+
+    <div class="search-row">
+        <input @bind="_search" @bind:event="oninput" placeholder="Kërko emër ose barkod…" class="search-box" />
+        @if (_categories.Count > 0)
+        {
+            <select @bind="_activeCategory" class="cat-select">
+                <option value="">Të gjitha kategoritë</option>
+                @foreach (var c in _categories)
+                {
+                    <option value="@c">@c</option>
+                }
+            </select>
+        }
+    </div>
+
+    @if (!string.IsNullOrEmpty(_message))
+    {
+        <div class="sale-msg @(_success ? "ok" : "err")">@_message</div>
+    }
+
+    <div class="table-wrap">
+        @if (_loading)
+        {
+            <p class="muted">Duke ngarkuar…</p>
+        }
+        else
+        {
+            <table class="grid-table">
+                <thead>
+                    <tr>
+                        <th>Barkodi</th>
+                        <th>Emërtimi</th>
+                        <th>Kategoria</th>
+                        <th class="num">Çmimi</th>
+                        <th class="num">TVSH</th>
+                        <th class="num">Stoku</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var a in Filtered)
+                    {
+                        <tr>
+                            <td class="mono">@a.Barcode</td>
+                            <td>@a.Name</td>
+                            <td>@a.Category</td>
+                            <td class="num">@a.SalesPrice.ToString("0.00") €</td>
+                            <td class="num">@a.VATRate.ToString("0") %</td>
+                            <td class="num @(a.StockQuantity <= 0 ? "out" : "")">@a.StockQuantity.ToString("0.##")</td>
+                            <td class="actions">
+                                <button class="btn-mini" @onclick="() => OpenEditor(a)">✏️</button>
+                                <button class="btn-mini danger" @onclick="() => AskDelete(a)">🗑️</button>
+                            </td>
+                        </tr>
+                    }
+                    @if (!Filtered.Any())
+                    {
+                        <tr><td colspan="7" class="muted center">Asnjë artikull.</td></tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
+
+@if (_editing is not null)
+{
+    <div class="modal-backdrop" @onclick="CloseEditor">
+        <div class="modal" @onclick:stopPropagation="true">
+            <h2>@(_editing.Id > 0 ? "Ndrysho artikullin" : "Artikull i ri")</h2>
+            <EditForm Model="_editing" OnValidSubmit="Save">
+                <DataAnnotationsValidator />
+                <div class="form-grid">
+                    <div class="field">
+                        <label>Barkodi</label>
+                        <input class="input" @bind="_editing.Barcode" />
+                    </div>
+                    <div class="field span2">
+                        <label>Emërtimi *</label>
+                        <input class="input" @bind="_editing.Name" />
+                    </div>
+                    <div class="field">
+                        <label>Kategoria</label>
+                        <input class="input" list="cat-list" @bind="_editing.Category" />
+                        <datalist id="cat-list">
+                            @foreach (var c in _categories)
+                            {
+                                <option value="@c" />
+                            }
+                        </datalist>
+                    </div>
+                    <div class="field">
+                        <label>Njësia</label>
+                        <input class="input" @bind="_editing.Unit" />
+                    </div>
+                    <div class="field">
+                        <label>Çmimi furnizimit</label>
+                        <input class="input" type="number" step="0.01" @bind="_editing.PurchasePrice" />
+                    </div>
+                    <div class="field">
+                        <label>Çmimi shitjes *</label>
+                        <input class="input" type="number" step="0.01" @bind="_editing.SalesPrice" />
+                    </div>
+                    <div class="field">
+                        <label>TVSH</label>
+                        <select class="input" @bind="_editing.VATType">
+                            <option value="3">18%</option>
+                            <option value="2">8%</option>
+                            <option value="1">0%</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label>Stoku</label>
+                        <input class="input" type="number" step="0.001" @bind="_editing.StockQuantity" />
+                    </div>
+                </div>
+
+                @if (!string.IsNullOrEmpty(_formError))
+                {
+                    <div class="sale-msg err">@_formError</div>
+                }
+
+                <div class="modal-actions">
+                    <button type="button" class="btn-ghost" @onclick="CloseEditor">Anulo</button>
+                    <button type="submit" class="btn-primary" disabled="@_busy">
+                        @(_busy ? "Duke ruajtur…" : "Ruaj")
+                    </button>
+                </div>
+            </EditForm>
+        </div>
+    </div>
+}
+
+@if (_deleting is not null)
+{
+    <div class="modal-backdrop" @onclick="() => _deleting = null">
+        <div class="modal small" @onclick:stopPropagation="true">
+            <h2>Fshi artikullin?</h2>
+            <p><strong>@_deleting.Name</strong> do të fshihet përgjithmonë.</p>
+            <div class="modal-actions">
+                <button class="btn-ghost" @onclick="() => _deleting = null">Anulo</button>
+                <button class="btn-danger" disabled="@_busy" @onclick="ConfirmDelete">Fshi</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<Article> _all = new();
+    private List<string> _categories = new();
+    private string _search = "";
+    private string _activeCategory = "";
+    private bool _loading = true, _busy, _success;
+    private string? _message, _formError;
+
+    private Article? _editing;
+    private Article? _deleting;
+
+    protected override async Task OnInitializedAsync() => await Reload();
+
+    private async Task Reload()
+    {
+        _loading = true;
+        _all = await Catalog.GetAllArticlesAsync();
+        _categories = await Catalog.GetCategoriesAsync();
+        _loading = false;
+    }
+
+    private IEnumerable<Article> Filtered
+    {
+        get
+        {
+            IEnumerable<Article> q = _all.OrderBy(a => a.Name);
+            if (!string.IsNullOrWhiteSpace(_activeCategory))
+                q = q.Where(a => a.Category == _activeCategory);
+            if (!string.IsNullOrWhiteSpace(_search))
+            {
+                var s = _search.Trim();
+                q = q.Where(a => a.Name.Contains(s, StringComparison.OrdinalIgnoreCase)
+                              || a.Barcode.Contains(s, StringComparison.OrdinalIgnoreCase));
+            }
+            return q.Take(200);
+        }
+    }
+
+    private void OpenEditor(Article? a)
+    {
+        _formError = null;
+        // Edit a copy so a cancelled edit doesn't mutate the grid row.
+        _editing = a is null
+            ? new Article { Unit = "Copë", VATType = 3, VATRate = 18 }
+            : Clone(a);
+    }
+
+    private void CloseEditor() => _editing = null;
+
+    private async Task Save()
+    {
+        if (_editing is null) return;
+        if (string.IsNullOrWhiteSpace(_editing.Name))
+        {
+            _formError = "Emërtimi është i detyrueshëm.";
+            return;
+        }
+        _busy = true;
+        _formError = null;
+        try
+        {
+            // Keep VATRate in sync with the selected VAT type (matches desktop encoding).
+            _editing.VATRate = _editing.VATType switch { 3 => 18, 2 => 8, _ => 0 };
+            await Catalog.SaveArticleAsync(_editing);
+            _success = true;
+            _message = $"Artikulli \"{_editing.Name}\" u ruajt.";
+            _editing = null;
+            await Reload();
+        }
+        catch (Exception ex)
+        {
+            _formError = $"Ruajtja dështoi: {ex.Message}";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private void AskDelete(Article a) => _deleting = a;
+
+    private async Task ConfirmDelete()
+    {
+        if (_deleting is null) return;
+        _busy = true;
+        try
+        {
+            var ok = await Catalog.DeleteArticleAsync(_deleting.Id);
+            _success = ok;
+            _message = ok ? $"Artikulli u fshi." : "Fshirja dështoi.";
+            _deleting = null;
+            await Reload();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private static Article Clone(Article a) => new()
+    {
+        Id = a.Id,
+        Barcode = a.Barcode,
+        Name = a.Name,
+        Unit = a.Unit,
+        SalesUnit = a.SalesUnit,
+        Pack = a.Pack,
+        PurchasePrice = a.PurchasePrice,
+        Margin = a.Margin,
+        PackagePrice = a.PackagePrice,
+        WholesalePrice = a.WholesalePrice,
+        SalesPrice = a.SalesPrice,
+        SalesPrice1 = a.SalesPrice1,
+        VATRate = a.VATRate,
+        VATType = a.VATType,
+        Category = a.Category,
+        SupplierId = a.SupplierId,
+        StockQuantity = a.StockQuantity,
+        StockIn = a.StockIn,
+        StockOut = a.StockOut,
+        AverageSalesPrice = a.AverageSalesPrice,
+        AveragePurchasePrice = a.AveragePurchasePrice,
+        ExpiryDate = a.ExpiryDate,
+        HasBarcode = a.HasBarcode,
+        IsWeighed = a.IsWeighed,
+        ProductType = a.ProductType,
+        POSCategoryId = a.POSCategoryId,
+        Notes = a.Notes,
+        Location = a.Location,
+        Brand = a.Brand,
+        Importer = a.Importer,
+        Sector = a.Sector,
+        PhotoPath = a.PhotoPath
+    };
+}
