@@ -1,0 +1,300 @@
+@page "/perdoruesit"
+@attribute [Authorize]
+@rendermode InteractiveServer
+@using KosovaPOS.Core.Services
+@using KosovaPOS.Models.BMDData
+@inject UserService UserSvc
+
+<PageTitle>Përdoruesit — KosovaPOS</PageTitle>
+
+<div class="mgmt">
+    <header class="mgmt-head">
+        <div>
+            <a href="/" class="back">← Ballina</a>
+            <h1>Përdoruesit</h1>
+            <span class="muted">@_all.Count përdorues</span>
+        </div>
+        <button class="btn-primary" @onclick="() => OpenEditor(null)">+ Përdorues i ri</button>
+    </header>
+
+    @if (!string.IsNullOrEmpty(_message))
+    {
+        <div class="sale-msg @(_success ? "ok" : "err")">@_message</div>
+    }
+
+    <div class="table-wrap">
+        @if (_loading)
+        {
+            <p class="muted">Duke ngarkuar…</p>
+        }
+        else
+        {
+            <table class="grid-table">
+                <thead>
+                    <tr>
+                        <th>Përdoruesi</th>
+                        <th>Emri i plotë</th>
+                        <th>Roli</th>
+                        <th>Statusi</th>
+                        <th>Hyrja e fundit</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var u in _all)
+                    {
+                        <tr class="@(u.IsActive ? "" : "inactive-row")">
+                            <td class="mono">@u.Username</td>
+                            <td>@u.FullName</td>
+                            <td><span class="badge">@RoleLabel(u.Role)</span></td>
+                            <td>@(u.IsActive ? "Aktiv" : "Joaktiv")</td>
+                            <td class="muted">@(u.LastLogin?.ToString("dd.MM.yyyy HH:mm") ?? "—")</td>
+                            <td class="actions">
+                                <button class="btn-mini" @onclick="() => OpenEditor(u)">✏️</button>
+                                @if (u.IsActive)
+                                {
+                                    <button class="btn-mini danger" @onclick="() => AskDeactivate(u)">🚫</button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                    @if (_all.Count == 0)
+                    {
+                        <tr><td colspan="6" class="muted center">Asnjë përdorues.</td></tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
+
+@if (_editing is not null)
+{
+    <div class="modal-backdrop" @onclick="CloseEditor">
+        <div class="modal" @onclick:stopPropagation="true">
+            <h2>@(_editing.Id > 0 ? "Ndrysho përdoruesin" : "Përdorues i ri")</h2>
+            <EditForm Model="_editing" OnValidSubmit="Save">
+                <div class="form-grid">
+                    <div class="field">
+                        <label>Përdoruesi *</label>
+                        <input class="input" @bind="_editing.Username" />
+                    </div>
+                    <div class="field">
+                        <label>Emri i plotë *</label>
+                        <input class="input" @bind="_editing.FullName" />
+                    </div>
+                    <div class="field">
+                        <label>Roli</label>
+                        <select class="input" @bind="_editing.Role" @bind:after="ApplyRoleDefaults">
+                            @foreach (var r in UserService.Roles)
+                            {
+                                <option value="@r">@RoleLabel(r)</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label>Email</label>
+                        <input class="input" @bind="_editing.Email" />
+                    </div>
+                    <div class="field">
+                        <label>Telefoni</label>
+                        <input class="input" @bind="_editing.PhoneNumber" />
+                    </div>
+                    <div class="field">
+                        <label>Njësia / Dega</label>
+                        <input class="input" @bind="_editing.Branch" />
+                    </div>
+                    <div class="field span2">
+                        <label>@(_editing.Id > 0 ? "Fjalëkalimi i ri (lëre bosh për ta ruajtur)" : "Fjalëkalimi *")</label>
+                        <input class="input" type="password" @bind="_password" autocomplete="new-password" />
+                    </div>
+                    <div class="field">
+                        <label class="chk"><input type="checkbox" @bind="_editing.IsActive" /> Aktiv</label>
+                    </div>
+                </div>
+
+                <fieldset class="perm-set">
+                    <legend>Lejet</legend>
+                    <label class="chk"><input type="checkbox" @bind="_editing.CanManageArticles" /> Menaxho artikujt</label>
+                    <label class="chk"><input type="checkbox" @bind="_editing.CanManagePurchases" /> Menaxho blerjet / partnerët</label>
+                    <label class="chk"><input type="checkbox" @bind="_editing.CanViewReports" /> Shiko raportet / financat</label>
+                    <label class="chk"><input type="checkbox" @bind="_editing.CanManageUsers" /> Menaxho përdoruesit</label>
+                    <label class="chk"><input type="checkbox" @bind="_editing.CanModifyPrices" /> Ndrysho çmimet</label>
+                    <label class="chk"><input type="checkbox" @bind="_editing.CanDeleteReceipts" /> Fshi faturat</label>
+                    <label class="chk"><input type="checkbox" @bind="_editing.CanGiveDiscounts" /> Jep zbritje</label>
+                </fieldset>
+
+                @if (!string.IsNullOrEmpty(_formError))
+                {
+                    <div class="sale-msg err">@_formError</div>
+                }
+
+                <div class="modal-actions">
+                    <button type="button" class="btn-ghost" @onclick="CloseEditor">Anulo</button>
+                    <button type="submit" class="btn-primary" disabled="@_busy">
+                        @(_busy ? "Duke ruajtur…" : "Ruaj")
+                    </button>
+                </div>
+            </EditForm>
+        </div>
+    </div>
+}
+
+@if (_deactivating is not null)
+{
+    <div class="modal-backdrop" @onclick="() => _deactivating = null">
+        <div class="modal small" @onclick:stopPropagation="true">
+            <h2>Çaktivizo përdoruesin?</h2>
+            <p><strong>@_deactivating.FullName</strong> nuk do të mund të kyçet më.</p>
+            <div class="modal-actions">
+                <button class="btn-ghost" @onclick="() => _deactivating = null">Anulo</button>
+                <button class="btn-danger" disabled="@_busy" @onclick="ConfirmDeactivate">Çaktivizo</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<POSUser> _all = new();
+    private bool _loading = true, _busy, _success;
+    private string? _message, _formError;
+    private string _password = "";
+
+    private POSUser? _editing;
+    private POSUser? _deactivating;
+
+    protected override async Task OnInitializedAsync() => await Reload();
+
+    private async Task Reload()
+    {
+        _loading = true;
+        _all = await UserSvc.GetAllAsync();
+        _loading = false;
+    }
+
+    private void OpenEditor(POSUser? u)
+    {
+        _formError = null;
+        _password = "";
+        _editing = u is null ? new POSUser { Role = "Cashier", IsActive = true } : Clone(u);
+    }
+
+    private void CloseEditor() => _editing = null;
+
+    // Sensible permission preset when switching roles (mirrors desktop defaults).
+    private void ApplyRoleDefaults()
+    {
+        if (_editing is null) return;
+        switch (_editing.Role)
+        {
+            case "Admin":
+                Set(true, true, true, true, true, true, true); break;
+            case "Manager":
+                Set(true, true, true, false, true, true, true); break;
+            case "Cashier":
+                Set(false, false, false, false, false, false, false); break;
+            case "Warehouse":
+                Set(true, true, false, false, false, false, false); break;
+            case "Accountant":
+                Set(false, false, true, false, false, false, false); break;
+        }
+
+        void Set(bool art, bool pur, bool rep, bool usr, bool prc, bool del, bool dis)
+        {
+            _editing.CanManageArticles = art;
+            _editing.CanManagePurchases = pur;
+            _editing.CanViewReports = rep;
+            _editing.CanManageUsers = usr;
+            _editing.CanModifyPrices = prc;
+            _editing.CanDeleteReceipts = del;
+            _editing.CanGiveDiscounts = dis;
+        }
+    }
+
+    private async Task Save()
+    {
+        if (_editing is null) return;
+        if (string.IsNullOrWhiteSpace(_editing.Username) || string.IsNullOrWhiteSpace(_editing.FullName))
+        {
+            _formError = "Përdoruesi dhe emri i plotë janë të detyrueshëm.";
+            return;
+        }
+        _busy = true;
+        _formError = null;
+        try
+        {
+            if (await UserSvc.UsernameTakenAsync(_editing.Username.Trim(), _editing.Id))
+            {
+                _formError = "Ky emër përdoruesi është i zënë.";
+                return;
+            }
+            _editing.Username = _editing.Username.Trim();
+            await UserSvc.SaveAsync(_editing, string.IsNullOrEmpty(_password) ? null : _password);
+            _success = true;
+            _message = $"Përdoruesi \"{_editing.Username}\" u ruajt.";
+            _editing = null;
+            await Reload();
+        }
+        catch (Exception ex)
+        {
+            _formError = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private void AskDeactivate(POSUser u) => _deactivating = u;
+
+    private async Task ConfirmDeactivate()
+    {
+        if (_deactivating is null) return;
+        _busy = true;
+        try
+        {
+            var (ok, error) = await UserSvc.DeactivateAsync(_deactivating.Id);
+            _success = ok;
+            _message = ok ? "Përdoruesi u çaktivizua." : error;
+            _deactivating = null;
+            await Reload();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private static string RoleLabel(string role) => role switch
+    {
+        "Admin" => "Administrator",
+        "Manager" => "Menaxher",
+        "Cashier" => "Arkëtar",
+        "Warehouse" => "Depo",
+        "Accountant" => "Kontabilist",
+        _ => role
+    };
+
+    private static POSUser Clone(POSUser u) => new()
+    {
+        Id = u.Id,
+        Username = u.Username,
+        PasswordHash = u.PasswordHash,
+        Email = u.Email,
+        FullName = u.FullName,
+        Role = u.Role,
+        IsActive = u.IsActive,
+        CreatedAt = u.CreatedAt,
+        LastLogin = u.LastLogin,
+        Branch = u.Branch,
+        PhoneNumber = u.PhoneNumber,
+        CanManageArticles = u.CanManageArticles,
+        CanManagePurchases = u.CanManagePurchases,
+        CanManageUsers = u.CanManageUsers,
+        CanViewReports = u.CanViewReports,
+        CanModifyPrices = u.CanModifyPrices,
+        CanDeleteReceipts = u.CanDeleteReceipts,
+        CanGiveDiscounts = u.CanGiveDiscounts,
+        MaxDiscountPercent = u.MaxDiscountPercent
+    };
+}

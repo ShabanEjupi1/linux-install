@@ -1,0 +1,240 @@
+@page "/financat"
+@attribute [Authorize]
+@rendermode InteractiveServer
+@using System.Security.Claims
+@using KosovaPOS.Core.Services
+@using KosovaPOS.Models.BMDData
+@inject FinanceService FinanceSvc
+
+<PageTitle>Financat — KosovaPOS</PageTitle>
+
+<div class="mgmt">
+    <header class="mgmt-head">
+        <div>
+            <a href="/" class="back">← Ballina</a>
+            <h1>Financat / Arka</h1>
+            <span class="muted">Hyrje, dalje dhe borxhe</span>
+        </div>
+        <div class="tabs">
+            <button class="tab @(_tab == "cash" ? "active" : "")" @onclick='() => _tab = "cash"'>Arka</button>
+            <button class="tab @(_tab == "debts" ? "active" : "")" @onclick='SwitchToDebts'>Borxhet</button>
+        </div>
+    </header>
+
+    @if (!string.IsNullOrEmpty(_message))
+    {
+        <div class="sale-msg @(_success ? "ok" : "err")">@_message</div>
+    }
+
+    @if (_tab == "cash")
+    {
+        <div class="search-row">
+            <label class="muted">Nga <input class="input" type="date" @bind="_from" /></label>
+            <label class="muted">Deri <input class="input" type="date" @bind="_to" /></label>
+            <button class="btn-ghost" @onclick="ReloadCash">Rifresko</button>
+            <span class="spacer"></span>
+            <button class="btn-primary" @onclick='() => OpenEntry("Hyrje")'>+ Hyrje</button>
+            <button class="btn-danger" @onclick='() => OpenEntry("Dalje")'>+ Dalje</button>
+        </div>
+
+        <div class="stat-row">
+            <div class="stat"><span class="stat-label">Hyrje</span><span class="stat-val">@_income.ToString("0.00") €</span></div>
+            <div class="stat"><span class="stat-label">Dalje</span><span class="stat-val">@_expense.ToString("0.00") €</span></div>
+            <div class="stat"><span class="stat-label">Neto</span><span class="stat-val @(_net < 0 ? "out" : "")">@_net.ToString("0.00") €</span></div>
+        </div>
+
+        <div class="table-wrap">
+            <table class="grid-table">
+                <thead>
+                    <tr><th>Data</th><th>Lloji</th><th>Përshkrimi</th><th>Punëtori</th><th class="num">Vlera</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var e in _entries)
+                    {
+                        <tr>
+                            <td>@e.Date.ToString("dd.MM.yyyy HH:mm")</td>
+                            <td><span class="badge">@e.Kind</span></td>
+                            <td>@e.Description</td>
+                            <td>@e.Worker</td>
+                            <td class="num @(e.Kind == "Dalje" ? "out" : "")">@(e.Kind == "Dalje" ? "−" : "")@e.Amount.ToString("0.00") €</td>
+                        </tr>
+                    }
+                    @if (_entries.Count == 0)
+                    {
+                        <tr><td colspan="5" class="muted center">Asnjë transaksion në këtë periudhë.</td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+    else
+    {
+        <div class="stat-row">
+            <div class="stat"><span class="stat-label">Borxh total i papaguar</span><span class="stat-val out">@_totalDebt.ToString("0.00") €</span></div>
+        </div>
+        <div class="table-wrap">
+            <table class="grid-table">
+                <thead>
+                    <tr><th>Klienti</th><th>Data</th><th>Përshkrimi</th><th class="num">Vlera</th><th class="num">Paguar</th><th class="num">Mbetur</th><th></th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var d in _debts)
+                    {
+                        <tr>
+                            <td>@d.Klienti</td>
+                            <td>@(d.Data?.ToString("dd.MM.yyyy") ?? "—")</td>
+                            <td>@d.Pershkrimi</td>
+                            <td class="num">@d.TotalValue.ToString("0.00")</td>
+                            <td class="num">@d.PaidAmount.ToString("0.00")</td>
+                            <td class="num out">@d.RemainingAmount.ToString("0.00")</td>
+                            <td class="actions"><button class="btn-mini" @onclick="() => OpenPayment(d)">💶</button></td>
+                        </tr>
+                    }
+                    @if (_debts.Count == 0)
+                    {
+                        <tr><td colspan="7" class="muted center">Asnjë borxh i papaguar.</td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@if (_entryKind is not null)
+{
+    <div class="modal-backdrop" @onclick="() => _entryKind = null">
+        <div class="modal small" @onclick:stopPropagation="true">
+            <h2>@(_entryKind == "Hyrje" ? "Hyrje në arkë" : "Dalje nga arka")</h2>
+            <div class="form-grid">
+                <div class="field span2">
+                    <label>Përshkrimi *</label>
+                    <input class="input" @bind="_entryDesc" />
+                </div>
+                <div class="field">
+                    <label>Vlera (€) *</label>
+                    <input class="input" type="number" step="0.01" @bind="_entryAmount" />
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn-ghost" @onclick="() => _entryKind = null">Anulo</button>
+                <button class="btn-primary" disabled="@_busy" @onclick="SaveEntry">Ruaj</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (_payingDebt is not null)
+{
+    <div class="modal-backdrop" @onclick="() => _payingDebt = null">
+        <div class="modal small" @onclick:stopPropagation="true">
+            <h2>Pagesë borxhi — @_payingDebt.Klienti</h2>
+            <p class="muted">Mbetur: <strong>@_payingDebt.RemainingAmount.ToString("0.00") €</strong></p>
+            <div class="form-grid">
+                <div class="field">
+                    <label>Shuma e paguar (€)</label>
+                    <input class="input" type="number" step="0.01" @bind="_paymentAmount" />
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn-ghost" @onclick="() => _payingDebt = null">Anulo</button>
+                <button class="btn-primary" disabled="@_busy" @onclick="SavePayment">Regjistro</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private string _tab = "cash";
+    private DateTime _from = DateTime.Today.AddDays(-30);
+    private DateTime _to = DateTime.Today;
+    private List<FinanceService.CashEntry> _entries = new();
+    private decimal _income, _expense, _net;
+    private List<Borxhi> _debts = new();
+    private decimal _totalDebt;
+    private bool _busy, _success;
+    private string? _message;
+    private string _userName = "";
+
+    private string? _entryKind;
+    private string _entryDesc = "";
+    private decimal _entryAmount;
+
+    private Borxhi? _payingDebt;
+    private decimal _paymentAmount;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is not null)
+        {
+            var user = (await AuthState).User;
+            _userName = user.FindFirst(AuthService.FullNameClaim)?.Value ?? user.Identity?.Name ?? "";
+        }
+        await ReloadCash();
+    }
+
+    private async Task ReloadCash()
+    {
+        _entries = await FinanceSvc.GetCashBookAsync(_from, _to);
+        (_income, _expense, _net) = await FinanceSvc.GetTotalsAsync(_from, _to);
+    }
+
+    private async Task SwitchToDebts()
+    {
+        _tab = "debts";
+        _debts = await FinanceSvc.GetDebtsAsync();
+        _totalDebt = await FinanceSvc.TotalDebtAsync();
+    }
+
+    private void OpenEntry(string kind)
+    {
+        _entryKind = kind;
+        _entryDesc = "";
+        _entryAmount = 0;
+    }
+
+    private async Task SaveEntry()
+    {
+        if (string.IsNullOrWhiteSpace(_entryDesc) || _entryAmount <= 0)
+        {
+            _success = false; _message = "Përshkrimi dhe vlera janë të detyrueshme.";
+            _entryKind = null;
+            return;
+        }
+        _busy = true;
+        try
+        {
+            if (_entryKind == "Hyrje")
+                await FinanceSvc.AddIncomeAsync(_entryDesc.Trim(), _userName, _entryAmount);
+            else
+                await FinanceSvc.AddExpenseAsync(_entryDesc.Trim(), _userName, _entryAmount);
+            _success = true;
+            _message = "Transaksioni u regjistrua.";
+            _entryKind = null;
+            await ReloadCash();
+        }
+        finally { _busy = false; }
+    }
+
+    private void OpenPayment(Borxhi d)
+    {
+        _payingDebt = d;
+        _paymentAmount = d.RemainingAmount;
+    }
+
+    private async Task SavePayment()
+    {
+        if (_payingDebt is null) return;
+        _busy = true;
+        try
+        {
+            await FinanceSvc.RecordDebtPaymentAsync(_payingDebt.Id, _paymentAmount);
+            _success = true;
+            _message = "Pagesa u regjistrua.";
+            _payingDebt = null;
+            await SwitchToDebts();
+        }
+        finally { _busy = false; }
+    }
+}

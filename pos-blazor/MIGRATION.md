@@ -86,7 +86,99 @@ pos-blazor/
 | 3 Sale screen | cart, categories/search, barcode, payment/change, receipt→DitariD + stock | ✅ |
 | 4 Management | Articles CRUD, Receipts, Purchases, Stock, Reports — all done | ✅ |
 | 5 Hardware agent | fiscal/receipt/barcode printers, scale via a local PC agent (browser → agent bridge) | ✅ |
-| 6 Deploy | Docker on Ampere behind nginx/tunnel, alongside existing stack | ⬜ |
+| 6 Deploy | Docker on Ampere, self-provisioning DB, **LIVE at pos.spacecode.tech** | ✅ |
+| 7 Core-parity screens | Users, Business Partners, Cash Register/Shifts, Returns, Finance | ✅ |
+| 8 Real data | load BMDData `script.sql` (2,184 real articles + history) into Postgres | ✅ |
+
+## Phase 7 — core-parity management screens ✅ (2026-07-08)
+Closes the biggest gap vs the WPF store app (POS2 has ~60 windows; the web app had 6).
+Added five screens, each a Core service + a `.razor` page mirroring the Articles pattern
+(searchable table + modal editor + confirm dialogs), wired into Home tiles:
+- **Users** (`/perdoruesit`) — CRUD over the **POSUsers** table (the one login uses),
+  BCrypt hashing in `UserService`, role presets (Admin/Manager/Cashier/Warehouse/Accountant)
+  auto-fill the permission grid, soft-delete (deactivate) that refuses the last active Admin.
+  Tile is gated on the `perm=users` claim.
+- **Business Partners** (`/partneret`) — customers + suppliers + both, NUI/NRF, balances;
+  `PartnerService`.
+- **Cash Register / Shift** (`/arka`) — open shift (float) → live cash/card/expected totals
+  from DitariD → close with counted cash + auto-computed difference; `ShiftService` over
+  `CashShifts`, one open shift at a time, plus a recent-shifts history.
+- **Returns** (`/kthimet`) — look up an original receipt by journal number, pick lines/qty,
+  choose refund method, optional restock; `ReturnService` writes `ReturnReceipts`(+items)
+  and increments `Artikujt` stock in a transaction. Generates `RET-yyyyMMdd-NNN` numbers.
+- **Finance** (`/financat`) — cash-book (ArkaHyrje/ArkaDalje) with income/expense entry +
+  date-range totals, and a debts (Borxhi) tab with payment recording; `FinanceService`.
+
+DI registered in `Program.cs`; new CSS (`.panel/.tabs/.tab/.perm-set/.section-title/…`)
+appended to `wwwroot/app.css`. **Verified E2E** on a throwaway local Postgres: build green,
+login `admin/admin`, all five pages 200 with their DB read-queries executing (no runtime
+exceptions in the EF log beyond the expected fresh-DB migration-history probe).
+**DEPLOYED to pos.spacecode.tech** (publish → rsync → `docker compose up -d --build pos-blazor`);
+all five routes verified 200 over the public URL.
+
+## Phase 8 — real BMDData load ✅ (2026-07-08)
+**DONE and LIVE.** Loaded the real store data into the live `pos-blazor-db`: **2,184 articles**
+(Artikujt), 95 suppliers (FurnitoriNew), 1 category, 2,211 purchase-journal rows (DitariH),
+15,227 sales-journal rows (DitariD). Verified on pos.spacecode.tech: `/articles` shows
+"2184 artikuj gjithsej", `/blerjet` supplier dropdown lists the real suppliers, `/sale`
+shows real products, `/faturat` 200. The old throwaway test row ("Papuqe 0304" + its 1 sale)
+was truncated first; POSUsers (admin login) left intact.
+
+**How it was done — a Python ETL, NOT a text sed/pgloader** (`scratchpad/etl.py`, kept for
+re-runs): the SSMS dump has SQL-Server idioms that need real parsing — `CAST(0x… AS DateTime)`
+**binary** datetimes (8 bytes: int32 days since 1900-01-01 + uint32 ticks@1/300s), `bit` 0/1,
+`N'…'` strings, `image` blobs. The script is **schema-driven**: it reads the *target* Postgres
+schema from `information_schema` (per-table `schema_<T>.tsv` = name/type/maxlen) and converts
+each value to the exact target type — bit→bool, binary-datetime→`'YYYY-MM-DD HH:MM:SS'`,
+bytea(Foto)→NULL, over-length varchar→truncated (e.g. EF made `IRregullt`/`PaBarkod`
+`varchar(1)` while source is `varchar(100)` → `'False'`→`'F'`), ints tolerate `3.0`. Source
+and EF column names/casing match 1:1 (via the `[Column]`/`[Table]` attrs incl. UPPERCASE
+DitariD/DitariH), so name-based projection just works. Emits batched 500-row INSERTs +
+`setval` to keep the identity sequence ahead. Pipeline: `iconv -f UTF-16LE -t UTF-8` →
+`etl.py <T>` → scp `out_<T>.sql` → `docker exec … psql -f`.
+
+### original source facts
+`../POS2/script.sql` is the real SQL Server export (362MB **UTF-16LE**, `USE [master]…`,
+56 `CREATE TABLE`, ~302k `INSERT` statements). It is **not git-tracked** (too large).
+**It contains real production data**, inventoried (INSERT rows per table):
+`Artikujt 2186` · `DitariD 15229` · `DitariH 2213` · `ArkaHyrjeDalje 4337` ·
+`FurnitoriNew 97` · `Punetoret 5` · `Kategoria 3` · `Filiala 4` · `Sektori 4` · `Qytetet 20`
+(POSUsers/BusinessPartners/ArkaHyrje/ArkaDalje/Borxhi = 0 rows in this export).
+
+**Plan (per table, highest value first — start with `Artikujt` = the catalogue):**
+1. `iconv -f UTF-16LE -t UTF-8` the dump (→ ~181MB UTF-8).
+2. For each target table, extract its `INSERT [dbo].[T] (cols…) VALUES (…);` lines.
+3. Transform T-SQL → Postgres and **project to the EF column subset only** — the SQL Server
+   tables have more columns than the EF `[Column]`-mapped entities, so filter the column
+   list + values to what the Postgres table actually has (names already match via the
+   `[Column]`/`[Table]` attributes; `[ident]`→`"ident"`, `N'…'`→`'…'`, `bit 1/0`→`true/false`,
+   datetime literals, `NULL` passthrough).
+4. Load into the running Postgres (`pos-blazor-db`), identity columns via OVERRIDING.
+5. Verify counts + spot-check the catalogue renders on `/articles` and `/sale`.
+Best kept as its own careful pass; a column-diff (SQL-Server DDL vs EF model) drives step 3.
+
+## Phase 6 — deployed & cut over ✅ (2026-07-08)
+**LIVE at https://pos.spacecode.tech** (replaced the old React `../pos-web` — user
+go-ahead 2026-07-08; old container kept on `:8120` as rollback, unrouted).
+- **Self-provisioning:** `Program.cs` runs `db.Database.MigrateAsync()` on startup and
+  seeds an `admin`/`admin` Admin user if `POSUsers` is empty (gate with `POS_SKIP_DB_INIT=true`).
+  So a fresh container creates its 68-table schema and is immediately loginable.
+- **Dedicated Postgres:** `docker-compose.yml` ships its own `pos-blazor-db`
+  (`postgres:16-alpine`, volume `pos-blazor-pg`) — fully isolated from Supabase/pos-web.
+  `POSTGRES_PASSWORD` in `.env` on Ampere (`~/apps/pos-blazor/.env`, gitignored).
+- **App container** `pos-blazor` binds `127.0.0.1:8121` (pos-web used 8120).
+- **Routing is the Cloudflare tunnel, NOT nginx.** The tunnel is token-mode
+  (remotely-managed), so `deploy/nginx-pos-blazor.conf` is unused here — the ingress
+  `pos.spacecode.tech → http://localhost:8121` was set via the CF API
+  (`PUT .../cfd_tunnel/{id}/configurations`). Tunnels proxy Blazor's WebSocket
+  automatically, so no extra config was needed.
+- **Verified end-to-end over the public URL:** login `admin/admin` → 302 home,
+  authenticated `/sale` and `/raportet` → 200; wrong password rejected; validated the
+  same flow in a throwaway local Docker stack first.
+- **Redeploy:** `dotnet publish -c Release -o publish` locally →
+  `rsync -az --delete -e "ssh -i ssh-key-2026-07-01.key" publish Dockerfile docker-compose.yml deploy opc@143.47.190.37:~/apps/pos-blazor/`
+  → `ssh … 'cd ~/apps/pos-blazor && sudo docker compose up -d --build'`.
+- **Rollback:** repoint the CF ingress back to `:8120` (old pos-web still running).
 
 ## Phase 5 — hardware agent done ✅
 The desktop hardware services are Windows/COM. Rather than reach the NAT'd cashier

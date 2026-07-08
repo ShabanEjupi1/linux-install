@@ -32,6 +32,11 @@ builder.Services.AddScoped<CatalogService>();
 builder.Services.AddScoped<SalesService>();
 builder.Services.AddScoped<PurchaseService>();
 builder.Services.AddScoped<ReportService>();
+builder.Services.AddScoped<UserService>();
+builder.Services.AddScoped<PartnerService>();
+builder.Services.AddScoped<ShiftService>();
+builder.Services.AddScoped<ReturnService>();
+builder.Services.AddScoped<FinanceService>();
 builder.Services.AddScoped<KosovaPOS.Web.Services.HardwareBridge>();
 
 // ── Authentication (cookie) ─────────────────────────────────────────────
@@ -60,6 +65,39 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<AuthenticationStateProvider, PosAuthStateProvider>();
 
 var app = builder.Build();
+
+// ── Provision the database on startup ───────────────────────────────────
+// Apply pending EF migrations (idempotent) so a fresh container self-creates
+// its schema, then seed a single admin/admin user if the POSUsers table is
+// empty (first run only). Gate with POS_SKIP_DB_INIT=true to opt out.
+if (!string.Equals(Environment.GetEnvironmentVariable("POS_SKIP_DB_INIT"), "true",
+        StringComparison.OrdinalIgnoreCase))
+{
+    using var scope = app.Services.CreateScope();
+    var dbFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<PosDbContext>>();
+    await using var db = await dbFactory.CreateDbContextAsync();
+    await db.Database.MigrateAsync();
+
+    if (!await db.POSUsers.AnyAsync())
+    {
+        db.POSUsers.Add(new KosovaPOS.Models.BMDData.POSUser
+        {
+            Username = "admin",
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword("admin"),
+            FullName = "Administrator",
+            Role = "Admin",
+            IsActive = true,
+            CanManageArticles = true,
+            CanManagePurchases = true,
+            CanManageUsers = true,
+            CanViewReports = true,
+            CanModifyPrices = true,
+            CanDeleteReceipts = true,
+            CanGiveDiscounts = true,
+        });
+        await db.SaveChangesAsync();
+    }
+}
 
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())

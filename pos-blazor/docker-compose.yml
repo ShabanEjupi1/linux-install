@@ -1,15 +1,34 @@
 # KosovaPOS Blazor web — deploy on Ampere alongside the existing stack.
-# The DB connection points at your Postgres (Supabase pos DB or a dedicated
-# Postgres). Set POS_DB_CONNECTION in a .env file next to this compose file.
+# Ships with its OWN dedicated Postgres (fully isolated from Supabase / pos-web).
+# The app self-provisions its schema (EF migrate) and seeds admin/admin on first
+# run. Set POSTGRES_PASSWORD in a .env file next to this compose file.
 services:
+  pos-blazor-db:
+    image: postgres:16-alpine
+    container_name: pos-blazor-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: kosovapos
+      POSTGRES_USER: pos
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pos-blazor-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pos -d kosovapos"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   pos-blazor:
     build: .
     image: kosovapos-web:latest
     container_name: pos-blazor
     restart: unless-stopped
+    depends_on:
+      pos-blazor-db:
+        condition: service_healthy
     environment:
-      # e.g. Host=host.docker.internal;Port=5432;Database=kosovapos;Username=...;Password=...
-      POS_DB_CONNECTION: ${POS_DB_CONNECTION}
+      POS_DB_CONNECTION: "Host=pos-blazor-db;Port=5432;Database=kosovapos;Username=pos;Password=${POSTGRES_PASSWORD}"
       POS_KEYS_DIR: /keys
       ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
     volumes:
@@ -19,3 +38,4 @@ services:
 
 volumes:
   pos-keys:
+  pos-blazor-pg:

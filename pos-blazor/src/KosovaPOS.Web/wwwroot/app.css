@@ -207,3 +207,24 @@ body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
 .two-col { display:grid; grid-template-columns:1fr 1fr; gap:1.2rem; margin-top:1rem; }
 .two-col h3 { font-size:.95rem; margin:0 0 .5rem; color:#334155; }
 @media (max-width:720px){ .two-col { grid-template-columns:1fr; } }
+
+/* ── Management screens added in the core-parity pass ──────────────────── */
+.panel { background:#fff; border:1px solid #e2e8f0; border-radius:12px;
+  padding:1.1rem 1.25rem; margin-bottom:1.25rem; box-shadow:0 2px 8px rgba(0,0,0,.04); }
+.panel h2 { margin:0 0 .75rem; font-size:1.1rem; }
+.section-title { margin:1.5rem 0 .6rem; font-size:1.05rem; color:#334155; }
+.spacer { flex:1 1 auto; }
+.inactive-row { opacity:.5; }
+.err-input { border-color:#dc2626 !important; color:#dc2626; }
+.mini-num { width:6rem !important; text-align:right; padding:.35rem .5rem; }
+
+/* Tabs (Financat) */
+.tabs { display:inline-flex; gap:.25rem; background:#f1f5f9; border-radius:10px; padding:.25rem; }
+.tab { border:none; background:transparent; padding:.45rem .9rem; border-radius:8px;
+  font-size:.95rem; cursor:pointer; color:#475569; }
+.tab.active { background:#fff; color:var(--pos-accent); box-shadow:0 1px 3px rgba(0,0,0,.08); }
+
+/* Permission checkbox grid (Users editor) */
+.perm-set { border:1px solid #e2e8f0; border-radius:10px; padding:.75rem 1rem; margin-top:.5rem;
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:.4rem .9rem; }
+.perm-set legend { padding:0 .4rem; font-size:.9rem; color:#64748b; }

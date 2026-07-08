@@ -1,0 +1,211 @@
+@page "/arka"
+@attribute [Authorize]
+@rendermode InteractiveServer
+@using System.Security.Claims
+@using KosovaPOS.Core.Services
+@using KosovaPOS.Models
+@inject ShiftService Shifts
+
+<PageTitle>Arka — KosovaPOS</PageTitle>
+
+<div class="mgmt">
+    <header class="mgmt-head">
+        <div>
+            <a href="/" class="back">← Ballina</a>
+            <h1>Arka / Ndërrimi</h1>
+            <span class="muted">@(_open is null ? "Arka është e mbyllur" : $"Hapur nga {_open.CashierName} · {_open.OpenedAt:dd.MM.yyyy HH:mm}")</span>
+        </div>
+    </header>
+
+    @if (!string.IsNullOrEmpty(_message))
+    {
+        <div class="sale-msg @(_success ? "ok" : "err")">@_message</div>
+    }
+
+    @if (_loading)
+    {
+        <p class="muted">Duke ngarkuar…</p>
+    }
+    else if (_open is null)
+    {
+        <div class="panel">
+            <h2>Hap ndërrimin</h2>
+            <p class="muted">Fut sasinë fillestare të parave në arkë për të filluar shitjen.</p>
+            <div class="form-grid">
+                <div class="field">
+                    <label>Para fillestare (€)</label>
+                    <input class="input" type="number" step="0.01" @bind="_openingCash" />
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn-primary" disabled="@_busy" @onclick="OpenShift">
+                    @(_busy ? "Duke hapur…" : "Hap ndërrimin")
+                </button>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="stat-row">
+            <div class="stat"><span class="stat-label">Para fillestare</span><span class="stat-val">@_open.OpeningCash.ToString("0.00") €</span></div>
+            <div class="stat"><span class="stat-label">Shitje me para</span><span class="stat-val">@_cash.ToString("0.00") €</span></div>
+            <div class="stat"><span class="stat-label">Shitje me kartë</span><span class="stat-val">@_card.ToString("0.00") €</span></div>
+            <div class="stat"><span class="stat-label">Prisni në arkë</span><span class="stat-val">@_expected.ToString("0.00") €</span></div>
+            <div class="stat"><span class="stat-label">Transaksione</span><span class="stat-val">@_count</span></div>
+        </div>
+
+        <div class="panel">
+            <h2>Mbyll ndërrimin</h2>
+            <div class="form-grid">
+                <div class="field">
+                    <label>Para të numëruara (€)</label>
+                    <input class="input" type="number" step="0.01" @bind="_countedCash" @bind:after="StateHasChanged" />
+                </div>
+                <div class="field">
+                    <label>Diferenca</label>
+                    <input class="input @(Difference == 0 ? "" : (Difference > 0 ? "" : "err-input"))" readonly value="@Difference.ToString("0.00") €" />
+                </div>
+                <div class="field span2">
+                    <label>Shënime</label>
+                    <input class="input" @bind="_notes" />
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn-danger" disabled="@_busy" @onclick="CloseShift">
+                    @(_busy ? "Duke mbyllur…" : "Mbyll ndërrimin")
+                </button>
+            </div>
+        </div>
+    }
+
+    <h2 class="section-title">Ndërrimet e fundit</h2>
+    <div class="table-wrap">
+        <table class="grid-table">
+            <thead>
+                <tr>
+                    <th>Hapur</th>
+                    <th>Mbyllur</th>
+                    <th>Arkëtari</th>
+                    <th class="num">Fillestare</th>
+                    <th class="num">Shitje</th>
+                    <th class="num">Numëruar</th>
+                    <th class="num">Diferenca</th>
+                    <th>Statusi</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var s in _recent)
+                {
+                    <tr>
+                        <td>@s.OpenedAt.ToString("dd.MM HH:mm")</td>
+                        <td>@(s.ClosedAt?.ToString("dd.MM HH:mm") ?? "—")</td>
+                        <td>@s.CashierName</td>
+                        <td class="num">@s.OpeningCash.ToString("0.00")</td>
+                        <td class="num">@s.TotalSales.ToString("0.00")</td>
+                        <td class="num">@(s.Status == ShiftStatus.Open ? "—" : s.ClosingCash.ToString("0.00"))</td>
+                        <td class="num @(s.CashDifference != 0 && s.Status != ShiftStatus.Open ? "out" : "")">
+                            @(s.Status == ShiftStatus.Open ? "—" : s.CashDifference.ToString("0.00"))
+                        </td>
+                        <td><span class="badge">@StatusLabel(s.Status)</span></td>
+                    </tr>
+                }
+                @if (_recent.Count == 0)
+                {
+                    <tr><td colspan="8" class="muted center">Asnjë ndërrim.</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private CashShift? _open;
+    private List<CashShift> _recent = new();
+    private decimal _cash, _card, _expected;
+    private int _count;
+    private decimal _openingCash;
+    private decimal _countedCash;
+    private string? _notes;
+    private bool _loading = true, _busy, _success;
+    private string? _message;
+
+    private int? _userId;
+    private string _userName = "";
+
+    private decimal Difference => _countedCash - _expected;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is not null)
+        {
+            var user = (await AuthState).User;
+            _userName = user.FindFirst(AuthService.FullNameClaim)?.Value ?? user.Identity?.Name ?? "";
+            if (int.TryParse(user.FindFirst(AuthService.UserIdClaim)?.Value, out var uid))
+                _userId = uid;
+        }
+        await Reload();
+    }
+
+    private async Task Reload()
+    {
+        _loading = true;
+        _open = await Shifts.GetOpenShiftAsync();
+        _recent = await Shifts.GetRecentAsync();
+        if (_open is not null)
+        {
+            (_cash, _card, _, _count) = await Shifts.GetShiftSalesAsync(_open.OpenedAt);
+            _expected = _open.OpeningCash + _cash;
+            _countedCash = _expected; // pre-fill with expected, cashier adjusts
+        }
+        _loading = false;
+    }
+
+    private async Task OpenShift()
+    {
+        _busy = true;
+        try
+        {
+            await Shifts.OpenShiftAsync(_openingCash, _userId, _userName);
+            _success = true;
+            _message = "Ndërrimi u hap.";
+            _openingCash = 0;
+            await Reload();
+        }
+        catch (Exception ex)
+        {
+            _success = false;
+            _message = ex.Message;
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task CloseShift()
+    {
+        if (_open is null) return;
+        _busy = true;
+        try
+        {
+            var closed = await Shifts.CloseShiftAsync(_open.Id, _countedCash, _notes, null);
+            _success = true;
+            _message = $"Ndërrimi u mbyll. Diferenca: {closed.CashDifference:0.00} €.";
+            _notes = null;
+            await Reload();
+        }
+        catch (Exception ex)
+        {
+            _success = false;
+            _message = ex.Message;
+        }
+        finally { _busy = false; }
+    }
+
+    private static string StatusLabel(ShiftStatus s) => s switch
+    {
+        ShiftStatus.Open => "Hapur",
+        ShiftStatus.Closed => "Mbyllur",
+        ShiftStatus.ForceClosed => "Mbyllur me forcë",
+        _ => s.ToString()
+    };
+}

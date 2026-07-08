@@ -35,12 +35,20 @@
         <a href="/faturat" class="tile-link"><div class="tile">🧾 Faturat</div></a>
         <a href="/blerjet" class="tile-link"><div class="tile">📥 Blerjet</div></a>
         <a href="/stoku" class="tile-link"><div class="tile">📊 Stoku</div></a>
+        <a href="/arka" class="tile-link"><div class="tile">💵 Arka</div></a>
+        <a href="/kthimet" class="tile-link"><div class="tile">↩️ Kthimet</div></a>
+        <a href="/partneret" class="tile-link"><div class="tile">🤝 Partnerët</div></a>
+        <a href="/financat" class="tile-link"><div class="tile">💰 Financat</div></a>
         @if (_isRestaurant)
         {
             <div class="tile">🍽️ Tavolinat</div>
             <div class="tile">👨‍🍳 Kuzhina</div>
         }
         <a href="/raportet" class="tile-link"><div class="tile">📈 Raportet</div></a>
+        @if (_canManageUsers)
+        {
+            <a href="/perdoruesit" class="tile-link"><div class="tile">👥 Përdoruesit</div></a>
+        }
     </div>
 </div>
 
@@ -49,6 +57,7 @@
 
     private BusinessSettings? _settings;
     private bool _isRestaurant;
+    private bool _canManageUsers;
     private string _fullName = "";
     private string _role = "";
 
@@ -60,6 +69,7 @@
             _fullName = user.FindFirst(AuthService.FullNameClaim)?.Value
                         ?? user.Identity?.Name ?? "";
             _role = user.FindFirst(ClaimTypes.Role)?.Value ?? "";
+            _canManageUsers = user.HasClaim("perm", "users");
         }
 
         _settings = await Tenant.GetSettingsAsync();

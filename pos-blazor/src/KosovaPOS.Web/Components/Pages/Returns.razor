@@ -1,0 +1,236 @@
+@page "/kthimet"
+@attribute [Authorize]
+@rendermode InteractiveServer
+@using System.Security.Claims
+@using KosovaPOS.Core.Services
+@using KosovaPOS.Models
+@inject ReturnService ReturnSvc
+
+<PageTitle>Kthimet — KosovaPOS</PageTitle>
+
+<div class="mgmt">
+    <header class="mgmt-head">
+        <div>
+            <a href="/" class="back">← Ballina</a>
+            <h1>Kthimet / Rimbursimet</h1>
+            <span class="muted">@_recent.Count kthime të fundit</span>
+        </div>
+        <button class="btn-primary" @onclick="StartNew">+ Kthim i ri</button>
+    </header>
+
+    @if (!string.IsNullOrEmpty(_message))
+    {
+        <div class="sale-msg @(_success ? "ok" : "err")">@_message</div>
+    }
+
+    @if (_drafting)
+    {
+        <div class="panel">
+            <h2>Kthim i ri</h2>
+            <div class="search-row">
+                <input @bind="_lookupNumber" placeholder="Numri i faturës origjinale…" class="search-box" />
+                <button class="btn-ghost" disabled="@_busy" @onclick="Lookup">Kërko faturën</button>
+            </div>
+
+            @if (_lookupDone && _lines.Count == 0)
+            {
+                <p class="sale-msg err">Fatura "@_lookupNumber" nuk u gjet.</p>
+            }
+
+            @if (_lines.Count > 0)
+            {
+                <table class="grid-table">
+                    <thead>
+                        <tr>
+                            <th></th>
+                            <th>Artikulli</th>
+                            <th class="num">Sasia orig.</th>
+                            <th class="num">Çmimi</th>
+                            <th class="num">Kthe sasi</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var l in _lines)
+                        {
+                            <tr>
+                                <td><input type="checkbox" @bind="l.Selected" /></td>
+                                <td>@l.Line.Name<br /><span class="mono muted">@l.Line.Barcode</span></td>
+                                <td class="num">@l.Line.Quantity.ToString("0.##")</td>
+                                <td class="num">@l.Line.Price.ToString("0.00") €</td>
+                                <td class="num">
+                                    <input class="input mini-num" type="number" step="0.001" min="0"
+                                           max="@l.Line.Quantity" @bind="l.ReturnQty" />
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+
+                <div class="form-grid">
+                    <div class="field">
+                        <label>Mënyra e rimbursimit</label>
+                        <select class="input" @bind="_refundMethod">
+                            <option value="Para në dorë">Para në dorë</option>
+                            <option value="Kartë">Kartë</option>
+                            <option value="Kredit">Kredit</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label class="chk"><input type="checkbox" @bind="_restock" /> Kthe në stok</label>
+                    </div>
+                    <div class="field span2">
+                        <label>Arsyeja</label>
+                        <input class="input" @bind="_reason" />
+                    </div>
+                </div>
+
+                <div class="stat-row">
+                    <div class="stat"><span class="stat-label">Rimbursim total</span><span class="stat-val">@RefundTotal.ToString("0.00") €</span></div>
+                </div>
+
+                <div class="modal-actions">
+                    <button class="btn-ghost" @onclick="CancelDraft">Anulo</button>
+                    <button class="btn-primary" disabled="@(_busy || RefundTotal <= 0)" @onclick="Save">
+                        @(_busy ? "Duke ruajtur…" : "Konfirmo kthimin")
+                    </button>
+                </div>
+            }
+        </div>
+    }
+
+    <h2 class="section-title">Kthimet e fundit</h2>
+    <div class="table-wrap">
+        <table class="grid-table">
+            <thead>
+                <tr>
+                    <th>Nr. kthimi</th>
+                    <th>Data</th>
+                    <th>Fatura orig.</th>
+                    <th class="num">Rimbursim</th>
+                    <th>Mënyra</th>
+                    <th>Arsyeja</th>
+                    <th>Nga</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var r in _recent)
+                {
+                    <tr>
+                        <td class="mono">@r.ReturnNumber</td>
+                        <td>@r.ReturnDate.ToString("dd.MM.yyyy HH:mm")</td>
+                        <td class="mono">@r.OriginalReceiptNumber</td>
+                        <td class="num">@r.RefundAmount.ToString("0.00") €</td>
+                        <td>@r.RefundMethod</td>
+                        <td>@r.Reason</td>
+                        <td>@r.ProcessedBy</td>
+                    </tr>
+                }
+                @if (_recent.Count == 0)
+                {
+                    <tr><td colspan="7" class="muted center">Asnjë kthim.</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private class ReturnLine
+    {
+        public ReceiptLine Line { get; set; } = new();
+        public bool Selected { get; set; }
+        public decimal ReturnQty { get; set; }
+    }
+
+    private List<ReturnReceipt> _recent = new();
+    private bool _drafting, _lookupDone, _busy, _success;
+    private string? _message;
+    private string _lookupNumber = "";
+    private string _refundMethod = "Para në dorë";
+    private string? _reason;
+    private bool _restock = true;
+    private List<ReturnLine> _lines = new();
+    private string _userName = "";
+
+    private decimal RefundTotal => _lines
+        .Where(l => l.Selected && l.ReturnQty > 0)
+        .Sum(l => l.ReturnQty * l.Line.Price);
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is not null)
+        {
+            var user = (await AuthState).User;
+            _userName = user.FindFirst(AuthService.FullNameClaim)?.Value ?? user.Identity?.Name ?? "";
+        }
+        await Reload();
+    }
+
+    private async Task Reload() => _recent = await ReturnSvc.GetRecentAsync();
+
+    private void StartNew()
+    {
+        _drafting = true;
+        _lookupDone = false;
+        _lines = new();
+        _lookupNumber = "";
+        _reason = null;
+        _message = null;
+    }
+
+    private void CancelDraft() => _drafting = false;
+
+    private async Task Lookup()
+    {
+        _busy = true;
+        try
+        {
+            var lines = await ReturnSvc.LookupOriginalAsync(_lookupNumber);
+            _lines = lines.Select(l => new ReturnLine { Line = l, Selected = true, ReturnQty = l.Quantity }).ToList();
+            _lookupDone = true;
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task Save()
+    {
+        _busy = true;
+        try
+        {
+            var chosen = _lines.Where(l => l.Selected && l.ReturnQty > 0).ToList();
+            if (chosen.Count == 0) { _success = false; _message = "Zgjidh të paktën një artikull."; return; }
+
+            var ret = new ReturnReceipt
+            {
+                ReturnNumber = await ReturnSvc.GenerateReturnNumberAsync(),
+                ReturnDate = DateTime.Now,
+                OriginalReceiptNumber = _lookupNumber.Trim(),
+                RefundMethod = _refundMethod,
+                Reason = _reason,
+                ProcessedBy = _userName,
+                Items = chosen.Select(l => new ReturnReceiptItem
+                {
+                    Barcode = l.Line.Barcode,
+                    ArticleName = l.Line.Name,
+                    Quantity = l.ReturnQty,
+                    UnitPrice = l.Line.Price,
+                    TotalValue = l.ReturnQty * l.Line.Price
+                }).ToList()
+            };
+
+            await ReturnSvc.SaveReturnAsync(ret, _restock);
+            _success = true;
+            _message = $"Kthimi {ret.ReturnNumber} u regjistrua ({ret.RefundAmount:0.00} €).";
+            _drafting = false;
+            await Reload();
+        }
+        catch (Exception ex)
+        {
+            _success = false;
+            _message = $"Kthimi dështoi: {ex.Message}";
+        }
+        finally { _busy = false; }
+    }
+}
