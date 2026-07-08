@@ -116,6 +116,19 @@ exceptions in the EF log beyond the expected fresh-DB migration-history probe).
 **DEPLOYED to pos.spacecode.tech** (publish → rsync → `docker compose up -d --build pos-blazor`);
 all five routes verified 200 over the public URL.
 
+## Phase 8b — remaining tables + Finance wired to the real ledger ✅ (2026-07-08)
+Loaded the last high-value tables into the live DB via the same schema-driven ETL
+(`scratchpad/etl.py`): **ArkaHyrjeDalje 4,335** cash-ledger rows, **Qytetet 18** cities,
+**Punetoret 3** employees. New wrinkle handled: `CAST(0x… AS Date)` **4-byte** binary dates
+(int32 days since 0001-01-01, little-endian) — verified against decoded samples (e.g. one
+`1924-10-22` outlier is a faithful decode of a source data-entry typo, not a bug). Identity
+sequences `setval`'d after load. **Finance fix:** the Phase-7 `FinanceService` cash-book read
+the empty `ArkaHyrje`/`ArkaDalje` tables, but the real history lives in **`ArkaHyrjeDalje`**
+(the desktop `FinanceWindow`'s main table — VleraH=income / VleraD=expense). Repointed
+`GetCashBookAsync`/totals + `Add*` there and defaulted the date range to year-to-date (matching
+the desktop). Verified live over pos.spacecode.tech: `/financat` YTD shows **39 entries,
+Hyrje 920.90 € / Dalje 0.00 / Neto 920.90 €** with real receipt numbers (`01-KO3986…`).
+
 ## Phase 8 — real BMDData load ✅ (2026-07-08)
 **DONE and LIVE.** Loaded the real store data into the live `pos-blazor-db`: **2,184 articles**
 (Artikujt), 95 suppliers (FurnitoriNew), 1 category, 2,211 purchase-journal rows (DitariH),

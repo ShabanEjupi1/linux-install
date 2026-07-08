@@ -15,27 +15,32 @@ public class FinanceService
 
     public FinanceService(IDbContextFactory<PosDbContext> dbFactory) => _dbFactory = dbFactory;
 
-    public record CashEntry(long Id, string Kind, DateTime Date, string Description, string Worker, decimal Amount);
+    public record CashEntry(long Id, string Kind, DateTime Date, string Description, string Doc, decimal Amount);
 
-    /// <summary>Income + expense entries in a date range, newest first.</summary>
+    /// <summary>Income + expense entries in a date range, newest first.
+    /// Reads the BMD <c>ArkaHyrjeDalje</c> ledger — the main cash-movements table
+    /// (VleraH = income / VleraD = expense), matching the desktop FinanceWindow.</summary>
     public async Task<List<CashEntry>> GetCashBookAsync(DateTime from, DateTime to)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
         var end = to.Date.AddDays(1);
 
-        var income = await db.Set<ArkaHyrje>().AsNoTracking()
-            .Where(h => h.Data >= from.Date && h.Data < end)
-            .Select(h => new CashEntry(h.Id, "Hyrje", h.Data ?? DateTime.MinValue,
-                h.Pershkrimi ?? "", h.Punetori ?? "", (decimal)(h.Vlera ?? 0)))
+        var rows = await db.Set<ArkaHyrjeDalje>().AsNoTracking()
+            .Where(a => a.Data >= from.Date && a.Data < end
+                        && ((a.VleraH ?? 0) > 0 || (a.VleraD ?? 0) > 0))
+            .Select(a => new { a.Id, a.Data, a.Pershkrimi, a.DOK, a.VleraH, a.VleraD })
             .ToListAsync();
 
-        var expense = await db.Set<ArkaDalje>().AsNoTracking()
-            .Where(d => d.Data >= from.Date && d.Data < end)
-            .Select(d => new CashEntry(d.Id, "Dalje", d.Data ?? DateTime.MinValue,
-                d.Pershkrimi ?? "", d.Punetori ?? "", (decimal)(d.Vlera ?? 0)))
-            .ToListAsync();
-
-        return income.Concat(expense).OrderByDescending(e => e.Date).ToList();
+        var entries = new List<CashEntry>(rows.Count);
+        foreach (var a in rows)
+        {
+            var date = a.Data ?? DateTime.MinValue;
+            if ((a.VleraH ?? 0) > 0)
+                entries.Add(new CashEntry(a.Id, "Hyrje", date, a.Pershkrimi ?? "", a.DOK ?? "", (decimal)(a.VleraH ?? 0)));
+            if ((a.VleraD ?? 0) > 0)
+                entries.Add(new CashEntry(a.Id, "Dalje", date, a.Pershkrimi ?? "", a.DOK ?? "", (decimal)(a.VleraD ?? 0)));
+        }
+        return entries.OrderByDescending(e => e.Date).ThenByDescending(e => e.Id).ToList();
     }
 
     /// <summary>(income, expense, net) totals in the range.</summary>
@@ -50,9 +55,10 @@ public class FinanceService
     public async Task AddIncomeAsync(string description, string worker, decimal amount)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
-        db.Set<ArkaHyrje>().Add(new ArkaHyrje
+        db.Set<ArkaHyrjeDalje>().Add(new ArkaHyrjeDalje
         {
-            Pershkrimi = description, Punetori = worker, Data = DateTime.Now, Vlera = (double)amount
+            Pershkrimi = Compose(description, worker), DOK = "MANUAL", Data = DateTime.Now,
+            Subjekti = 0, MetodaP = 1, VleraH = (double)amount, VleraD = 0
         });
         await db.SaveChangesAsync();
     }
@@ -60,12 +66,17 @@ public class FinanceService
     public async Task AddExpenseAsync(string description, string worker, decimal amount)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
-        db.Set<ArkaDalje>().Add(new ArkaDalje
+        db.Set<ArkaHyrjeDalje>().Add(new ArkaHyrjeDalje
         {
-            Pershkrimi = description, Punetori = worker, Data = DateTime.Now, Vlera = (double)amount
+            Pershkrimi = Compose(description, worker), DOK = "MANUAL", Data = DateTime.Now,
+            Subjekti = 0, MetodaP = 1, VleraH = 0, VleraD = (double)amount
         });
         await db.SaveChangesAsync();
     }
+
+    // ArkaHyrjeDalje has no worker column; keep the operator in the description.
+    private static string Compose(string description, string worker) =>
+        string.IsNullOrWhiteSpace(worker) ? description : $"{description} ({worker})";
 
     // ── Debts (Borxhi) ──────────────────────────────────────────────────────
 
