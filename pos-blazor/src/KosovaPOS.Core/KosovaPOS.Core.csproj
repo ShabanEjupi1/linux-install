@@ -12,6 +12,10 @@
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\KosovaPOS.Agent.Contracts\KosovaPOS.Agent.Contracts.csproj" />
+  </ItemGroup>
+
   <!-- Single source of truth: link the POCO models from the desktop app (POS2) -->
   <ItemGroup>
     <Compile Include="..\..\..\POS2\Models\**\*.cs" LinkBase="Models" />

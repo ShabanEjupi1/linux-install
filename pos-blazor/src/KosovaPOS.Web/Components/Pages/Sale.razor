@@ -4,9 +4,11 @@
 @using System.Security.Claims
 @using KosovaPOS.Core.Services
 @using KosovaPOS.Models
+@using KosovaPOS.Web.Services
 @inject CatalogService Catalog
 @inject SalesService Sales
 @inject TenantService Tenant
+@inject HardwareBridge Hw
 
 <PageTitle>Shitje — KosovaPOS</PageTitle>
 
@@ -53,7 +55,13 @@
 
     <!-- Right: cart -->
     <section class="cart">
-        <h2>Fatura</h2>
+        <div class="cart-head">
+            <h2>Fatura</h2>
+            <span class="agent-badge @(_agentOnline ? (_agentReal ? "on" : "mock") : "off")"
+                  title="@_agentTitle">
+                <span class="dot"></span>@(_agentOnline ? (_agentReal ? "Pajisje" : "Pajisje (test)") : "Pa pajisje")
+            </span>
+        </div>
         <div class="cart-items">
             @if (_cart.Count == 0)
             {
@@ -95,6 +103,10 @@
                 <span>Kusuri</span>
                 <span>@Change.ToString("0.00") €</span>
             </div>
+            <label class="fiscal-toggle">
+                <input type="checkbox" @bind="_printFiscal" />
+                Printo faturën fiskale
+            </label>
 
             @if (!string.IsNullOrEmpty(_message))
             {
@@ -124,6 +136,10 @@
     private string? _message;
     private string _cashierName = "";
 
+    private bool _printFiscal = true;
+    private bool _agentOnline, _agentReal;
+    private string _agentTitle = "Agjenti i pajisjeve nuk është kontrolluar ende";
+
     protected override async Task OnInitializedAsync()
     {
         if (AuthState is not null)
@@ -134,6 +150,24 @@
         _articles = await Catalog.GetAllArticlesAsync();
         _categories = await Catalog.GetCategoriesAsync();
         _loading = false;
+    }
+
+    // JS interop is only available after the component becomes interactive.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await RefreshAgentStatusAsync();
+    }
+
+    private async Task RefreshAgentStatusAsync()
+    {
+        var health = await Hw.GetHealthAsync();
+        _agentOnline = health is not null;
+        _agentReal = health?.RealHardware ?? false;
+        _agentTitle = health is null
+            ? "Agjenti i pajisjeve nuk u gjet — faturat fiskale nuk do të printohen."
+            : $"{health.Fiscal.Model} · {health.Fiscal.ComPort} · {(health.RealHardware ? "pajisje reale" : "modaliteti test")}";
+        StateHasChanged();
     }
 
     private IEnumerable<Article> FilteredArticles
@@ -239,7 +273,24 @@
             }
 
             _success = true;
-            _message = $"Fatura #{savedNumri} u ruajt · Kusuri {Change:0.00} €";
+            var change = Change;
+            _message = $"Fatura #{savedNumri} u ruajt · Kusuri {change:0.00} €";
+
+            // The sale is already persisted; fiscal printing is best-effort and
+            // must never roll it back. Report but don't fail the sale if it can't print.
+            if (_printFiscal)
+            {
+                var fr = await Hw.PrintFiscalAsync(receipt, timeoutSeconds: 30);
+                if (fr.Ok)
+                    _message += " · Fatura fiskale u printua";
+                else
+                {
+                    _success = false; // amber-style note: sale ok, print not
+                    _message += $" · ⚠ Fatura fiskale nuk u printua: {fr.Error}";
+                }
+                await RefreshAgentStatusAsync();
+            }
+
             _cart.Clear();
             _paid = 0;
             // Refresh stock counts shown in the grid

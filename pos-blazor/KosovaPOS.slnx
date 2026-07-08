@@ -1,5 +1,7 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/KosovaPOS.Agent.Contracts/KosovaPOS.Agent.Contracts.csproj" />
+    <Project Path="src/KosovaPOS.Agent/KosovaPOS.Agent.csproj" />
     <Project Path="src/KosovaPOS.Core/KosovaPOS.Core.csproj" />
     <Project Path="src/KosovaPOS.Web/KosovaPOS.Web.csproj" />
   </Folder>

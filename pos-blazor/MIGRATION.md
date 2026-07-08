@@ -85,8 +85,32 @@ pos-blazor/
 | 2 First slice | Login + shell, tenant-aware, **cookie auth** | ✅ |
 | 3 Sale screen | cart, categories/search, barcode, payment/change, receipt→DitariD + stock | ✅ |
 | 4 Management | Articles CRUD, Receipts, Purchases, Stock, Reports — all done | ✅ |
-| 5 Hardware agent | fiscal/receipt/barcode printers, scale via a local PC agent (browser → agent bridge) | ⬜ |
+| 5 Hardware agent | fiscal/receipt/barcode printers, scale via a local PC agent (browser → agent bridge) | ✅ |
 | 6 Deploy | Docker on Ampere behind nginx/tunnel, alongside existing stack | ⬜ |
+
+## Phase 5 — hardware agent done ✅
+The desktop hardware services are Windows/COM. Rather than reach the NAT'd cashier
+PC from the server, the **browser** (which runs *on* that PC) fetches a tiny local
+agent at `http://127.0.0.1:9099`. Payload generation stays server-side and testable.
+
+- **`KosovaPOS.Agent.Contracts`** — dependency-free wire DTOs shared by server + agent.
+- **Core `FiscalReceiptBuilder`** — pure F-Link `Fatura.inp` payload (ported from the
+  desktop `GenerateFiscalReceipt`, no file I/O / logging). `HardwareMapper` turns a
+  `Receipt`/`Article` into the agent requests.
+- **`KosovaPOS.Agent`** — Kestrel loopback host (`/health`, `/fiscal/print`,
+  `/receipt/print`, `/barcode/print`, `/scale/read`). Driver abstraction: **Windows**
+  real drivers (fiscal = F-Link folder-drop + poll; receipt = ESC/POS raw via winspool;
+  barcode = TSPL raw via winspool; scale = serial) vs **mock** drivers elsewhere / with
+  `AGENT_MOCK=true`, so the whole pipeline runs off a Windows box. See `src/KosovaPOS.Agent/README.md`.
+- **Browser bridge** — `wwwroot/js/hardware.js` (fetch, offline-safe) + `HardwareBridge`
+  C# facade (JS interop). `Sale.razor` shows an agent-status badge and prints the fiscal
+  receipt on completion; **printing is best-effort and never rolls back a saved sale**
+  (agent offline → sale kept, cashier warned).
+- **Verified on Linux (mock):** Core builder harness (payload asserts incl. VAT-group
+  split + throws on invalid); agent endpoints via curl; and real domain objects →
+  `HardwareMapper` → Blazor-defaults JSON → running agent (fiscal/receipt/barcode/scale
+  all ok, correct `Fatura.inp`). Only the live browser JS-interop hop needs a real
+  browser + Windows hardware to exercise (expected).
 
 ### Services to port (Core, no Windows deps — port directly)
 ArticleService, ArticleDataService, SalesDataService, PricingEngine, ZReportService,

@@ -32,6 +32,7 @@ builder.Services.AddScoped<CatalogService>();
 builder.Services.AddScoped<SalesService>();
 builder.Services.AddScoped<PurchaseService>();
 builder.Services.AddScoped<ReportService>();
+builder.Services.AddScoped<KosovaPOS.Web.Services.HardwareBridge>();
 
 // ── Authentication (cookie) ─────────────────────────────────────────────
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
