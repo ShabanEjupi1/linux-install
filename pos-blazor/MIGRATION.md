@@ -129,6 +129,32 @@ the empty `ArkaHyrje`/`ArkaDalje` tables, but the real history lives in **`ArkaH
 the desktop). Verified live over pos.spacecode.tech: `/financat` YTD shows **39 entries,
 Hyrje 920.90 € / Dalje 0.00 / Neto 920.90 €** with real receipt numbers (`01-KO3986…`).
 
+## Phase 9 — hardware agent packaged for the shop PC ✅ (2026-07-09)
+**The desktop is retired, so nothing prints fiscal receipts until the agent is on the
+cashier PC.** Built the install package; running it is a human step at the shop.
+
+```bash
+./tools/publish-agent.sh     # -> publish/agent/KosovaPOS-Agent-1.0.0.zip (43 MB)
+```
+
+Cross-compiles a self-contained single-file **win-x64** exe from Linux — no Windows
+box to build, no .NET runtime on the cashier PC. Then, on the shop PC from an
+elevated PowerShell: `.\install-agent.ps1 -Mock` (hardware-free dry run, badge goes
+amber) → `.\install-agent.ps1` (real, badge green) → `.\test-agent.ps1 -Fiscal`.
+See [`src/KosovaPOS.Agent/deploy/INSTALL.md`](src/KosovaPOS.Agent/deploy/INSTALL.md).
+
+Two fixes were needed to run as a service:
+- **`AddWindowsService`** — without it the SCM has no control handler and `sc start`
+  times out. The content root must also be pinned to `AppContext.BaseDirectory`
+  (under the SCM the CWD is `C:\Windows\System32`), because the `IServiceCollection`
+  overload does *not* set it — only `UseWindowsService` on `IHostBuilder` does, and
+  `WebApplicationBuilder` can't use that.
+- **File logging** — a service has no stdout, so a failed fiscal print left no trace.
+  Daily-rolling files in `%ProgramData%\KosovaPOS\Agent\logs` (14 days), reported by
+  `/health`. Framework logs filtered to Warning so the driver lines stay readable.
+
+Still outstanding at the shop: apply the F-Link licence key, then install without `-Mock`.
+
 ## Phase 8 — real BMDData load ✅ (2026-07-08)
 **DONE and LIVE.** Loaded the real store data into the live `pos-blazor-db`: **2,184 articles**
 (Artikujt), 95 suppliers (FurnitoriNew), 1 category, 2,211 purchase-journal rows (DitariH),
