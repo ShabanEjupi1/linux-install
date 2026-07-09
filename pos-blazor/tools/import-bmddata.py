@@ -2,7 +2,14 @@
 """Generate Postgres import SQL from the shop PC's fresh BMDData CSV export.
 
 Journals  -> append-only INSERT ... ON CONFLICT (pk) DO NOTHING  (idempotent re-run)
-Lookups   -> upsert       INSERT ... ON CONFLICT (pk) DO UPDATE  (no deletes, ever)
+Lookups   -> upsert       INSERT ... ON CONFLICT (pk) DO UPDATE  (no deletes by default)
+
+With --mirror the lookup tables additionally DELETE rows the shop PC no longer
+has, making Postgres an exact mirror rather than a union of every export ever
+run. Needed because the desktop deletes articles and a plain upsert can only
+ever grow: after Phase 8d the live DB held 2280 articles against the shop's
+1619. Only ever applied to the tables exported in FULL mode -- mirroring an
+incrementally-exported journal would delete all its history.
 
 Each CSV is staged into an all-text temp table, then cast to the real target
 types. That is what lets us left()-truncate columns EF made too narrow
@@ -18,6 +25,7 @@ schema_<Table>.tsv per table describing the TARGET Postgres columns:
 Usage:
     python3 import-bmddata.py <csv_dir> <out_dir>            # emits ROLLBACK (dry run)
     python3 import-bmddata.py <csv_dir> <out_dir> --commit   # emits COMMIT
+    python3 import-bmddata.py <csv_dir> <out_dir> --mirror   # + delete rows the shop PC dropped
     psql -U pos -d kosovapos -v ON_ERROR_STOP=1 -f <out_dir>/import_<Table>.sql
 
 Run the tables in the printed order (lookups before journals). Re-running is
@@ -28,6 +36,12 @@ import csv, sys, os
 CSV_DIR = sys.argv[1] if len(sys.argv) > 1 else "bmd"
 OUT_DIR = sys.argv[2] if len(sys.argv) > 2 else "sql"
 COMMIT = "--commit" in sys.argv
+MIRROR = "--mirror" in sys.argv
+
+# A mirror delete must never destroy inventory. Rows matching a table's guard are
+# the only ones eligible for deletion; anything else the shop PC dropped is
+# reported and left in place for a human to look at.
+MIRROR_GUARD = {"Artikujt": 'coalesce("Sasia", 0) = 0'}
 
 # lookups first (Artikujt before the journals that reference it), then journals
 LOOKUPS = ["Kategoria", "Qytetet", "Filiala", "Sektori", "Punetoret", "FurnitoriNew", "Artikujt"]
@@ -116,14 +130,47 @@ def emit(t, mode):
             )
             o.write(f"ON CONFLICT ({q(pk)}) DO UPDATE SET {sets};\n")
 
-        o.write(
-            f"SELECT setval(pg_get_serial_sequence('{q(t)}', '{pk}'), "
-            f"GREATEST((SELECT max({q(pk)}) FROM {q(t)}), 1));\n"
-        )
+        # Mirror: drop rows the shop PC no longer has. Only for full exports
+        # (mode == upsert) -- the journals are exported incrementally, so "not in
+        # stg" there would mean "all of history".
+        if MIRROR and mode == "upsert":
+            pk_i = next(i for i, c in enumerate(use) if c["name"] == pk)
+            keep = f"SELECT {cast_expr(use[pk_i], f'c{pk_i}')} FROM stg"
+            stale = f"{q(pk)} NOT IN ({keep})"
+            guard = MIRROR_GUARD.get(t)
+
+            if guard:
+                # Surface anything the guard protects rather than deleting it.
+                o.write(
+                    f"SELECT '{t}' AS tbl, count(*) AS stale_but_kept FROM {q(t)}\n"
+                    f"  WHERE {stale} AND NOT ({guard});\n"
+                )
+                o.write(f"DELETE FROM {q(t)} WHERE {stale} AND {guard};\n")
+            else:
+                o.write(f"DELETE FROM {q(t)} WHERE {stale};\n")
+
+        # setval is NOT transactional -- it survives ROLLBACK. Two consequences:
+        #   1. never emit it on a dry run, or the "harmless" rehearsal leaves the
+        #      sequence moved while the rows it was computed from are rolled back;
+        #   2. never let it LOWER the sequence. A mirror delete can remove the row
+        #      holding max(pk); dropping the sequence to the new max would hand the
+        #      next web sale an id that already exists.
+        if COMMIT:
+            o.write(
+                "DO $$\n"
+                "DECLARE seq text; hi bigint; cur bigint;\n"
+                "BEGIN\n"
+                f"  seq := pg_get_serial_sequence('{q(t)}', '{pk}');\n"
+                f"  SELECT max({q(pk)}) INTO hi FROM {q(t)};\n"
+                "  EXECUTE format('SELECT last_value FROM %s', seq) INTO cur;\n"
+                "  PERFORM setval(seq, GREATEST(coalesce(hi, 1), coalesce(cur, 1)));\n"
+                "END $$;\n"
+            )
         o.write(f"SELECT '{t}' AS tbl, count(*) AS rows_now FROM {q(t)};\n")
         o.write("COMMIT;\n" if COMMIT else "ROLLBACK;\n")
 
-    print(f"{t:16} {len(rows):6} csv rows -> {out}  [{mode}]  pk={pk} cols={len(use)}")
+    flag = "+mirror" if (MIRROR and mode == "upsert") else ""
+    print(f"{t:16} {len(rows):6} csv rows -> {out}  [{mode}{flag}]  pk={pk} cols={len(use)}")
 
 
 for t in LOOKUPS:
