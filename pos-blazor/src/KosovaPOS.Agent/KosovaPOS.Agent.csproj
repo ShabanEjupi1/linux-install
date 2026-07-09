@@ -9,10 +9,20 @@
     <!-- Windows drivers (winspool P/Invoke, System.IO.Ports) compile everywhere;
          they are only registered/called on Windows, so silence the platform analyzer. -->
     <NoWarn>$(NoWarn);CA1416</NoWarn>
+
+    <!-- Shipped to shop PCs as a single self-contained .exe, so the cashier PC needs
+         no .NET runtime. Compression roughly halves the ~103MB payload. -->
+    <Version>1.0.0</Version>
+    <PublishSingleFile>true</PublishSingleFile>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <!-- Not hosted under IIS: skip the web.config / aspnetcorev2_inprocess.dll transform. -->
+    <IsTransformWebConfigDisabled>true</IsTransformWebConfigDisabled>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="System.IO.Ports" Version="10.0.0" />
+    <!-- Windows SCM integration; no-op when not started as a service. -->
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.0" />
   </ItemGroup>
 
   <ItemGroup>

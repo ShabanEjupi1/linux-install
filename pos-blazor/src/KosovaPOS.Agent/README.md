@@ -52,16 +52,31 @@ Same names the desktop app used, so an existing cashier PC keeps working.
 | `RECEIPT_PRINTER` | *(default printer)* | Windows printer name for courtesy receipts |
 | `BARCODE_PRINTER` | *(none)* | Windows printer name for labels |
 | `SCALE_PORT` / `SCALE_BAUD` | `COM3` / `9600` | Serial scale |
+| `AGENT_LOG_DIR` | `%ProgramData%\KosovaPOS\Agent\logs` | Rolling daily log files (14 days) |
+
+On a shop PC these are set for you by `install-agent.ps1`, scoped to the service's
+registry key rather than the machine environment.
 
 ## Deploy on a Windows cashier PC
 
-1. Publish a self-contained single file:
-   ```bash
-   dotnet publish src/KosovaPOS.Agent -c Release -r win-x64 --self-contained \
-     -p:PublishSingleFile=true -o publish-agent
-   ```
-2. Copy `publish-agent\KosovaPOS.Agent.exe` to the PC.
-3. Set the env vars above (system-wide) and register it as a service or a
-   Startup task so it launches with Windows (e.g. `sc create KosovaPOSAgent binPath=…`
-   or `nssm`). Verify with `curl http://127.0.0.1:9099/health`.
-4. In production set `AGENT_ALLOWED_ORIGINS=https://pos.spacecode.tech`.
+Build the package (works from Linux — no Windows box needed):
+
+```bash
+./tools/publish-agent.sh      # -> publish/agent/KosovaPOS-Agent-<version>.zip
+```
+
+Copy the zip to the cashier PC, unzip, and from an **elevated** PowerShell:
+
+```powershell
+.\install-agent.ps1 -Mock     # plumbing check, touches no hardware
+.\install-agent.ps1 -ReceiptPrinter "POS-80"   # the real thing
+.\test-agent.ps1 -Fiscal      # prints a 0.01 EUR fiscal test receipt
+```
+
+The installer registers the `KosovaPOSAgent` service (auto-start, restart on
+crash), writes the config, starts it and verifies `/health`. Re-running upgrades
+in place. Full instructions, incl. troubleshooting, in
+[`deploy/INSTALL.md`](deploy/INSTALL.md).
+
+Because it runs as a service the agent has no console, so it writes rolling logs
+to `%ProgramData%\KosovaPOS\Agent\logs`; `/health` reports the exact path.

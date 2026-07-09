@@ -18,6 +18,8 @@ public sealed class AgentHealth
     public AgentCapabilities Capabilities { get; set; } = new();
     /// <summary>Fiscal transport config the agent is using (folder / COM port / model).</summary>
     public FiscalConfig Fiscal { get; set; } = new();
+    /// <summary>Where the agent writes its rolling logs — surfaced so support can find them.</summary>
+    public string LogDirectory { get; set; } = "";
     public DateTimeOffset ServerTime { get; set; } = DateTimeOffset.Now;
 }
 

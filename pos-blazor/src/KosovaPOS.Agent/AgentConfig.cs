@@ -29,6 +29,15 @@ public sealed class AgentConfig
     /// <summary>Origins allowed to call the agent (the Blazor app URL). "*" in dev.</summary>
     public string AllowedOrigins { get; init; } = "*";
 
+    /// <summary>Where the rolling log files go. A service has no console.</summary>
+    public string LogDirectory { get; init; } = DefaultLogDirectory();
+
+    private static string DefaultLogDirectory() =>
+        OperatingSystem.IsWindows()
+            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                           "KosovaPOS", "Agent", "logs")
+            : Path.Combine(Path.GetTempPath(), "kosovapos-agent-logs");
+
     public static AgentConfig FromEnvironment()
     {
         static string? Env(string k) => Environment.GetEnvironmentVariable(k);
@@ -50,6 +59,7 @@ public sealed class AgentConfig
             ScaleComPort   = Env("SCALE_PORT") ?? "COM3",
             ScaleBaudRate  = IntEnv("SCALE_BAUD", 9600),
             AllowedOrigins = Env("AGENT_ALLOWED_ORIGINS") ?? "*",
+            LogDirectory   = Env("AGENT_LOG_DIR") ?? DefaultLogDirectory(),
         };
     }
 }

@@ -4,6 +4,8 @@ using KosovaPOS.Agent.Contracts;
 using KosovaPOS.Agent.Drivers;
 using KosovaPOS.Agent.Drivers.Mock;
 using KosovaPOS.Agent.Drivers.Windows;
+using KosovaPOS.Agent.Logging;
+using Microsoft.Extensions.Hosting.WindowsServices;
 
 // ---------------------------------------------------------------------------
 // KosovaPOS local hardware Agent.
@@ -18,7 +20,26 @@ using KosovaPOS.Agent.Drivers.Windows;
 var cfg = AgentConfig.FromEnvironment();
 var useReal = OperatingSystem.IsWindows() && !cfg.ForceMock;
 
-var builder = WebApplication.CreateBuilder(args);
+// Under the SCM the working directory is C:\Windows\System32, so the content root
+// has to be pinned to the exe's folder. AddWindowsService (the IServiceCollection
+// overload) does NOT do this — only the IHostBuilder UseWindowsService does, and
+// that isn't usable from WebApplicationBuilder.
+var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+{
+    Args = args,
+    ContentRootPath = WindowsServiceHelpers.IsWindowsService() ? AppContext.BaseDirectory : default,
+});
+
+// Lets the SCM start/stop us (without this, `sc start` reports a timeout and marks
+// the service failed). No-op off Windows, so `dotnet run` on Linux is unaffected.
+builder.Services.AddWindowsService(o => o.ServiceName = "KosovaPOSAgent");
+
+// A service has no stdout — without a file sink, a failed fiscal print is invisible.
+// Keep the file readable by support: our own driver lines plus start/stop, and only
+// warnings-and-worse from the framework (per-request diagnostics would bury them).
+builder.Logging.AddProvider(new FileLoggerProvider(cfg.LogDirectory));
+builder.Logging.AddFilter<FileLoggerProvider>("Microsoft", LogLevel.Warning);
+builder.Logging.AddFilter<FileLoggerProvider>("Microsoft.Hosting.Lifetime", LogLevel.Information);
 
 // Bind to loopback only — the agent must never be reachable off the machine.
 builder.WebHost.ConfigureKestrel(k => k.ListenLocalhost(cfg.Port));
@@ -62,6 +83,7 @@ app.MapGet("/health", (IFiscalDriver fiscal, IReceiptDriver receipt, IBarcodeDri
         Platform = System.Runtime.InteropServices.RuntimeInformation.OSDescription,
         RealHardware = useReal,
         Fiscal = fiscal.Config,
+        LogDirectory = cfg.LogDirectory,
         Capabilities = new AgentCapabilities
         {
             Fiscal = fiscal.Available,
@@ -83,7 +105,7 @@ app.MapPost("/barcode/print", async (BarcodePrintRequest req, IBarcodeDriver bar
 app.MapGet("/scale/read", async (IScaleDriver scale, CancellationToken ct) =>
     Results.Ok(await scale.ReadAsync(ct)));
 
-app.Logger.LogInformation("KosovaPOS Agent {Version} on :{Port} — {Mode} drivers",
-    version, cfg.Port, useReal ? "REAL hardware" : "MOCK");
+app.Logger.LogInformation("KosovaPOS Agent {Version} on :{Port} — {Mode} drivers, logs in {LogDir}",
+    version, cfg.Port, useReal ? "REAL hardware" : "MOCK", cfg.LogDirectory);
 
 app.Run();
