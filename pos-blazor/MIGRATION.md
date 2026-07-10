@@ -155,6 +155,52 @@ Two fixes were needed to run as a service:
 
 Still outstanding at the shop: apply the F-Link licence key, then install without `-Mock`.
 
+## Phase 10 — shift & stock control ✅ (2026-07-10)
+First slice of the ~23 desktop screens with no web equivalent. Scoped to the
+cluster both tenants touch daily; "working, not full desktop parity".
+
+**Open/Close shift were already done** — `/arka` + `ShiftService` covered both since
+Phase 7. The only real gap was the **denomination counter**: `CashRegister.razor`
+passed `denominationJson: null` to a service that already persisted it. Now `/arka`
+counts €50→€0.10 notes/coins, and once any is entered the breakdown (not the typed
+figure) becomes the counted cash, matching the desktop. Clearing the last denomination
+back to zero also clears the total — otherwise the field unlocked still holding the old
+count, and a drawer nobody had counted could close reporting a **0.00 difference**, an
+apparently balanced till.
+
+**New: `/inventari`** (from `POS/Windows/InventoryManagementWindow`) — stock in / out /
+physical count, over a new **`StockMovement`** journal (`StockMovements` table, additive
+migration). Two deliberate deviations from the desktop:
+- Every change is journaled with before/after/delta/user/cost. The desktop only wrote a
+  movement row when the unused `InventoryStocks` table was populated, so in practice its
+  stock edits left **no audit trail at all**.
+- **Stock-out can no longer overshoot into negative.** The desktop offered a "continue
+  anyway?" prompt; that is one way the live DB ended up with **430 negative-stock
+  articles**. The escape hatch is *Inventarizim* (physical count), which sets the counted
+  figure and journals the delta. `/inventari` surfaces the negative count as a banner.
+
+**New: `/barkod`** (from `POS2/Windows/BarcodeWindow`) — search → print queue with copies
+→ print via the hardware agent (`/barcode/print`). Prints item-by-item so a jammed label
+leaves the rest of the queue intact; failures stay queued. Shows the agent badge, and
+disables printing when the agent is offline.
+
+**Not ported — `POS2/Windows/StockValueAdjustmentWindow` ("RREGULLIMI I STOKUT PËR ATK").**
+It takes a *target total stock value* and back-solves per-article quantities to hit it
+(equal / weighted / random ±20% "so the distribution looks natural"), overwrites the real
+`Artikujt.Sasia` with those invented figures, and exports them as a tax-authority document.
+That is fabricating inventory records for ATK, not adjusting stock. The legitimate version
+of the job — correcting stock from a real physical count — is the *Inventarizim* action on
+`/inventari`.
+
+Verified on Linux against a throwaway Postgres: 20/20 assertions on `StockService`
+(in/out/count math, `SasiaHyrje`/`SasiaDalje` counters, unit-cost capture, journal order and
+per-article filter), the overshoot refusal **rolls back leaving no journal row**, a count
+correction lifts `-6 → 4` and clears the negative, denominations round-trip through
+`CloseShiftAsync` (1×50 + 2×20 + 1×0.50 = 90.50, diff 40.50). Pages render authenticated
+(`/inventari`, `/barkod`, `/arka` → 200) with the negative-stock banner correctly
+conditional. Not exercised: the interactive Blazor circuit (modal clicks) and real label
+hardware — both need a browser + the shop PC.
+
 ## Phase 8 — real BMDData load ✅ (2026-07-08)
 **DONE and LIVE.** Loaded the real store data into the live `pos-blazor-db`: **2,184 articles**
 (Artikujt), 95 suppliers (FurnitoriNew), 1 category, 2,211 purchase-journal rows (DitariH),

@@ -56,10 +56,43 @@
 
         <div class="panel">
             <h2>Mbyll ndërrimin</h2>
+
+            <h3 class="section-title">Numërimi i kartëmonedhave</h3>
+            <p class="muted">Fut numrin e copëve për secilën prerje. Nëse plotësohet, totali zëvendëson shumën e shkruar me dorë.</p>
+            <div class="table-wrap">
+                <table class="grid-table">
+                    <thead>
+                        <tr><th>Prerja</th><th class="num">Copë</th><th class="num">Vlera</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var face in Denominations)
+                        {
+                            <tr>
+                                <td>@face.ToString("0.00") €</td>
+                                <td class="num">
+                                    <input class="input thresh" type="number" min="0" step="1"
+                                           value="@_denoms[face]"
+                                           @onchange="e => SetDenom(face, e.Value?.ToString())" />
+                                </td>
+                                <td class="num">@((face * _denoms[face]).ToString("0.00"))</td>
+                            </tr>
+                        }
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <th>Totali i numëruar</th>
+                            <th class="num">@_denoms.Values.Sum()</th>
+                            <th class="num">@DenominationTotal.ToString("0.00") €</th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+
             <div class="form-grid">
                 <div class="field">
                     <label>Para të numëruara (€)</label>
-                    <input class="input" type="number" step="0.01" @bind="_countedCash" @bind:after="StateHasChanged" />
+                    <input class="input" type="number" step="0.01" @bind="_countedCash" @bind:after="StateHasChanged"
+                           readonly="@UsingDenominations" />
                 </div>
                 <div class="field">
                     <label>Diferenca</label>
@@ -134,7 +167,25 @@
     private int? _userId;
     private string _userName = "";
 
-    private decimal Difference => _countedCash - _expected;
+    /// <summary>Euro denominations a till realistically holds, largest first.</summary>
+    private static readonly decimal[] Denominations = { 50m, 20m, 10m, 5m, 2m, 1m, 0.50m, 0.20m, 0.10m };
+    private readonly Dictionary<decimal, int> _denoms = Denominations.ToDictionary(d => d, _ => 0);
+
+    private decimal DenominationTotal => _denoms.Sum(kv => kv.Key * kv.Value);
+    private bool UsingDenominations => _denoms.Values.Any(v => v > 0);
+
+    /// <summary>Counted cash comes from the note/coin breakdown once any is entered.</summary>
+    private decimal CountedCash => UsingDenominations ? DenominationTotal : _countedCash;
+
+    private decimal Difference => CountedCash - _expected;
+
+    private void SetDenom(decimal face, string? raw)
+    {
+        _denoms[face] = int.TryParse(raw, out var v) && v > 0 ? v : 0;
+        // Clearing the last denomination must clear the total too, otherwise the
+        // field unlocks still holding the old count and closes the shift against it.
+        _countedCash = DenominationTotal;
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -153,6 +204,7 @@
         _loading = true;
         _open = await Shifts.GetOpenShiftAsync();
         _recent = await Shifts.GetRecentAsync();
+        foreach (var face in Denominations) _denoms[face] = 0;
         if (_open is not null)
         {
             (_cash, _card, _, _count) = await Shifts.GetShiftSalesAsync(_open.OpenedAt);
@@ -187,7 +239,12 @@
         _busy = true;
         try
         {
-            var closed = await Shifts.CloseShiftAsync(_open.Id, _countedCash, _notes, null);
+            var denomJson = UsingDenominations
+                ? System.Text.Json.JsonSerializer.Serialize(
+                    _denoms.Where(kv => kv.Value > 0)
+                           .ToDictionary(kv => kv.Key.ToString("0.00"), kv => kv.Value))
+                : null;
+            var closed = await Shifts.CloseShiftAsync(_open.Id, CountedCash, _notes, denomJson);
             _success = true;
             _message = $"Ndërrimi u mbyll. Diferenca: {closed.CashDifference:0.00} €.";
             _notes = null;

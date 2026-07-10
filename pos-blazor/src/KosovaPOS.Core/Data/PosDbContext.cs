@@ -78,6 +78,7 @@ public class PosDbContext : DbContext
     // ── Universal POS platform ──────────────────────────────────────────
     public DbSet<BusinessSettings> BusinessSettings => Set<BusinessSettings>();
     public DbSet<CashShift> CashShifts => Set<CashShift>();
+    public DbSet<StockMovement> StockMovements => Set<StockMovement>();
 
     // ── Returns & refunds ───────────────────────────────────────────────
     public DbSet<ReturnReceipt> ReturnReceipts => Set<ReturnReceipt>();
@@ -161,6 +162,17 @@ public class PosDbContext : DbContext
 
         modelBuilder.Entity<BusinessSettings>().ToTable("BusinessSettings");
         modelBuilder.Entity<CashShift>().ToTable("CashShifts");
+
+        modelBuilder.Entity<StockMovement>(e =>
+        {
+            e.ToTable("StockMovements");
+            e.HasIndex(m => m.MovedAt);
+            e.HasIndex(m => m.ArticleId);
+            e.Property(m => m.Quantity).HasPrecision(18, 3);
+            e.Property(m => m.QuantityBefore).HasPrecision(18, 3);
+            e.Property(m => m.QuantityAfter).HasPrecision(18, 3);
+            e.Property(m => m.UnitCost).HasPrecision(18, 4);
+        });
 
         modelBuilder.Entity<ArticleVariant>().ToTable("ArticleVariants");
         modelBuilder.Entity<PriceRule>().ToTable("PriceRules");

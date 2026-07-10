@@ -35,6 +35,7 @@ builder.Services.AddScoped<ReportService>();
 builder.Services.AddScoped<UserService>();
 builder.Services.AddScoped<PartnerService>();
 builder.Services.AddScoped<ShiftService>();
+builder.Services.AddScoped<StockService>();
 builder.Services.AddScoped<ReturnService>();
 builder.Services.AddScoped<FinanceService>();
 builder.Services.AddScoped<KosovaPOS.Web.Services.HardwareBridge>();

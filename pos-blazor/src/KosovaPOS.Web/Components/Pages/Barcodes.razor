@@ -1,0 +1,209 @@
+@page "/barkod"
+@attribute [Authorize]
+@rendermode InteractiveServer
+@using KosovaPOS.Core.Services
+@using KosovaPOS.Models
+@using KosovaPOS.Web.Services
+@inject CatalogService Catalog
+@inject HardwareBridge Hw
+
+<PageTitle>Barkodi — KosovaPOS</PageTitle>
+
+<div class="mgmt">
+    <header class="mgmt-head">
+        <div>
+            <a href="/" class="back">← Ballina</a>
+            <h1>Printimi i barkodave</h1>
+            <span class="muted">Kërko artikujt, shto në radhë dhe printo etiketat.</span>
+        </div>
+        <span class="agent-badge @(_agentOnline ? (_agentReal ? "on" : "mock") : "off")" title="@_agentTitle">
+            <span class="dot"></span>@(_agentOnline ? (_agentReal ? "Pajisje" : "Pajisje (test)") : "Pa pajisje")
+        </span>
+    </header>
+
+    @if (!string.IsNullOrEmpty(_message))
+    {
+        <div class="sale-msg @(_success ? "ok" : "err")">@_message</div>
+    }
+
+    @if (!_agentOnline)
+    {
+        <div class="sale-msg err">
+            Agjenti i pajisjeve nuk po përgjigjet në këtë kompjuter, prandaj printimi nuk është i mundur.
+            Radha ruhet derisa agjenti të kthehet.
+        </div>
+    }
+
+    <div class="search-row">
+        <input @bind="_search" @bind:event="oninput" placeholder="Kërko emër ose barkod…" class="search-box" />
+        <label class="chk">Kopje <input type="number" min="1" class="thresh" @bind="_copies" /></label>
+    </div>
+
+    <div class="table-wrap">
+        <table class="grid-table">
+            <thead>
+                <tr>
+                    <th>Barkodi</th>
+                    <th>Emërtimi</th>
+                    <th class="num">Çm. shitje</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var a in Matches)
+                {
+                    <tr>
+                        <td class="mono">@a.Barcode</td>
+                        <td>@a.Name</td>
+                        <td class="num">@a.SalesPrice.ToString("0.00")</td>
+                        <td>
+                            @if (string.IsNullOrWhiteSpace(a.Barcode))
+                            {
+                                <span class="muted">Pa barkod</span>
+                            }
+                            else
+                            {
+                                <button class="btn-mini" @onclick="() => Enqueue(a)">Shto në radhë</button>
+                            }
+                        </td>
+                    </tr>
+                }
+                @if (!Matches.Any())
+                {
+                    <tr><td colspan="4" class="muted center">
+                        @(string.IsNullOrWhiteSpace(_search) ? "Shkruaj për të kërkuar." : "Asnjë artikull.")
+                    </td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <h2 class="section-title">Radha e printimit (@TotalLabels etiketa)</h2>
+    <div class="table-wrap">
+        <table class="grid-table">
+            <thead>
+                <tr>
+                    <th>Barkodi</th>
+                    <th>Emërtimi</th>
+                    <th class="num">Kopje</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var item in _queue)
+                {
+                    <tr>
+                        <td class="mono">@item.Article.Barcode</td>
+                        <td>@item.Article.Name</td>
+                        <td class="num">
+                            <button class="btn-mini" @onclick="() => Bump(item, -1)">−</button>
+                            @item.Copies
+                            <button class="btn-mini" @onclick="() => Bump(item, 1)">+</button>
+                        </td>
+                        <td><button class="btn-mini" @onclick="() => _queue.Remove(item)">Hiq</button></td>
+                    </tr>
+                }
+                @if (_queue.Count == 0)
+                {
+                    <tr><td colspan="4" class="muted center">Radha është bosh.</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="modal-actions">
+        <button class="btn-ghost" disabled="@(_queue.Count == 0 || _busy)" @onclick="() => _queue.Clear()">Pastro radhën</button>
+        <button class="btn-primary" disabled="@(_queue.Count == 0 || _busy || !_agentOnline)" @onclick="PrintAll">
+            @(_busy ? "Duke printuar…" : $"Printo {TotalLabels} etiketa")
+        </button>
+    </div>
+</div>
+
+@code {
+    private sealed class QueueItem
+    {
+        public required Article Article { get; init; }
+        public int Copies { get; set; } = 1;
+    }
+
+    private List<Article> _all = new();
+    private readonly List<QueueItem> _queue = new();
+    private string _search = "";
+    private int _copies = 1;
+    private bool _busy, _success;
+    private string? _message;
+
+    private bool _agentOnline, _agentReal;
+    private string _agentTitle = "Agjenti i pajisjeve nuk është kontrolluar ende";
+
+    protected override async Task OnInitializedAsync() => _all = await Catalog.GetAllArticlesAsync();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await RefreshAgentStatusAsync();
+        StateHasChanged();
+    }
+
+    private async Task RefreshAgentStatusAsync()
+    {
+        var health = await Hw.GetHealthAsync();
+        _agentOnline = health is not null;
+        _agentReal = health?.RealHardware ?? false;
+        _agentTitle = health is null
+            ? "Agjenti i pajisjeve nuk po përgjigjet"
+            : $"{(health.RealHardware ? "pajisje reale" : "modaliteti test")}";
+    }
+
+    private IEnumerable<Article> Matches
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(_search)) return Enumerable.Empty<Article>();
+            var s = _search.Trim();
+            return _all.Where(a => a.Name.Contains(s, StringComparison.OrdinalIgnoreCase)
+                                || a.Barcode.Contains(s, StringComparison.OrdinalIgnoreCase))
+                       .OrderBy(a => a.Name)
+                       .Take(50);
+        }
+    }
+
+    private int TotalLabels => _queue.Sum(i => i.Copies);
+
+    private void Enqueue(Article a)
+    {
+        var copies = Math.Max(1, _copies);
+        var existing = _queue.FirstOrDefault(i => i.Article.Id == a.Id);
+        if (existing is not null) existing.Copies += copies;
+        else _queue.Add(new QueueItem { Article = a, Copies = copies });
+        _message = null;
+    }
+
+    private void Bump(QueueItem item, int by)
+    {
+        item.Copies += by;
+        if (item.Copies < 1) _queue.Remove(item);
+    }
+
+    private async Task PrintAll()
+    {
+        _busy = true;
+        _message = null;
+        var failures = new List<string>();
+        // Print item-by-item: a jammed label shouldn't discard the rest of the queue.
+        foreach (var item in _queue.ToList())
+        {
+            var result = await Hw.PrintBarcodeAsync(item.Article, item.Copies);
+            if (result.Ok) _queue.Remove(item);
+            else failures.Add($"{item.Article.Name}: {result.Error}");
+        }
+
+        _success = failures.Count == 0;
+        _message = _success
+            ? "Të gjitha etiketat u dërguan te printeri."
+            : $"{failures.Count} artikuj nuk u printuan dhe mbetën në radhë. {string.Join(" · ", failures.Take(3))}";
+
+        await RefreshAgentStatusAsync();
+        _busy = false;
+    }
+}
