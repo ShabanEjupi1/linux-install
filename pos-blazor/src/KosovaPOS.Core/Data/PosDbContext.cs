@@ -49,11 +49,19 @@ public class PosDbContext : DbContext
     public DbSet<NjesitMatese> NjesitMatese => Set<NjesitMatese>();
     public DbSet<LlojiShpenzimeve> LlojiShpenzimeve => Set<LlojiShpenzimeve>();
     public DbSet<POSUser> POSUsers => Set<POSUser>();
+    public DbSet<TblStoku> TblStoku => Set<TblStoku>();
+    public DbSet<KartelaSubjektit> KartelaSubjektit => Set<KartelaSubjektit>();
 
     // ── Core POS models ─────────────────────────────────────────────────
     public DbSet<Article> Articles => Set<Article>();
     public DbSet<Receipt> Receipts => Set<Receipt>();
     public DbSet<ReceiptItem> ReceiptItems => Set<ReceiptItem>();
+    /// <summary>
+    /// Empty, and always has been — BMDData never populated it. The shop's real
+    /// customers and suppliers live in <see cref="FurnitoriNew"/>; read them from
+    /// there (see PartnerService). <see cref="BusinessPartner"/> survives only as
+    /// the view model that <c>/partneret</c> binds to.
+    /// </summary>
     public DbSet<BusinessPartner> BusinessPartners => Set<BusinessPartner>();
     public DbSet<Purchase> Purchases => Set<Purchase>();
     public DbSet<PurchaseItem> PurchaseItems => Set<PurchaseItem>();
@@ -148,6 +156,19 @@ public class PosDbContext : DbContext
         modelBuilder.Entity<NjesitMatese>().ToTable("NjesitMatese");
         modelBuilder.Entity<LlojiShpenzimeve>().ToTable("LlojiShpenzimeve");
         modelBuilder.Entity<POSUser>().ToTable("POSUsers");
+
+        modelBuilder.Entity<TblStoku>(e =>
+        {
+            e.ToTable("tbl_Stoku");
+            e.HasIndex(s => s.ArtikulliId);
+            e.HasIndex(s => s.Data);
+        });
+        modelBuilder.Entity<KartelaSubjektit>(e =>
+        {
+            e.ToTable("Kartela_Subjektit");
+            e.HasIndex(k => k.SubjektiId);
+            e.HasIndex(k => k.Data);
+        });
 
         modelBuilder.Entity<Article>().ToTable("Articles");
         modelBuilder.Entity<Receipt>().ToTable("Receipts");

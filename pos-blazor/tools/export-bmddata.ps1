@@ -31,19 +31,27 @@ $ErrorActionPreference = 'Stop'
 # Never let Albanian locale turn 2.99 into "2,99" or reformat dates.
 [System.Threading.Thread]::CurrentThread.CurrentCulture = [System.Globalization.CultureInfo]::InvariantCulture
 
-# Watermarks = MAX(pk) currently in the web POS Postgres DB (as of 2026-07-09).
+# Watermarks = MAX(pk) currently in the web POS Postgres DB (as of 2026-07-10).
 # $null means "export the whole table" (small lookup tables / things that mutate in place).
 $Tables = [ordered]@{
-    'DitariD'        = @{ Pk = 'ID'; After = 15253 }   # sales journal
-    'DitariH'        = @{ Pk = 'ID'; After = 3241  }   # purchase journal
-    'ArkaHyrjeDalje' = @{ Pk = 'id'; After = 4473  }   # cash ledger
-    'Artikujt'       = @{ Pk = 'id'; After = $null }   # catalogue: prices/stock change in place
-    'FurnitoriNew'   = @{ Pk = 'Id'; After = $null }
-    'Punetoret'      = @{ Pk = 'id'; After = $null }
-    'Qytetet'        = @{ Pk = 'ID'; After = $null }
-    'Kategoria'      = @{ Pk = 'id'; After = $null }
-    'Filiala'        = @{ Pk = 'id'; After = $null }
-    'Sektori'        = @{ Pk = 'id'; After = $null }
+    'DitariD'           = @{ Pk = 'ID'; After = 18775 }   # sales journal
+    'DitariH'           = @{ Pk = 'ID'; After = 3365  }   # purchase journal
+    'ArkaHyrjeDalje'    = @{ Pk = 'id'; After = 4477  }   # cash ledger
+    'tbl_Stoku'         = @{ Pk = 'ID'; After = 0     }   # stock ledger (audit trail behind Artikujt.Sasia)
+    'Kartela_Subjektit' = @{ Pk = 'ID'; After = 0     }   # partner account ledger (Mbeti = outstanding)
+    'Artikujt'          = @{ Pk = 'id'; After = $null }   # catalogue: prices/stock change in place
+    'FurnitoriNew'      = @{ Pk = 'Id'; After = $null }
+    'Punetoret'         = @{ Pk = 'id'; After = $null }
+    'Qytetet'           = @{ Pk = 'ID'; After = $null }
+    'Kategoria'         = @{ Pk = 'id'; After = $null }
+    'Filiala'           = @{ Pk = 'id'; After = $null }
+    'Sektori'           = @{ Pk = 'id'; After = $null }
+    'Tatimi'            = @{ Pk = 'ID'; After = $null }   # VAT classes: T3/T8/T18
+    'Arkat'             = @{ Pk = 'id'; After = $null }   # cash registers
+    'MetodaPagese'      = @{ Pk = 'id'; After = $null }   # payment methods
+    'NjesitMatese'      = @{ Pk = 'id'; After = $null }   # units of measure
+    'LlojiShpenzimeve'  = @{ Pk = 'id'; After = $null }   # expense types
+    'KategoriaPos'      = @{ Pk = 'id'; After = $null }   # POS categories (Image blob is dropped)
 }
 
 $ConnStr = "Server=$Server;Database=$Database;Trusted_Connection=True;TrustServerCertificate=True;Connection Timeout=10;"

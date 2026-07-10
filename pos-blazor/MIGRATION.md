@@ -510,6 +510,45 @@ Notes: Blazor Server needs the WebSocket upgrade headers (in the nginx conf) and
 scheme behind the proxy. DataProtection keys persist in the `pos-keys` volume so
 auth cookies survive redeploys.
 
+## Phase 14 — partners come from FurnitoriNew; the un-migrated BMD tables land
+
+`/partneret` read the `BusinessPartners` table, which BMDData never populated, so
+it rendered an empty list forever — while `/blerjet`'s supplier dropdown, reading
+`FurnitoriNew`, worked fine. PartnerService now reads and writes `FurnitoriNew`;
+`BusinessPartner` survives only as the page's view model. Two of its fields have
+no column behind them and are no longer editable: `Balance` is summed from the
+new `Kartela_Subjektit` ledger, and `IsActive` has no BMD equivalent.
+
+Eight tables the export/import scripts had never covered are now included:
+
+| Table | Rows | Why |
+|---|---|---|
+| `tbl_Stoku` | 17,795 | Stock ledger — the audit trail behind `Artikujt.Sasia` |
+| `Kartela_Subjektit` | 4,335 | Partner account ledger; `sum(Mbeti)` = outstanding balance |
+| `NjesitMatese` | 14 | Units of measure |
+| `KategoriaPos` | 7 | POS categories (`Image` blob dropped, as with `Artikujt.Foto`) |
+| `LlojiShpenzimeve` | 6 | Expense types |
+| `MetodaPagese` | 4 | Payment methods |
+| `Arkat` | 4 | Cash registers (two rows are `xcv` test junk from the desktop) |
+| `Tatimi` | 3 | VAT classes — **reference data only**, see below |
+
+**Do not derive VAT rates from the `Tatimi` table.** Its IDs (3, 4, 5) line up
+exactly with the values `Artikujt.Vat` holds, so it reads like a foreign key —
+and under that reading 1612 of 1619 articles are "Pa Tvsh" (0%), which would also
+explain why the whole sales history carries zero VAT. But the shop **is**
+VAT-registered: those flags are stale, and the class-3 population includes plainly
+standard-rated goods (tricycles, blouses, keys). `KosovoVat.Resolve` stays
+authoritative.
+
+Deliberately **not** migrated: `RazlCeni` (249,623 rows) and `KatArt` (994) are a
+legacy import from a different, Macedonian-language ERP; `Artikujt_Backup`,
+`Sheet1$`, `DitariDTemp` and the `Pompa*` fuel-pump module are dead weight; and
+`Kompania`'s single row is placeholder junk (`NF=60000000`, `Tvsh=16`) that must be
+re-entered by hand before it can ever feed a fiscal receipt.
+
+`import-bmddata.py` now skips (loudly) any table with no CSV in the export dir, so
+a partial backfill of just the new tables is a supported run.
+
 ## Known follow-ups
 - **Cut-over to pos.spacecode.tech:** only after Sale + core screens reach parity
   with the live React app; needs explicit go-ahead (replaces a live service).

@@ -30,6 +30,13 @@ Usage:
 
 Run the tables in the printed order (lookups before journals). Re-running is
 safe: journals DO NOTHING on conflict, lookups re-apply the same values.
+
+tbl_Stoku (stock ledger) and Kartela_Subjektit (partner account ledger) are
+journals: append-only, exported past an ID watermark. Kartela_Subjektit.Mbeti
+summed per SUBJEKTI_ID is what /partneret shows as a partner's balance.
+
+Tatimi is imported as reference data only. Do NOT wire Artikujt.Vat to it to
+derive VAT rates -- see the note on the Tatimi model in ConfigTables.cs.
 """
 import csv, sys, os
 
@@ -44,8 +51,11 @@ MIRROR = "--mirror" in sys.argv
 MIRROR_GUARD = {"Artikujt": 'coalesce("Sasia", 0) = 0'}
 
 # lookups first (Artikujt before the journals that reference it), then journals
-LOOKUPS = ["Kategoria", "Qytetet", "Filiala", "Sektori", "Punetoret", "FurnitoriNew", "Artikujt"]
-JOURNALS = ["DitariH", "DitariD", "ArkaHyrjeDalje"]
+LOOKUPS = [
+    "Tatimi", "Arkat", "MetodaPagese", "NjesitMatese", "LlojiShpenzimeve", "KategoriaPos",
+    "Kategoria", "Qytetet", "Filiala", "Sektori", "Punetoret", "FurnitoriNew", "Artikujt",
+]
+JOURNALS = ["DitariH", "DitariD", "ArkaHyrjeDalje", "tbl_Stoku", "Kartela_Subjektit"]
 
 os.makedirs(OUT_DIR, exist_ok=True)
 
@@ -85,9 +95,15 @@ def q(name):
 
 
 def emit(t, mode):
+    path = os.path.join(CSV_DIR, f"{t}.csv")
+    if not os.path.exists(path):
+        # A partial export (e.g. backfilling only the tables a new release added)
+        # is legitimate; a missing CSV for a table you meant to export is not.
+        print(f"{t:18} {'':6}            SKIPPED -- no {t}.csv in {CSV_DIR}")
+        return False
+
     cols = load_schema(t)
     pk = next(c["name"] for c in cols if c["ident"])
-    path = os.path.join(CSV_DIR, f"{t}.csv")
 
     with open(path, encoding="utf-8-sig", newline="") as f:
         rdr = csv.reader(f)
@@ -171,12 +187,16 @@ def emit(t, mode):
 
     flag = "+mirror" if (MIRROR and mode == "upsert") else ""
     print(f"{t:16} {len(rows):6} csv rows -> {out}  [{mode}{flag}]  pk={pk} cols={len(use)}")
+    return True
 
 
+emitted = []
 for t in LOOKUPS:
-    emit(t, "upsert")
+    if emit(t, "upsert"):
+        emitted.append(t)
 for t in JOURNALS:
-    emit(t, "append")
+    if emit(t, "append"):
+        emitted.append(t)
 
-print("\nRun order:", " ".join(LOOKUPS + JOURNALS))
+print("\nRun order:", " ".join(emitted))
 print("COMMIT" if COMMIT else "DRY RUN (rollback)")

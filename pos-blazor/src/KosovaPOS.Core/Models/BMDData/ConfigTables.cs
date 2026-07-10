@@ -248,8 +248,16 @@ namespace KosovaPOS.Models.BMDData
     }
     
     /// <summary>
-    /// Maps to SQL Server BMDData.Tatimi table
-    /// Albanian: Tatimi = Tax
+    /// Maps to SQL Server BMDData.Tatimi table. Albanian: Tatimi = Tax.
+    /// The shop's three VAT classes: T3 "Pa Tvsh" (0), T8 (8), T18 (18).
+    ///
+    /// REFERENCE DATA ONLY — never resolve an article's VAT rate by joining
+    /// <c>Artikujt.Vat</c> to this table. The two line up suspiciously well (Vat
+    /// holds 3, 4 or 5; so do the IDs here), but the shop IS VAT-registered and
+    /// the catalogue's Vat flags are stale: 1612 of 1619 articles sit on class 3,
+    /// tricycles and blouses among them. That stale flag is why the whole sales
+    /// history carries zero VAT. Rates come from <c>KosovaPOS.Models.KosovoVat</c>,
+    /// which standard-rates anything not explicitly zero- or reduced-rated.
     /// </summary>
     [Table("Tatimi")]
     public class Tatimi
