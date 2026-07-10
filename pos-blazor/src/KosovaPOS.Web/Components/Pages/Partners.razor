@@ -1,5 +1,5 @@
 @page "/partneret"
-@attribute [Authorize]
+@attribute [Authorize(Policy = "perm:partners")]
 @rendermode InteractiveServer
 @using KosovaPOS.Core.Services
 @using KosovaPOS.Models

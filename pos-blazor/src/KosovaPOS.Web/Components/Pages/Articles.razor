@@ -1,5 +1,5 @@
 @page "/articles"
-@attribute [Authorize]
+@attribute [Authorize(Policy = "perm:articles")]
 @rendermode InteractiveServer
 @using KosovaPOS.Core.Services
 @using KosovaPOS.Models

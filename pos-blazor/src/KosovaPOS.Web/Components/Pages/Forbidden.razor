@@ -1,10 +1,15 @@
 @page "/nuk-keni-leje"
+@attribute [Authorize]
 
 @* Target of CookieAuthenticationOptions.AccessDeniedPath. A page-level
    [Authorize(Policy = ...)] is enforced by the endpoint on every SSR request,
    so a signed-in user who fails the policy never reaches the router's
    <NotAuthorized> fragment — they land here instead. Keeps MainLayout so the
-   sidebar is still there to navigate away with. *@
+   sidebar is still there to navigate away with.
+
+   [Authorize] because only a signed-in user can ever be sent here; without it
+   an anonymous visitor gets the business name, the nav shell and a TenantService
+   query. There is no redirect loop: an anonymous hit goes to LoginPath. *@
 
 <PageTitle>Nuk keni leje — KosovaPOS</PageTitle>
 

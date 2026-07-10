@@ -216,11 +216,18 @@ New `EmptyLayout` for pages that own the viewport or may render with no session 
 `/Error`, 404). It deliberately does not inject `TenantService`, so an unauthenticated
 404 costs no DB query.
 
-**Fixed a real authz hole.** `/perdoruesit` — create users, set roles, reset passwords —
-carried only `@attribute [Authorize]`. Any authenticated user, including a **Cashier**,
-could open it by typing the URL; the Home tile was hidden from them, and hiding the link
-was the entire "protection". It is now `[Authorize(Policy = "perm:users")]` against the
-`perm` claims `BuildPrincipal` has always issued, so no one has to sign in again.
+**Fixed a real authz hole — and five more like it.** `/perdoruesit` — create users, set
+roles, reset passwords — carried only `@attribute [Authorize]`. Any authenticated user,
+including a **Cashier**, could open it by typing the URL; the Home tile was hidden from
+them, and hiding the link was the entire "protection". An audit found the same weakness on
+`/raportet`, `/financat`, `/blerjet`, `/partneret` and `/articles`, each of which the
+desktop gated behind a permission.
+
+`AuthService.AllPermissions` is now the single source: startup registers a `perm:{name}`
+policy for each, and every page carries the matching
+`[Authorize(Policy = "perm:…")]`. The policies check the `perm` claims `BuildPrincipal`
+has always issued, so **nobody is signed out by this deploy**. `Admin` short-circuits
+`HasPermission`, so the live `admin` account keeps everything.
 
 Two paths land a signed-in user who fails a policy, and both needed handling:
 - Page-level `[Authorize]` is enforced by the **endpoint** on the SSR request, which
@@ -229,15 +236,26 @@ Two paths land a signed-in user who fails a policy, and both needed handling:
   `<RedirectToLogin />`, which for an *already signed-in* user is a redirect loop back to
   the page they cannot see. It now branches on `IsAuthenticated` and shows a 403.
 
-Verified: `dotnet build -c Release` clean; Admin short-circuits `HasPermission` to true so
-the live admin keeps access, and a non-Admin needs `CanManageUsers`. Not exercised: the
-interactive circuit and a real Cashier login against the live DB.
+`/nuk-keni-leje` itself is `[Authorize]`: only a signed-in user is ever sent there, and
+without it an anonymous visitor got the business name, the nav shell and a `TenantService`
+query. An anonymous hit redirects to `/login`, so there is no loop.
 
-**Known gap, not closed here.** Only `/perdoruesit` is policy-gated. `/raportet`,
-`/financat`, `/blerjet`, `/partneret` and `/artikujt` still carry a bare `[Authorize]`
-though the desktop gated each behind a permission (`reports`, `finance`, `purchases`,
-`partners`, `articles`). A Cashier can reach all of them by URL. Same bug class, wider
-blast radius — see *Known follow-ups*.
+The sidebar and the Home tiles hide exactly what the policies deny — a visible link that
+403s is a dead end. The `Sistemi` heading is hidden too, since every link under it is
+gated and a Cashier would otherwise see an empty section.
+
+Verified end-to-end against a throwaway Postgres, driving real cookie logins over HTTP for
+a seeded no-permission Cashier and for `admin`. Admin: 200 on all 15 routes. Cashier: 200
+on the seven till routes (`/`, `/sale`, `/faturat`, `/kthimet`, `/stoku`, `/inventari`,
+`/barkod`, `/arka`) and 302 → `/nuk-keni-leje` on all six gated ones, the chain
+terminating in **one** redirect at a rendered 403 (no loop). The Cashier's rendered nav
+and tiles resolve to exactly the set that returns 200. Anonymous still goes to `/login`
+everywhere, including `/nuk-keni-leje`. Not exercised: the interactive Blazor circuit
+(button clicks inside a page) — needs a browser.
+
+**Note.** The live DB holds a single user (`admin`, Admin, all flags). The hole was
+therefore not yet exploitable in production; it would have opened silently the moment the
+first Cashier account was created.
 
 ## Phase 8 — real BMDData load ✅ (2026-07-08)
 **DONE and LIVE.** Loaded the real store data into the live `pos-blazor-db`: **2,184 articles**
@@ -378,10 +396,10 @@ scheme behind the proxy. DataProtection keys persist in the `pos-keys` volume so
 auth cookies survive redeploys.
 
 ## Known follow-ups
-- **Policy-gate the remaining screens.** Phase 11 closed `/perdoruesit`. `/raportet`,
-  `/financat`, `/blerjet`, `/partneret`, `/artikujt` still accept any authenticated user;
-  the desktop gated each behind a permission. Add `perm:*` policies mirroring
-  `AuthService.HasPermission` and hide the nav links to match.
+- **Ungated screens still to review.** `/stoku`, `/inventari`, `/barkod` and `/kthimet`
+  take any authenticated user. That is deliberate for now (a cashier counts stock and
+  prints labels), but `/inventari` can rewrite quantities and `/kthimet` can refund —
+  decide whether those want `perm:articles` / `perm:manager`.
 - **Cut-over to pos.spacecode.tech:** only after Sale + core screens reach parity
   with the live React app; needs explicit go-ahead (replaces a live service).
 - **Decimal precision / column types:** review EF warnings before prod schema freeze.

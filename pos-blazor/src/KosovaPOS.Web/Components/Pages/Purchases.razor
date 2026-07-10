@@ -1,5 +1,5 @@
 @page "/blerjet"
-@attribute [Authorize]
+@attribute [Authorize(Policy = "perm:purchases")]
 @rendermode InteractiveServer
 @using System.Security.Claims
 @using KosovaPOS.Core.Services

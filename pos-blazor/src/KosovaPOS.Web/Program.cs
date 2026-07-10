@@ -54,7 +54,8 @@ builder.Services.AddAuthorization(options =>
 {
     // A page must enforce the permission its nav link is gated on — hiding the
     // link alone leaves the route reachable by typing the URL.
-    options.AddPolicy("perm:users", p => p.RequireClaim("perm", "users"));
+    foreach (var perm in AuthService.AllPermissions)
+        options.AddPolicy($"perm:{perm}", p => p.RequireClaim(AuthService.PermissionClaim, perm));
 });
 builder.Services.AddCascadingAuthenticationState();
 

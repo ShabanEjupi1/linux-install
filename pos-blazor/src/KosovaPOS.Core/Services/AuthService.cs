@@ -48,6 +48,15 @@ public class AuthService
 
     public const string FullNameClaim = "full_name";
     public const string UserIdClaim = "uid";
+    public const string PermissionClaim = "perm";
+
+    /// <summary>
+    /// Every permission <see cref="HasPermission"/> understands. Startup turns each
+    /// into a "perm:{name}" authorization policy, so a permission added here is
+    /// gateable on a page without touching Program.cs.
+    /// </summary>
+    public static readonly string[] AllPermissions =
+        ["reports", "purchases", "articles", "users", "settings", "manager", "finance", "partners"];
 
     /// <summary>
     /// Builds the claims identity stored in the auth cookie for a signed-in user,
@@ -63,10 +72,10 @@ public class AuthService
             new(ClaimTypes.Role, user.Role),
         };
 
-        foreach (var perm in new[] { "reports", "purchases", "articles", "users", "settings", "manager", "finance", "partners" })
+        foreach (var perm in AllPermissions)
         {
             if (HasPermission(user, perm))
-                claims.Add(new Claim("perm", perm));
+                claims.Add(new Claim(PermissionClaim, perm));
         }
 
         return new ClaimsPrincipal(new ClaimsIdentity(claims, authScheme));

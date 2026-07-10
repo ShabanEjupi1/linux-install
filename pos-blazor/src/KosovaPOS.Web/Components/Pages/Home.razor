@@ -40,18 +40,35 @@
 
     <h2 class="section-title">Veprimet</h2>
     <div class="tiles">
+        @* A tile the user cannot open is a dead end into the 403 page — each one
+           mirrors the policy on the page it points at. *@
         <a href="/sale" class="tile-link"><div class="tile">🛒 Shitje</div></a>
-        <a href="/articles" class="tile-link"><div class="tile">📦 Artikuj</div></a>
+        @if (_canArticles)
+        {
+            <a href="/articles" class="tile-link"><div class="tile">📦 Artikuj</div></a>
+        }
         <a href="/faturat" class="tile-link"><div class="tile">🧾 Faturat</div></a>
-        <a href="/blerjet" class="tile-link"><div class="tile">📥 Blerjet</div></a>
+        @if (_canPurchases)
+        {
+            <a href="/blerjet" class="tile-link"><div class="tile">📥 Blerjet</div></a>
+        }
         <a href="/stoku" class="tile-link"><div class="tile">📊 Stoku</div></a>
         <a href="/inventari" class="tile-link"><div class="tile">🗃️ Inventari</div></a>
         <a href="/barkod" class="tile-link"><div class="tile">🏷️ Barkodi</div></a>
         <a href="/arka" class="tile-link"><div class="tile">💵 Arka</div></a>
         <a href="/kthimet" class="tile-link"><div class="tile">↩️ Kthimet</div></a>
-        <a href="/partneret" class="tile-link"><div class="tile">🤝 Partnerët</div></a>
-        <a href="/financat" class="tile-link"><div class="tile">💰 Financat</div></a>
-        <a href="/raportet" class="tile-link"><div class="tile">📈 Raportet</div></a>
+        @if (_canPartners)
+        {
+            <a href="/partneret" class="tile-link"><div class="tile">🤝 Partnerët</div></a>
+        }
+        @if (_canFinance)
+        {
+            <a href="/financat" class="tile-link"><div class="tile">💰 Financat</div></a>
+        }
+        @if (_canReports)
+        {
+            <a href="/raportet" class="tile-link"><div class="tile">📈 Raportet</div></a>
+        }
         @if (_canManageUsers)
         {
             <a href="/perdoruesit" class="tile-link"><div class="tile">👥 Përdoruesit</div></a>
@@ -63,6 +80,11 @@
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
 
     private bool _canManageUsers;
+    private bool _canReports;
+    private bool _canFinance;
+    private bool _canPurchases;
+    private bool _canPartners;
+    private bool _canArticles;
     private string _firstName = "";
     private decimal _revenue;
     private int _transactions;
@@ -77,7 +99,14 @@
             var fullName = user.FindFirst(AuthService.FullNameClaim)?.Value
                            ?? user.Identity?.Name ?? "";
             _firstName = fullName.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "";
-            _canManageUsers = user.HasClaim("perm", "users");
+
+            bool Can(string perm) => user.HasClaim(AuthService.PermissionClaim, perm);
+            _canManageUsers = Can("users");
+            _canReports     = Can("reports");
+            _canFinance     = Can("finance");
+            _canPurchases   = Can("purchases");
+            _canPartners    = Can("partners");
+            _canArticles    = Can("articles");
         }
 
         (_revenue, _transactions, _items) = await Sales.GetTodaySummaryAsync();

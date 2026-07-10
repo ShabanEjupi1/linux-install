@@ -1,5 +1,5 @@
 @page "/financat"
-@attribute [Authorize]
+@attribute [Authorize(Policy = "perm:finance")]
 @rendermode InteractiveServer
 @using System.Security.Claims
 @using KosovaPOS.Core.Services

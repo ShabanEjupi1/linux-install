@@ -33,22 +33,42 @@
             <NavLink class="nav-link" href="/kthimet"><span class="nav-ico">↩️</span> Kthimet</NavLink>
 
             <p class="nav-group">Stoku</p>
-            <NavLink class="nav-link" href="/articles"><span class="nav-ico">📦</span> Artikujt</NavLink>
+            @if (_canArticles)
+            {
+                <NavLink class="nav-link" href="/articles"><span class="nav-ico">📦</span> Artikujt</NavLink>
+            }
             <NavLink class="nav-link" href="/stoku"><span class="nav-ico">📊</span> Gjendja</NavLink>
             <NavLink class="nav-link" href="/inventari"><span class="nav-ico">🗃️</span> Inventari</NavLink>
             <NavLink class="nav-link" href="/barkod"><span class="nav-ico">🏷️</span> Barkodi</NavLink>
-            <NavLink class="nav-link" href="/blerjet"><span class="nav-ico">📥</span> Blerjet</NavLink>
+            @if (_canPurchases)
+            {
+                <NavLink class="nav-link" href="/blerjet"><span class="nav-ico">📥</span> Blerjet</NavLink>
+            }
 
             <p class="nav-group">Financa</p>
             <NavLink class="nav-link" href="/arka"><span class="nav-ico">💵</span> Arka</NavLink>
-            <NavLink class="nav-link" href="/financat"><span class="nav-ico">💰</span> Financat</NavLink>
-            <NavLink class="nav-link" href="/raportet"><span class="nav-ico">📈</span> Raportet</NavLink>
-
-            <p class="nav-group">Sistemi</p>
-            <NavLink class="nav-link" href="/partneret"><span class="nav-ico">🤝</span> Partnerët</NavLink>
-            @if (_canManageUsers)
+            @if (_canFinance)
             {
-                <NavLink class="nav-link" href="/perdoruesit"><span class="nav-ico">👥</span> Përdoruesit</NavLink>
+                <NavLink class="nav-link" href="/financat"><span class="nav-ico">💰</span> Financat</NavLink>
+            }
+            @if (_canReports)
+            {
+                <NavLink class="nav-link" href="/raportet"><span class="nav-ico">📈</span> Raportet</NavLink>
+            }
+
+            @* Every link under Sistemi is permission-gated, so the heading has to
+               go too — a Cashier would otherwise see an empty section. *@
+            @if (_canPartners || _canManageUsers)
+            {
+                <p class="nav-group">Sistemi</p>
+                @if (_canPartners)
+                {
+                    <NavLink class="nav-link" href="/partneret"><span class="nav-ico">🤝</span> Partnerët</NavLink>
+                }
+                @if (_canManageUsers)
+                {
+                    <NavLink class="nav-link" href="/perdoruesit"><span class="nav-ico">👥</span> Përdoruesit</NavLink>
+                }
             }
         </nav>
     </aside>
@@ -85,6 +105,11 @@
 
     private BusinessSettings? _settings;
     private bool _canManageUsers;
+    private bool _canReports;
+    private bool _canFinance;
+    private bool _canPurchases;
+    private bool _canPartners;
+    private bool _canArticles;
     private string _fullName = "";
     private string _role = "";
 
@@ -96,7 +121,14 @@
             _fullName = user.FindFirst(AuthService.FullNameClaim)?.Value
                         ?? user.Identity?.Name ?? "";
             _role = user.FindFirst(ClaimTypes.Role)?.Value ?? "";
-            _canManageUsers = user.HasClaim("perm", "users");
+
+            bool Can(string perm) => user.HasClaim(AuthService.PermissionClaim, perm);
+            _canManageUsers = Can("users");
+            _canReports     = Can("reports");
+            _canFinance     = Can("finance");
+            _canPurchases   = Can("purchases");
+            _canPartners    = Can("partners");
+            _canArticles    = Can("articles");
         }
 
         _settings = await Tenant.GetSettingsAsync();
