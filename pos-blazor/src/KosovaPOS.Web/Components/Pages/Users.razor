@@ -1,5 +1,5 @@
 @page "/perdoruesit"
-@attribute [Authorize]
+@attribute [Authorize(Policy = "perm:users")]
 @rendermode InteractiveServer
 @using KosovaPOS.Core.Services
 @using KosovaPOS.Models.BMDData
@@ -10,7 +10,6 @@
 <div class="mgmt">
     <header class="mgmt-head">
         <div>
-            <a href="/" class="back">← Ballina</a>
             <h1>Përdoruesit</h1>
             <span class="muted">@_all.Count përdorues</span>
         </div>

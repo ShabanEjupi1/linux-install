@@ -46,10 +46,16 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
     {
         options.Cookie.Name = "KosovaPOS.Auth";
         options.LoginPath = "/login";
+        options.AccessDeniedPath = "/nuk-keni-leje";
         options.ExpireTimeSpan = TimeSpan.FromHours(12);
         options.SlidingExpiration = true;
     });
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    // A page must enforce the permission its nav link is gated on — hiding the
+    // link alone leaves the route reachable by typing the URL.
+    options.AddPolicy("perm:users", p => p.RequireClaim("perm", "users"));
+});
 builder.Services.AddCascadingAuthenticationState();
 
 // Persist DataProtection keys (auth cookie protection) to a mounted volume in

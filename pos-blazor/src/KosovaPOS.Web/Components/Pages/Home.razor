@@ -5,30 +5,40 @@
 @using Microsoft.AspNetCore.Authorization
 @using KosovaPOS.Core.Services
 @using KosovaPOS.Models
-@inject TenantService Tenant
+@inject SalesService Sales
+@inject ShiftService Shifts
 
 <PageTitle>KosovaPOS</PageTitle>
 
-<div class="dashboard">
-    <header class="topbar">
+<div class="mgmt">
+    <header class="mgmt-head">
         <div>
-            <h1>@(_settings?.BusinessName ?? "KosovaPOS")</h1>
-            <span class="badge">@ProfileLabel</span>
+            <h1>@Greeting@(string.IsNullOrEmpty(_firstName) ? "" : $", {_firstName}")</h1>
+            <span class="muted">@DateTime.Now.ToString("dd.MM.yyyy")</span>
         </div>
-        <div class="user">
-            <span>@_fullName (@_role)</span>
-            <form method="post" action="/auth/logout">
-                <AntiforgeryToken />
-                <button type="submit" class="btn-ghost">Dil</button>
-            </form>
-        </div>
+        <a href="/sale" class="btn-primary btn-lg">🛒 Fillo shitjen</a>
     </header>
 
-    <p class="muted">
-        Mirë se erdhe. Ky është skeleti i web-aplikacionit — moduli i parë
-        (shitja) vjen më pas. Profili aktual përcakton menutë e disponueshme.
-    </p>
+    <div class="stat-row">
+        <div class="stat accent">
+            <span class="stat-label">Shitjet sot</span>
+            <span class="stat-val">@_revenue.ToString("0.00") €</span>
+        </div>
+        <div class="stat">
+            <span class="stat-label">Fatura sot</span>
+            <span class="stat-val">@_transactions</span>
+        </div>
+        <div class="stat">
+            <span class="stat-label">Artikuj të shitur</span>
+            <span class="stat-val">@_items</span>
+        </div>
+        <a href="/arka" class="stat tile-link @(_shiftOpen ? "" : "warn")">
+            <span class="stat-label">Ndërrimi</span>
+            <span class="stat-val">@(_shiftOpen ? "I hapur" : "I mbyllur")</span>
+        </a>
+    </div>
 
+    <h2 class="section-title">Veprimet</h2>
     <div class="tiles">
         <a href="/sale" class="tile-link"><div class="tile">🛒 Shitje</div></a>
         <a href="/articles" class="tile-link"><div class="tile">📦 Artikuj</div></a>
@@ -41,11 +51,6 @@
         <a href="/kthimet" class="tile-link"><div class="tile">↩️ Kthimet</div></a>
         <a href="/partneret" class="tile-link"><div class="tile">🤝 Partnerët</div></a>
         <a href="/financat" class="tile-link"><div class="tile">💰 Financat</div></a>
-        @if (_isRestaurant)
-        {
-            <div class="tile">🍽️ Tavolinat</div>
-            <div class="tile">👨‍🍳 Kuzhina</div>
-        }
         <a href="/raportet" class="tile-link"><div class="tile">📈 Raportet</div></a>
         @if (_canManageUsers)
         {
@@ -57,35 +62,32 @@
 @code {
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
 
-    private BusinessSettings? _settings;
-    private bool _isRestaurant;
     private bool _canManageUsers;
-    private string _fullName = "";
-    private string _role = "";
+    private string _firstName = "";
+    private decimal _revenue;
+    private int _transactions;
+    private int _items;
+    private bool _shiftOpen;
 
     protected override async Task OnInitializedAsync()
     {
         if (AuthState is not null)
         {
             var user = (await AuthState).User;
-            _fullName = user.FindFirst(AuthService.FullNameClaim)?.Value
-                        ?? user.Identity?.Name ?? "";
-            _role = user.FindFirst(ClaimTypes.Role)?.Value ?? "";
+            var fullName = user.FindFirst(AuthService.FullNameClaim)?.Value
+                           ?? user.Identity?.Name ?? "";
+            _firstName = fullName.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "";
             _canManageUsers = user.HasClaim("perm", "users");
         }
 
-        _settings = await Tenant.GetSettingsAsync();
-        _isRestaurant = await Tenant.IsRestaurantAsync();
+        (_revenue, _transactions, _items) = await Sales.GetTodaySummaryAsync();
+        _shiftOpen = await Shifts.GetOpenShiftAsync() is not null;
     }
 
-    private string ProfileLabel => _settings?.Profile switch
+    private string Greeting => DateTime.Now.Hour switch
     {
-        BusinessProfile.FoodAndBeverage => "Restorant",
-        BusinessProfile.Hospitality => "Hoteleri",
-        BusinessProfile.Wholesale => "Shumicë",
-        BusinessProfile.Pharmacy => "Farmaci",
-        BusinessProfile.Rental => "Qira",
-        BusinessProfile.Services => "Shërbime",
-        _ => "Dyqan (Retail)"
+        < 12 => "Mirëmëngjes",
+        < 18 => "Mirëdita",
+        _ => "Mirëmbrëma"
     };
 }

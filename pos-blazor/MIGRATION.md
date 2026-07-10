@@ -201,6 +201,44 @@ correction lifts `-6 → 4` and clears the negative, denominations round-trip th
 conditional. Not exercised: the interactive Blazor circuit (modal clicks) and real label
 hardware — both need a browser + the shop PC.
 
+## Phase 11 — nav shell, design pass, and an authz fix ✅ (2026-07-10)
+Until now every screen was reached from the tiles on `/` and navigated away from with
+a `← Ballina` link. With 14 screens that had stopped scaling.
+
+**Nav shell.** `MainLayout` grew a persistent sidebar (grouped Shitja / Stoku / Financa
+/ Sistemi), an app bar carrying the signed-in user and `Dil`, and a mobile drawer. The
+layout renders in **static SSR** even when the page inside it is `InteractiveServer`, so
+the drawer cannot use `@onclick` — it is a pure-CSS checkbox toggle, which also resets on
+navigation. The per-page `← Ballina` links are gone. `/` is now a dashboard (today's
+revenue / receipt count / items sold, shift state) rather than a wall of tiles.
+
+New `EmptyLayout` for pages that own the viewport or may render with no session (login,
+`/Error`, 404). It deliberately does not inject `TenantService`, so an unauthenticated
+404 costs no DB query.
+
+**Fixed a real authz hole.** `/perdoruesit` — create users, set roles, reset passwords —
+carried only `@attribute [Authorize]`. Any authenticated user, including a **Cashier**,
+could open it by typing the URL; the Home tile was hidden from them, and hiding the link
+was the entire "protection". It is now `[Authorize(Policy = "perm:users")]` against the
+`perm` claims `BuildPrincipal` has always issued, so no one has to sign in again.
+
+Two paths land a signed-in user who fails a policy, and both needed handling:
+- Page-level `[Authorize]` is enforced by the **endpoint** on the SSR request, which
+  redirects to `CookieAuthenticationOptions.AccessDeniedPath` → new `/nuk-keni-leje`.
+- The router's `<NotAuthorized>` fragment catches the rest. It used to unconditionally
+  `<RedirectToLogin />`, which for an *already signed-in* user is a redirect loop back to
+  the page they cannot see. It now branches on `IsAuthenticated` and shows a 403.
+
+Verified: `dotnet build -c Release` clean; Admin short-circuits `HasPermission` to true so
+the live admin keeps access, and a non-Admin needs `CanManageUsers`. Not exercised: the
+interactive circuit and a real Cashier login against the live DB.
+
+**Known gap, not closed here.** Only `/perdoruesit` is policy-gated. `/raportet`,
+`/financat`, `/blerjet`, `/partneret` and `/artikujt` still carry a bare `[Authorize]`
+though the desktop gated each behind a permission (`reports`, `finance`, `purchases`,
+`partners`, `articles`). A Cashier can reach all of them by URL. Same bug class, wider
+blast radius — see *Known follow-ups*.
+
 ## Phase 8 — real BMDData load ✅ (2026-07-08)
 **DONE and LIVE.** Loaded the real store data into the live `pos-blazor-db`: **2,184 articles**
 (Artikujt), 95 suppliers (FurnitoriNew), 1 category, 2,211 purchase-journal rows (DitariH),
@@ -340,6 +378,10 @@ scheme behind the proxy. DataProtection keys persist in the `pos-keys` volume so
 auth cookies survive redeploys.
 
 ## Known follow-ups
+- **Policy-gate the remaining screens.** Phase 11 closed `/perdoruesit`. `/raportet`,
+  `/financat`, `/blerjet`, `/partneret`, `/artikujt` still accept any authenticated user;
+  the desktop gated each behind a permission. Add `perm:*` policies mirroring
+  `AuthService.HasPermission` and hide the nav links to match.
 - **Cut-over to pos.spacecode.tech:** only after Sale + core screens reach parity
   with the live React app; needs explicit go-ahead (replaces a live service).
 - **Decimal precision / column types:** review EF warnings before prod schema freeze.

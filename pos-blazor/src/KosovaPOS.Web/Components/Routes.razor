@@ -2,8 +2,21 @@
 <Router AppAssembly="typeof(Program).Assembly" NotFoundPage="typeof(Pages.NotFound)">
     <Found Context="routeData">
         <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)">
-            <NotAuthorized>
-                <RedirectToLogin />
+            <NotAuthorized Context="authState">
+                @if (authState.User.Identity?.IsAuthenticated ?? false)
+                {
+                    @* Signed in, but lacking the permission. Bouncing to /login
+                       would just loop them back here, so say so instead. *@
+                    <div class="stray">
+                        <h1>403</h1>
+                        <p class="muted">Nuk keni leje për këtë faqe.</p>
+                        <a href="/" class="btn-primary">Kthehu në ballinë</a>
+                    </div>
+                }
+                else
+                {
+                    <RedirectToLogin />
+                }
             </NotAuthorized>
         </AuthorizeRouteView>
         <FocusOnNavigate RouteData="routeData" Selector="h1" />

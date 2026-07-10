@@ -1,9 +1,119 @@
-﻿@inherits LayoutComponentBase
+@inherits LayoutComponentBase
+@using System.Security.Claims
+@using KosovaPOS.Core.Services
+@using KosovaPOS.Models
+@inject TenantService Tenant
 
-@Body
+@* The layout renders in static SSR even when the page inside it is
+   InteractiveServer, so the sidebar cannot use @onclick. The mobile drawer is
+   therefore a pure-CSS checkbox toggle, and it resets on every navigation —
+   which is the behaviour we want anyway. *@
+
+<div class="shell">
+    <input type="checkbox" id="nav-toggle" class="nav-toggle" aria-hidden="true" />
+    <label for="nav-toggle" class="nav-scrim"></label>
+
+    <aside class="sidenav">
+        <a href="/" class="brand">
+            <span class="brand-mark">K</span>
+            <span class="brand-text">
+                <strong>@BusinessName</strong>
+                <small>@ProfileLabel</small>
+            </span>
+        </a>
+
+        <nav class="nav-scroll">
+            <NavLink class="nav-link" href="/" Match="NavLinkMatch.All">
+                <span class="nav-ico">🏠</span> Ballina
+            </NavLink>
+
+            <p class="nav-group">Shitja</p>
+            <NavLink class="nav-link" href="/sale"><span class="nav-ico">🛒</span> Shitje</NavLink>
+            <NavLink class="nav-link" href="/faturat"><span class="nav-ico">🧾</span> Faturat</NavLink>
+            <NavLink class="nav-link" href="/kthimet"><span class="nav-ico">↩️</span> Kthimet</NavLink>
+
+            <p class="nav-group">Stoku</p>
+            <NavLink class="nav-link" href="/articles"><span class="nav-ico">📦</span> Artikujt</NavLink>
+            <NavLink class="nav-link" href="/stoku"><span class="nav-ico">📊</span> Gjendja</NavLink>
+            <NavLink class="nav-link" href="/inventari"><span class="nav-ico">🗃️</span> Inventari</NavLink>
+            <NavLink class="nav-link" href="/barkod"><span class="nav-ico">🏷️</span> Barkodi</NavLink>
+            <NavLink class="nav-link" href="/blerjet"><span class="nav-ico">📥</span> Blerjet</NavLink>
+
+            <p class="nav-group">Financa</p>
+            <NavLink class="nav-link" href="/arka"><span class="nav-ico">💵</span> Arka</NavLink>
+            <NavLink class="nav-link" href="/financat"><span class="nav-ico">💰</span> Financat</NavLink>
+            <NavLink class="nav-link" href="/raportet"><span class="nav-ico">📈</span> Raportet</NavLink>
+
+            <p class="nav-group">Sistemi</p>
+            <NavLink class="nav-link" href="/partneret"><span class="nav-ico">🤝</span> Partnerët</NavLink>
+            @if (_canManageUsers)
+            {
+                <NavLink class="nav-link" href="/perdoruesit"><span class="nav-ico">👥</span> Përdoruesit</NavLink>
+            }
+        </nav>
+    </aside>
+
+    <div class="shell-main">
+        <header class="appbar">
+            <label for="nav-toggle" class="nav-burger" aria-label="Menyja">☰</label>
+            <h2 class="appbar-title">@BusinessName</h2>
+            <span class="spacer"></span>
+            <div class="user">
+                <span class="user-name">@_fullName</span>
+                <span class="user-role">@_role</span>
+            </div>
+            <form method="post" action="/auth/logout">
+                <AntiforgeryToken />
+                <button type="submit" class="btn-ghost">Dil</button>
+            </form>
+        </header>
+
+        <div class="shell-content">
+            @Body
+        </div>
+    </div>
+</div>
 
 <div id="blazor-error-ui" data-nosnippet>
     An unhandled error has occurred.
     <a href="." class="reload">Reload</a>
     <span class="dismiss">🗙</span>
 </div>
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private BusinessSettings? _settings;
+    private bool _canManageUsers;
+    private string _fullName = "";
+    private string _role = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is not null)
+        {
+            var user = (await AuthState).User;
+            _fullName = user.FindFirst(AuthService.FullNameClaim)?.Value
+                        ?? user.Identity?.Name ?? "";
+            _role = user.FindFirst(ClaimTypes.Role)?.Value ?? "";
+            _canManageUsers = user.HasClaim("perm", "users");
+        }
+
+        _settings = await Tenant.GetSettingsAsync();
+    }
+
+    private string BusinessName => string.IsNullOrWhiteSpace(_settings?.BusinessName)
+        ? "KosovaPOS"
+        : _settings!.BusinessName;
+
+    private string ProfileLabel => _settings?.Profile switch
+    {
+        BusinessProfile.FoodAndBeverage => "Restorant",
+        BusinessProfile.Hospitality => "Hoteleri",
+        BusinessProfile.Wholesale => "Shumicë",
+        BusinessProfile.Pharmacy => "Farmaci",
+        BusinessProfile.Rental => "Qira",
+        BusinessProfile.Services => "Shërbime",
+        _ => "Dyqan (Retail)"
+    };
+}

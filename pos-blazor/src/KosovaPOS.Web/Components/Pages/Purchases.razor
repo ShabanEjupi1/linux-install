@@ -17,7 +17,6 @@
             <div class="search-row">
                 <input @bind="_search" @bind:event="oninput" @onkeydown="OnSearchKey"
                        placeholder="Kërko emër ose skano barkod…" class="search-box" autofocus />
-                <a href="/" class="btn-ghost">← Ballina</a>
                 <button class="btn-ghost" @onclick="ShowRecent">Blerjet e fundit</button>
             </div>
             <div class="grid">
@@ -128,7 +127,6 @@ else
     <div class="mgmt">
         <header class="mgmt-head">
             <div>
-                <a href="/" class="back">← Ballina</a>
                 <h1>Blerjet e fundit</h1>
                 <span class="muted">@_recent.Count blerje</span>
             </div>

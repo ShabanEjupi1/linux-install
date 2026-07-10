@@ -1,0 +1,15 @@
+@page "/nuk-keni-leje"
+
+@* Target of CookieAuthenticationOptions.AccessDeniedPath. A page-level
+   [Authorize(Policy = ...)] is enforced by the endpoint on every SSR request,
+   so a signed-in user who fails the policy never reaches the router's
+   <NotAuthorized> fragment — they land here instead. Keeps MainLayout so the
+   sidebar is still there to navigate away with. *@
+
+<PageTitle>Nuk keni leje — KosovaPOS</PageTitle>
+
+<div class="stray">
+    <h1>403</h1>
+    <p class="muted">Nuk keni leje për këtë faqe. Kontaktoni administratorin.</p>
+    <a href="/" class="btn-primary">Kthehu në ballinë</a>
+</div>

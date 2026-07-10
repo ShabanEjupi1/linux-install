@@ -1,0 +1,7 @@
+@inherits LayoutComponentBase
+
+@* Chromeless layout for pages that own the whole viewport (login) or that may
+   render before/without an authenticated session (error, 404). Deliberately
+   does not touch TenantService, so an unauthenticated 404 costs no DB query. *@
+
+@Body
