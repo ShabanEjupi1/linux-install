@@ -20,7 +20,18 @@
         <div class="stat"><span class="stat-label">Vlera me çmim shitje</span><span class="stat-val">@StockRetailValue.ToString("0.00") €</span></div>
         <div class="stat warn"><span class="stat-label">Nën minimum (≤ @_threshold)</span><span class="stat-val">@LowCount</span></div>
         <div class="stat danger"><span class="stat-label">Pa stok</span><span class="stat-val">@OutCount</span></div>
+        <div class="stat danger"><span class="stat-label">Stok negativ</span><span class="stat-val">@NegativeCount</span></div>
     </div>
+
+    @if (NegativeCount > 0)
+    {
+        <p class="notice danger">
+            @NegativeCount artikuj kanë gjendje negative (gjithsej @NegativeUnits.ToString("0.##") njësi):
+            janë shitur më shumë sesa janë regjistruar si hyrje. Vlera e stokut më lart llogaritet
+            vetëm mbi @InStockCount artikujt me gjendje pozitive. Korrigjo gjendjen reale te
+            <a href="/inventari">inventarizimi</a>.
+        </p>
+    }
 
     <div class="search-row">
         <input @bind="_search" @bind:event="oninput" placeholder="Kërko emër ose barkod…" class="search-box" />
@@ -28,6 +39,7 @@
             <option value="all">Të gjitha</option>
             <option value="low">Nën minimum</option>
             <option value="out">Pa stok</option>
+            <option value="neg">Stok negativ</option>
         </select>
         <label class="chk">Pragu <input type="number" class="thresh" @bind="_threshold" /></label>
     </div>
@@ -61,9 +73,9 @@
                             <td>@a.Category</td>
                             <td class="num @StockClass(a)">@a.StockQuantity.ToString("0.##")</td>
                             <td class="num">@a.PurchasePrice.ToString("0.00")</td>
-                            <td class="num">@((a.StockQuantity * a.PurchasePrice).ToString("0.00"))</td>
+                            <td class="num">@Value(a, a.PurchasePrice)</td>
                             <td class="num">@a.SalesPrice.ToString("0.00")</td>
-                            <td class="num">@((a.StockQuantity * a.SalesPrice).ToString("0.00"))</td>
+                            <td class="num">@Value(a, a.SalesPrice)</td>
                         </tr>
                     }
                     @if (!Filtered.Any())
@@ -94,7 +106,8 @@
         get
         {
             IEnumerable<Article> q = _all;
-            if (_filter == "out") q = q.Where(a => a.StockQuantity <= 0);
+            if (_filter == "out") q = q.Where(a => a.StockQuantity == 0);
+            else if (_filter == "neg") q = q.Where(a => a.StockQuantity < 0);
             else if (_filter == "low") q = q.Where(a => a.StockQuantity > 0 && a.StockQuantity <= _threshold);
             if (!string.IsNullOrWhiteSpace(_search))
             {
@@ -109,8 +122,18 @@
     private string StockClass(Article a) =>
         a.StockQuantity <= 0 ? "out" : a.StockQuantity <= _threshold ? "low" : "";
 
-    private decimal StockCostValue => _all.Sum(a => a.StockQuantity * a.PurchasePrice);
-    private decimal StockRetailValue => _all.Sum(a => a.StockQuantity * a.SalesPrice);
+    // A negative quantity is a broken record, not inventory worth a negative amount of
+    // money, so it contributes nothing rather than eating into the valuation.
+    private static string Value(Article a, decimal unitPrice) =>
+        a.StockQuantity < 0 ? "—" : (a.StockQuantity * unitPrice).ToString("0.00");
+
+    private IEnumerable<Article> InStock => _all.Where(a => a.StockQuantity > 0);
+
+    private decimal StockCostValue => InStock.Sum(a => a.StockQuantity * a.PurchasePrice);
+    private decimal StockRetailValue => InStock.Sum(a => a.StockQuantity * a.SalesPrice);
+    private int InStockCount => InStock.Count();
     private int LowCount => _all.Count(a => a.StockQuantity > 0 && a.StockQuantity <= _threshold);
-    private int OutCount => _all.Count(a => a.StockQuantity <= 0);
+    private int OutCount => _all.Count(a => a.StockQuantity == 0);
+    private int NegativeCount => _all.Count(a => a.StockQuantity < 0);
+    private decimal NegativeUnits => -_all.Where(a => a.StockQuantity < 0).Sum(a => a.StockQuantity);
 }

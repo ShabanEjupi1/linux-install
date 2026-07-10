@@ -1,7 +1,7 @@
 # Runtime image for KosovaPOS.Web (Blazor Server).
-# Build the app locally first (`dotnet publish -c Release -o publish`) — this
-# resolves the Models that Core links from ../POS2 — then this image just runs
-# the published output. Mirrors the pos-web "build locally, ship output" flow.
+# Build the app locally first (`dotnet publish -c Release -o publish`), then this
+# image just runs the published output. Mirrors the pos-web "build locally, ship
+# output" flow.
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine AS runtime
 WORKDIR /app
 

@@ -301,6 +301,20 @@ h1:focus, h2:focus { outline: none; }
 .stat.danger { border-color: var(--danger-line); } .stat.danger .stat-val { color: var(--danger); }
 a.stat:hover { border-color: var(--accent); }
 
+/* Inline explanation of a data fault the user is expected to act on. */
+.notice {
+  margin: 0 0 14px;
+  padding: 10px 14px;
+  border-radius: var(--r);
+  border: 1px solid var(--warn-line);
+  background: var(--warn-bg);
+  color: var(--warn);
+  font-size: .85rem;
+  line-height: 1.5;
+}
+.notice.danger { border-color: var(--danger-line); background: var(--danger-bg); color: var(--danger-ink); }
+.notice a { color: inherit; font-weight: 600; }
+
 /* Action tiles */
 .tiles {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));

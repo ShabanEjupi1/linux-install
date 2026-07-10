@@ -20,7 +20,7 @@ pos-blazor/
   KosovaPOS.sln
   src/
     KosovaPOS.Core/     net10 class lib — shared with the desktop apps
-      Models/           LINKED from ../../POS2/Models (single source of truth)
+      Models/           the POCO models (source of truth since Phase 13)
       Data/PosDbContext.cs   web EF context (Npgsql), ported from POS2 POSDbContext
       Services/         AuthService, TenantService  (business logic, no Windows deps)
       Migrations/       EF migrations for the Postgres schema
@@ -200,6 +200,74 @@ correction lifts `-6 → 4` and clears the negative, denominations round-trip th
 (`/inventari`, `/barkod`, `/arka` → 200) with the negative-stock banner correctly
 conditional. Not exercised: the interactive Blazor circuit (modal clicks) and real label
 hardware — both need a browser + the shop PC.
+
+## Phase 13 — `Tatimi` is a VAT class, not a rate ✅ (2026-07-10)
+`Artikujt.Tatimi` was read as a VAT **percentage**. It is a **class code**. The catalogue
+stores `Tatimi = 3` on 1,466 of its 1,619 articles, so the till was carving **3% VAT** out
+of their gross prices instead of 18%:
+
+| `Vat` | `Tatimi` | articles | old rate | new rate |
+|---|---|---|---|---|
+| 3 | 3 | 1466 | **3%** ❌ | 18% |
+| 3 | 18 | 146 | 18% | 18% |
+| 4 | 4 | 6 | **4%** ❌ | 18% |
+| 5 | 5 | 1 | **5%** ❌ | 18% |
+
+Part of the catalogue does carry the literal percentage in `Tatimi` (the 146 rows above),
+which is why the column reads plausibly as a rate. `KosovoVat.Resolve` disambiguates on
+magnitude: **8 or more can only be a percentage** — no class code reaches that high — so
+it is taken verbatim, and anything else is read as a class. Classes 4 and 5 do not exist
+in Kosovo (the rates are 18 / 8 / 0); they fall back to the standard rate, because
+under-charging VAT is the costly direction of the error. All 7 are out of stock.
+
+**Nobody was overcharged.** Shelf prices (`CShitjes`) are gross — VAT is carved out of the
+total, never added on top — so `Total` is byte-for-byte unchanged. What was wrong is the
+**net/VAT split**: the figure reported to ATK, and `FiscalReceiptBuilder.GetTaxGroup`,
+which mapped `3 → group 3` and would have stamped nearly the whole catalogue into the
+wrong fiscal tax group. Fiscal printing is not live yet (Phase 9 still awaits a human on
+the shop PC), so no fiscal receipt ever carried the bad group.
+
+The VAT arithmetic that was inlined and duplicated across `CatalogService`, `SalesService`
+and `Receipt` now lives in one place, `KosovaPOS.Core/Models/VatRate.cs`:
+
+- `Resolve(vat, tatimi)` → the rate, per the magnitude rule above.
+- `VatOf(gross, rate)` → the VAT **inside** a gross amount, rounded to cents.
+- `NetOf` / `NetUnitPrice` → the net part. Unit prices stay **unrounded**; rounding them
+  would stop `qty × unit` from reconciling with the rounded line total.
+
+`SalesService` now writes `VleraPaTvsh = TotalValue - VATValue` rather than recomputing
+the net from the rate, so the persisted `net + VAT` equals `gross` exactly, to the cent.
+
+⚠️ **Historical sales carry zero VAT and must not be backfilled** — see the BMDData notes.
+The 18,749 imported rows predate this app; their `Tvsh` is 0 in the source system.
+
+### Negative stock is a fault, not a valuation
+430 articles carry negative `Sasia` (they were sold without ever being booked in — a
+source-data fault inherited from the desktop). `/stoku` multiplied those negatives by unit
+price, so **broken records were subtracting real money from the stock valuation**. Stock
+value is now summed over positive quantities only, negative rows render `—` rather than a
+negative euro figure, and a banner counts them and points at `/inventari` to correct them.
+`Pa stok` now means exactly zero; negative rows get their own counter and filter, so they
+stop hiding inside the out-of-stock count.
+
+### The models come in from the cold
+`KosovaPOS.Core.csproj` used to `<Compile Include="..\..\..\POS2\Models\**\*.cs" />`, so the
+POCO models — including the whole VAT fix above — were compiled from a tree that **this repo
+never tracked**. `POS2/` is a working clone of `github.com/ShabanEjupi/POS.git`, a *separate*
+git repo, which is why the outer repo only ever saw an opaque embedded repo and silently
+staged nothing. `pos-blazor` could not be built from a clean checkout, and the fix existed
+only on one Codespace disk.
+
+The 39 files now live at `KosovaPOS.Core/Models/` and the link is gone; the project builds
+from its own sources (`dotnet msbuild -getItem:Compile` reports zero `POS2` paths). The
+desktop app is retired, so its copy is left where it is and nothing has to stay in sync —
+**`pos-blazor` is the source of truth for the models now.**
+
+Verified against the real `(Vat, Tatimi)` pairs from the live DB by driving `KosovoVat`,
+`ReceiptItem` and `GetTaxGroup` directly (24 assertions): every live pair resolves to 18%,
+class round-trips hold, and `net + VAT == gross` across discounts, the 8% rate, zero-rating
+and pathological rounding (13 × 0.07 → gross 0.91, VAT 0.14, net 0.77). Re-run green after
+the relocation. Not exercised: the interactive Blazor circuit.
 
 ## Phase 12 — the till and stock screens get permissions ✅ (2026-07-10)
 Phase 11 gated the six screens the desktop had gated. Seven were left on a bare
@@ -423,7 +491,7 @@ Target URL **pos.spacecode.tech** — but that currently serves the live React
 core parity.
 
 ```bash
-# 1. build the runnable output locally (resolves the linked ../POS2 models)
+# 1. build the runnable output locally
 dotnet publish src/KosovaPOS.Web/KosovaPOS.Web.csproj -c Release -o publish
 
 # 2. ship to Ampere
