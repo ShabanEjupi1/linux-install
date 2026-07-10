@@ -201,6 +201,53 @@ correction lifts `-6 → 4` and clears the negative, denominations round-trip th
 conditional. Not exercised: the interactive Blazor circuit (modal clicks) and real label
 hardware — both need a browser + the shop PC.
 
+## Phase 12 — the till and stock screens get permissions ✅ (2026-07-10)
+Phase 11 gated the six screens the desktop had gated. Seven were left on a bare
+`@attribute [Authorize]`: `/sale`, `/faturat`, `/kthimet`, `/arka`, `/stoku`,
+`/inventari`, `/barkod`. The desktop never gated these either — one cashier per
+station, so it never came up — so there was nothing to port and the gap was invisible.
+
+It surfaced the first time a second role existed: an **Accountant** (`fitim`, granted
+only reports / finance / purchases / partners) could open the till, refund a sale,
+close the shift and rewrite inventory quantities. Only `/perdoruesit` and `/articles`
+turned him away.
+
+The existing permission flags could not express this — none of them means "may sell" or
+"may touch stock". Two new columns on `POSUsers`, `CanSell` and `CanManageStock`, feed
+two new permissions (`sell`, `stock`) and two new checkboxes on `/perdoruesit`:
+
+| screens | permission | column |
+|---|---|---|
+| `/sale` `/faturat` `/kthimet` `/arka` | `perm:sell` | `CanSell` |
+| `/stoku` `/inventari` `/barkod` | `perm:stock` | `CanManageStock` |
+
+Migration `AddSellAndStockPermissions` adds both columns as `false`, which would lock
+every existing user out of screens they use daily, then backfills from the role presets
+(`CanSell` for Admin/Manager/Cashier, `CanManageStock` for Admin/Manager/Warehouse).
+Nobody gains access they did not already have.
+
+**Everyone is signed out by this deploy.** `BuildPrincipal` bakes permission claims into
+the auth cookie at sign-in, so cookies issued before this deploy lack `perm:sell` and
+`perm:stock` and would be denied the till. The cookie name is bumped to
+`KosovaPOS.Auth.v2` to force one clean re-login. (Contrast Phase 11, which only *read*
+claims that were already being issued.)
+
+The first-run seed no longer creates `admin`/`admin`. It reads `POS_SEED_ADMIN_USER` /
+`POS_SEED_ADMIN_NAME` / `POS_SEED_ADMIN_PASSWORD`, and with no password set it generates
+a random one and logs it once — there is no well-known default password any more.
+
+Verified against a throwaway Postgres seeded at the *previous* migration with four users,
+then migrated forward and driven over real cookie logins. Backfill landed exactly right
+(Accountant neither, Cashier sell-only, Warehouse stock-only, Admin both). All 13 gated
+routes probed per role: Admin 200 everywhere; Accountant 200 on exactly
+`/blerjet` `/financat` `/raportet` `/partneret` and 302 → `/nuk-keni-leje` on the other
+nine; Cashier 200 on the four till routes only; Warehouse 200 on the three stock routes
+plus `/articles` `/blerjet` `/partneret`. Not exercised: the interactive Blazor circuit.
+
+**Consequence worth knowing:** a Cashier can no longer open `/stoku` to look up stock on
+hand. If that bites at the till, either tick `Menaxho stokun` for that cashier or split
+the read-only `/stoku` onto a policy that accepts `sell` **or** `stock`.
+
 ## Phase 11 — nav shell, design pass, and an authz fix ✅ (2026-07-10)
 Until now every screen was reached from the tiles on `/` and navigated away from with
 a `← Ballina` link. With 14 screens that had stopped scaling.
@@ -396,10 +443,6 @@ scheme behind the proxy. DataProtection keys persist in the `pos-keys` volume so
 auth cookies survive redeploys.
 
 ## Known follow-ups
-- **Ungated screens still to review.** `/stoku`, `/inventari`, `/barkod` and `/kthimet`
-  take any authenticated user. That is deliberate for now (a cashier counts stock and
-  prints labels), but `/inventari` can rewrite quantities and `/kthimet` can refund —
-  decide whether those want `perm:articles` / `perm:manager`.
 - **Cut-over to pos.spacecode.tech:** only after Sale + core screens reach parity
   with the live React app; needs explicit go-ahead (replaces a live service).
 - **Decimal precision / column types:** review EF warnings before prod schema freeze.

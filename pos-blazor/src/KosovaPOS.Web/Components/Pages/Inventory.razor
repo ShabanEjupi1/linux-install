@@ -1,5 +1,5 @@
 @page "/inventari"
-@attribute [Authorize]
+@attribute [Authorize(Policy = "perm:stock")]
 @rendermode InteractiveServer
 @using System.Security.Claims
 @using KosovaPOS.Core.Services

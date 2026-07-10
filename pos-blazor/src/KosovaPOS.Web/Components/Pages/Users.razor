@@ -114,6 +114,8 @@
 
                 <fieldset class="perm-set">
                     <legend>Lejet</legend>
+                    <label class="chk"><input type="checkbox" @bind="_editing.CanSell" /> Shit (arka, faturat, kthimet)</label>
+                    <label class="chk"><input type="checkbox" @bind="_editing.CanManageStock" /> Menaxho stokun (gjendja, inventari, barkodi)</label>
                     <label class="chk"><input type="checkbox" @bind="_editing.CanManageArticles" /> Menaxho artikujt</label>
                     <label class="chk"><input type="checkbox" @bind="_editing.CanManagePurchases" /> Menaxho blerjet / partnerët</label>
                     <label class="chk"><input type="checkbox" @bind="_editing.CanViewReports" /> Shiko raportet / financat</label>
@@ -187,19 +189,21 @@
         switch (_editing.Role)
         {
             case "Admin":
-                Set(true, true, true, true, true, true, true); break;
+                Set(sell: true, stock: true, art: true, pur: true, rep: true, usr: true, prc: true, del: true, dis: true); break;
             case "Manager":
-                Set(true, true, true, false, true, true, true); break;
+                Set(sell: true, stock: true, art: true, pur: true, rep: true, usr: false, prc: true, del: true, dis: true); break;
             case "Cashier":
-                Set(false, false, false, false, false, false, false); break;
+                Set(sell: true, stock: false, art: false, pur: false, rep: false, usr: false, prc: false, del: false, dis: false); break;
             case "Warehouse":
-                Set(true, true, false, false, false, false, false); break;
+                Set(sell: false, stock: true, art: true, pur: true, rep: false, usr: false, prc: false, del: false, dis: false); break;
             case "Accountant":
-                Set(false, false, true, false, false, false, false); break;
+                Set(sell: false, stock: false, art: false, pur: false, rep: true, usr: false, prc: false, del: false, dis: false); break;
         }
 
-        void Set(bool art, bool pur, bool rep, bool usr, bool prc, bool del, bool dis)
+        void Set(bool sell, bool stock, bool art, bool pur, bool rep, bool usr, bool prc, bool del, bool dis)
         {
+            _editing.CanSell = sell;
+            _editing.CanManageStock = stock;
             _editing.CanManageArticles = art;
             _editing.CanManagePurchases = pur;
             _editing.CanViewReports = rep;
@@ -287,6 +291,8 @@
         LastLogin = u.LastLogin,
         Branch = u.Branch,
         PhoneNumber = u.PhoneNumber,
+        CanSell = u.CanSell,
+        CanManageStock = u.CanManageStock,
         CanManageArticles = u.CanManageArticles,
         CanManagePurchases = u.CanManagePurchases,
         CanManageUsers = u.CanManageUsers,

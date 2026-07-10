@@ -1,5 +1,5 @@
 @page "/kthimet"
-@attribute [Authorize]
+@attribute [Authorize(Policy = "perm:sell")]
 @rendermode InteractiveServer
 @using System.Security.Claims
 @using KosovaPOS.Core.Services

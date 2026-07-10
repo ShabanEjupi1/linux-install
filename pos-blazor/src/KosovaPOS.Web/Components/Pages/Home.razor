@@ -16,7 +16,10 @@
             <h1>@Greeting@(string.IsNullOrEmpty(_firstName) ? "" : $", {_firstName}")</h1>
             <span class="muted">@DateTime.Now.ToString("dd.MM.yyyy")</span>
         </div>
-        <a href="/sale" class="btn-primary btn-lg">🛒 Fillo shitjen</a>
+        @if (_canSell)
+        {
+            <a href="/sale" class="btn-primary btn-lg">🛒 Fillo shitjen</a>
+        }
     </header>
 
     <div class="stat-row">
@@ -32,31 +35,46 @@
             <span class="stat-label">Artikuj të shitur</span>
             <span class="stat-val">@_items</span>
         </div>
-        <a href="/arka" class="stat tile-link @(_shiftOpen ? "" : "warn")">
-            <span class="stat-label">Ndërrimi</span>
-            <span class="stat-val">@(_shiftOpen ? "I hapur" : "I mbyllur")</span>
-        </a>
+        @if (_canSell)
+        {
+            <a href="/arka" class="stat tile-link @(_shiftOpen ? "" : "warn")">
+                <span class="stat-label">Ndërrimi</span>
+                <span class="stat-val">@(_shiftOpen ? "I hapur" : "I mbyllur")</span>
+            </a>
+        }
     </div>
 
     <h2 class="section-title">Veprimet</h2>
     <div class="tiles">
         @* A tile the user cannot open is a dead end into the 403 page — each one
            mirrors the policy on the page it points at. *@
-        <a href="/sale" class="tile-link"><div class="tile">🛒 Shitje</div></a>
+        @if (_canSell)
+        {
+            <a href="/sale" class="tile-link"><div class="tile">🛒 Shitje</div></a>
+        }
         @if (_canArticles)
         {
             <a href="/articles" class="tile-link"><div class="tile">📦 Artikuj</div></a>
         }
-        <a href="/faturat" class="tile-link"><div class="tile">🧾 Faturat</div></a>
+        @if (_canSell)
+        {
+            <a href="/faturat" class="tile-link"><div class="tile">🧾 Faturat</div></a>
+        }
         @if (_canPurchases)
         {
             <a href="/blerjet" class="tile-link"><div class="tile">📥 Blerjet</div></a>
         }
-        <a href="/stoku" class="tile-link"><div class="tile">📊 Stoku</div></a>
-        <a href="/inventari" class="tile-link"><div class="tile">🗃️ Inventari</div></a>
-        <a href="/barkod" class="tile-link"><div class="tile">🏷️ Barkodi</div></a>
-        <a href="/arka" class="tile-link"><div class="tile">💵 Arka</div></a>
-        <a href="/kthimet" class="tile-link"><div class="tile">↩️ Kthimet</div></a>
+        @if (_canStock)
+        {
+            <a href="/stoku" class="tile-link"><div class="tile">📊 Stoku</div></a>
+            <a href="/inventari" class="tile-link"><div class="tile">🗃️ Inventari</div></a>
+            <a href="/barkod" class="tile-link"><div class="tile">🏷️ Barkodi</div></a>
+        }
+        @if (_canSell)
+        {
+            <a href="/arka" class="tile-link"><div class="tile">💵 Arka</div></a>
+            <a href="/kthimet" class="tile-link"><div class="tile">↩️ Kthimet</div></a>
+        }
         @if (_canPartners)
         {
             <a href="/partneret" class="tile-link"><div class="tile">🤝 Partnerët</div></a>
@@ -85,6 +103,8 @@
     private bool _canPurchases;
     private bool _canPartners;
     private bool _canArticles;
+    private bool _canSell;
+    private bool _canStock;
     private string _firstName = "";
     private decimal _revenue;
     private int _transactions;
@@ -107,6 +127,8 @@
             _canPurchases   = Can("purchases");
             _canPartners    = Can("partners");
             _canArticles    = Can("articles");
+            _canSell        = Can("sell");
+            _canStock       = Can("stock");
         }
 
         (_revenue, _transactions, _items) = await Sales.GetTodaySummaryAsync();

@@ -56,7 +56,8 @@ public class AuthService
     /// gateable on a page without touching Program.cs.
     /// </summary>
     public static readonly string[] AllPermissions =
-        ["reports", "purchases", "articles", "users", "settings", "manager", "finance", "partners"];
+        ["reports", "purchases", "articles", "users", "settings", "manager", "finance", "partners",
+         "sell", "stock"];
 
     /// <summary>
     /// Builds the claims identity stored in the auth cookie for a signed-in user,
@@ -97,6 +98,8 @@ public class AuthService
             "articles"  => user.CanManageArticles,
             "partners"  => user.CanManagePurchases,
             "settings"  => user.Role == "Manager",
+            "sell"      => user.CanSell,
+            "stock"     => user.CanManageStock,
             "users"     => user.CanManageUsers,
             "manager"   => user.Role == "Manager" || user.CanDeleteReceipts,
             _           => false

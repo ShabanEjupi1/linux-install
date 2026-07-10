@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Cryptography;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -44,7 +45,10 @@ builder.Services.AddScoped<KosovaPOS.Web.Services.HardwareBridge>();
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
     {
-        options.Cookie.Name = "KosovaPOS.Auth";
+        // Permission claims are baked into the cookie at sign-in, so adding a
+        // permission makes every outstanding cookie stale (it would be denied
+        // pages it should reach). Bumping the name forces one clean re-login.
+        options.Cookie.Name = "KosovaPOS.Auth.v2";
         options.LoginPath = "/login";
         options.AccessDeniedPath = "/nuk-keni-leje";
         options.ExpireTimeSpan = TimeSpan.FromHours(12);
@@ -76,8 +80,8 @@ var app = builder.Build();
 
 // ── Provision the database on startup ───────────────────────────────────
 // Apply pending EF migrations (idempotent) so a fresh container self-creates
-// its schema, then seed a single admin/admin user if the POSUsers table is
-// empty (first run only). Gate with POS_SKIP_DB_INIT=true to opt out.
+// its schema, then seed one Admin if the POSUsers table is empty (first run
+// only). Gate with POS_SKIP_DB_INIT=true to opt out.
 if (!string.Equals(Environment.GetEnvironmentVariable("POS_SKIP_DB_INIT"), "true",
         StringComparison.OrdinalIgnoreCase))
 {
@@ -88,13 +92,24 @@ if (!string.Equals(Environment.GetEnvironmentVariable("POS_SKIP_DB_INIT"), "true
 
     if (!await db.POSUsers.AnyAsync())
     {
+        var seedUser = Environment.GetEnvironmentVariable("POS_SEED_ADMIN_USER") ?? "shaban";
+        var seedName = Environment.GetEnvironmentVariable("POS_SEED_ADMIN_NAME") ?? "Shaban Ejupi";
+        var seedPassword = Environment.GetEnvironmentVariable("POS_SEED_ADMIN_PASSWORD");
+
+        // No well-known default password: an unattended first run gets a random
+        // one, logged once, that the operator must read out of the container log.
+        var generated = string.IsNullOrEmpty(seedPassword);
+        seedPassword ??= Convert.ToBase64String(RandomNumberGenerator.GetBytes(12));
+
         db.POSUsers.Add(new KosovaPOS.Models.BMDData.POSUser
         {
-            Username = "admin",
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword("admin"),
-            FullName = "Administrator",
+            Username = seedUser,
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword(seedPassword),
+            FullName = seedName,
             Role = "Admin",
             IsActive = true,
+            CanSell = true,
+            CanManageStock = true,
             CanManageArticles = true,
             CanManagePurchases = true,
             CanManageUsers = true,
@@ -104,6 +119,14 @@ if (!string.Equals(Environment.GetEnvironmentVariable("POS_SKIP_DB_INIT"), "true
             CanGiveDiscounts = true,
         });
         await db.SaveChangesAsync();
+
+        if (generated)
+        {
+            app.Services.GetRequiredService<ILoggerFactory>()
+                .CreateLogger("KosovaPOS.Seed")
+                .LogWarning("Seeded admin \"{User}\" with generated password: {Password} — change it now.",
+                    seedUser, seedPassword);
+        }
     }
 }
 

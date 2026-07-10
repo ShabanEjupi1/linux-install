@@ -73,6 +73,8 @@ public class UserService
         row.IsActive = user.IsActive;
         row.Branch = user.Branch;
         row.PhoneNumber = user.PhoneNumber;
+        row.CanSell = user.CanSell;
+        row.CanManageStock = user.CanManageStock;
         row.CanManageArticles = user.CanManageArticles;
         row.CanManagePurchases = user.CanManagePurchases;
         row.CanManageUsers = user.CanManageUsers;

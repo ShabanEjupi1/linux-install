@@ -1,5 +1,5 @@
 @page "/barkod"
-@attribute [Authorize]
+@attribute [Authorize(Policy = "perm:stock")]
 @rendermode InteractiveServer
 @using KosovaPOS.Core.Services
 @using KosovaPOS.Models

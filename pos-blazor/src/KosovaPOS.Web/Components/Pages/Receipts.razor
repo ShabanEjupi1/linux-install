@@ -1,5 +1,5 @@
 @page "/faturat"
-@attribute [Authorize]
+@attribute [Authorize(Policy = "perm:sell")]
 @rendermode InteractiveServer
 @using KosovaPOS.Core.Services
 @inject SalesService Sales
