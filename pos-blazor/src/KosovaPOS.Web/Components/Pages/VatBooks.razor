@@ -1,0 +1,122 @@
+@page "/librat"
+@attribute [Authorize(Policy = "perm:reports")]
+@rendermode InteractiveServer
+@using KosovaPOS.Core.Services
+@inject VatBookService Books
+@inject IJSRuntime JS
+
+<PageTitle>Librat e TVSH-së — KosovaPOS</PageTitle>
+
+<div class="mgmt">
+    <header class="mgmt-head">
+        <div>
+            <h1>Librat e TVSH-së</h1>
+            <p class="muted">Eksporto Librin e Shitjeve dhe Librin e Blerjeve në formatin e ATK-së (.xlsx), të gatshme për Deklaratën e TVSH-së.</p>
+        </div>
+    </header>
+
+    <section class="report-block">
+        <div class="block-head">
+            <h2>Periudha</h2>
+            <div class="controls">
+                <input type="date" class="input" @bind="_from" @bind:after="Refresh" />
+                <span>–</span>
+                <input type="date" class="input" @bind="_to" @bind:after="Refresh" />
+                <button class="btn-ghost" @onclick="Refresh" disabled="@_busy">Rifresko</button>
+            </div>
+        </div>
+
+        <div class="book-cards">
+            <div class="book-card">
+                <div class="book-ico">🧾</div>
+                <h3>Libri i Shitjeve</h3>
+                <p class="muted">Një rresht për çdo faturë të lëshuar, me ndarjen e TVSH-së 18% / 8% dhe kutitë e deklaratës.</p>
+                @if (_counts is not null)
+                {
+                    <p class="book-count @(_counts.SalesInvoices == 0 ? "zero" : "")">
+                        @_counts.SalesInvoices fatura në këtë periudhë
+                        @if (_counts.SalesInvoices == 0 && _counts.SalesMaxDate is { } sd)
+                        {
+                            <span class="hint">— shitja e fundit: @sd.ToString("dd.MM.yyyy")</span>
+                        }
+                    </p>
+                }
+                <button class="btn-primary" @onclick="DownloadSales" disabled="@(_busy || _counts?.SalesInvoices == 0)">
+                    @(_busy ? "Duke përgatitur…" : "Shkarko Librin e Shitjeve")
+                </button>
+            </div>
+
+            <div class="book-card">
+                <div class="book-ico">📥</div>
+                <h3>Libri i Blerjeve</h3>
+                <p class="muted">Një rresht për çdo faturë të pranuar, me TVSH-në e zbritshme 18% / 8% dhe kutitë e deklaratës.</p>
+                @if (_counts is not null)
+                {
+                    <p class="book-count @(_counts.PurchaseInvoices == 0 ? "zero" : "")">
+                        @_counts.PurchaseInvoices fatura në këtë periudhë
+                        @if (_counts.PurchaseInvoices == 0 && _counts.PurchaseMaxDate is { } pd)
+                        {
+                            <span class="hint">— blerja e fundit: @pd.ToString("dd.MM.yyyy")</span>
+                        }
+                    </p>
+                }
+                <button class="btn-primary" @onclick="DownloadPurchases" disabled="@(_busy || _counts?.PurchaseInvoices == 0)">
+                    @(_busy ? "Duke përgatitur…" : "Shkarko Librin e Blerjeve")
+                </button>
+            </div>
+        </div>
+
+        @if (_error is not null)
+        {
+            <p class="err-input">@_error</p>
+        }
+    </section>
+</div>
+
+@code {
+    private DateTime _from = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+    private DateTime _to = DateTime.Today;
+    private bool _busy;
+    private string? _error;
+    private VatBookService.BookCounts? _counts;
+
+    protected override Task OnInitializedAsync() => Refresh();
+
+    private async Task Refresh()
+    {
+        _error = null;
+        if (_to < _from) { _error = "Data e fillimit duhet të jetë para datës së mbarimit."; _counts = null; return; }
+        _busy = true;
+        try { _counts = await Books.CountAsync(_from, _to); }
+        catch (Exception ex) { _error = "Numërimi dështoi: " + ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private Task DownloadSales() =>
+        Export(() => Books.BuildSalesBookAsync(_from, _to), "Libri_i_Shitjeve");
+
+    private Task DownloadPurchases() =>
+        Export(() => Books.BuildPurchaseBookAsync(_from, _to), "Libri_i_Blerjeve");
+
+    private async Task Export(Func<Task<byte[]>> build, string prefix)
+    {
+        _error = null;
+        if (_to < _from) { _error = "Data e fillimit duhet të jetë para datës së mbarimit."; return; }
+        _busy = true;
+        try
+        {
+            var bytes = await build();
+            var name = $"{prefix}_{_from:yyyy-MM-dd}_{_to:yyyy-MM-dd}.xlsx";
+            await JS.InvokeVoidAsync("kosovaDownload", name, Convert.ToBase64String(bytes),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        }
+        catch (Exception ex)
+        {
+            _error = "Eksporti dështoi: " + ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

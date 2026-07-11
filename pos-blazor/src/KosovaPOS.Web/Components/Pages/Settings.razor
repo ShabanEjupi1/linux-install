@@ -1,0 +1,144 @@
+@page "/cilesimet"
+@attribute [Authorize(Policy = "perm:settings")]
+@rendermode InteractiveServer
+@using KosovaPOS.Core.Services
+@using KosovaPOS.Models
+@inject BusinessProfileService Profile
+@inject NavigationManager Nav
+
+<PageTitle>Cilësimet — KosovaPOS</PageTitle>
+
+<div class="mgmt">
+    <header class="mgmt-head">
+        <div>
+            <h1>Cilësimet</h1>
+            <span class="muted">Të dhënat e biznesit dhe profili i punës</span>
+        </div>
+    </header>
+
+    @if (!string.IsNullOrEmpty(_message))
+    {
+        <div class="sale-msg @(_success ? "ok" : "err")">@_message</div>
+    }
+
+    @if (_loading)
+    {
+        <p class="muted">Duke ngarkuar…</p>
+    }
+    else
+    {
+        <EditForm Model="_settings" OnValidSubmit="Save">
+            <fieldset class="settings-set">
+                <legend>Biznesi</legend>
+                <div class="form-grid">
+                    <div class="field span2">
+                        <label>Emri i biznesit</label>
+                        <input class="input" @bind="_settings.BusinessName" maxlength="200" />
+                        <p class="hint">Shfaqet në krye të faqes dhe në faturën jofiskale.</p>
+                    </div>
+                    <div class="field span2">
+                        <label>Adresa</label>
+                        <input class="input" @bind="_settings.Address" maxlength="200" />
+                        <p class="hint">Shtypet në kokën e faturës jofiskale.</p>
+                    </div>
+                    <div class="field">
+                        <label>Numri fiskal</label>
+                        <input class="input mono" @bind="_settings.FiscalNumber" maxlength="50" />
+                        <p class="hint warn">
+                            Përdoret vetëm në faturën jofiskale. Numri që i dërgohet ATK-së
+                            vjen nga <span class="mono">FISCAL_NUMBER</span> në agjentin e
+                            instaluar në PC-në e shitores — ndryshimi këtu nuk e prek atë.
+                        </p>
+                    </div>
+                </div>
+            </fieldset>
+
+            <fieldset class="settings-set">
+                <legend>Profili i biznesit</legend>
+                <div class="form-grid">
+                    <div class="field span2">
+                        <label>Lloji i veprimtarisë</label>
+                        <select class="input" @bind="_settings.Profile">
+                            @foreach (var p in Profiles)
+                            {
+                                <option value="@p">@ProfileLabel(p)</option>
+                            }
+                        </select>
+                        <p class="hint">Shfaqet nën emrin e biznesit në shiritin anësor.</p>
+                    </div>
+                </div>
+            </fieldset>
+
+            <div class="modal-actions">
+                <button type="submit" class="btn-primary" disabled="@_busy">
+                    @(_busy ? "Duke ruajtur…" : "Ruaj")
+                </button>
+            </div>
+        </EditForm>
+    }
+</div>
+
+@code {
+    private BusinessSettings _settings = new();
+    private bool _loading = true, _busy, _success;
+    private string? _message;
+
+    // Snapshot of the fields the shell reads, so a change to either can force the
+    // layout (static SSR, initialised once per navigation) to pick them up.
+    private string? _shellName;
+    private BusinessProfile _shellProfile;
+
+    private static readonly BusinessProfile[] Profiles = Enum.GetValues<BusinessProfile>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _settings = await Profile.GetSettingsAsync();
+        _shellName = _settings.BusinessName;
+        _shellProfile = _settings.Profile;
+        _loading = false;
+    }
+
+    private async Task Save()
+    {
+        _busy = true;
+        try
+        {
+            var shellChanged = _settings.BusinessName?.Trim() != _shellName?.Trim()
+                            || _settings.Profile != _shellProfile;
+
+            await Profile.SaveSettingsAsync(_settings);
+
+            if (shellChanged)
+            {
+                // The sidebar and app bar render in the static layout pass, so they
+                // keep the old name until the page is fetched again. Reloading is the
+                // feedback: the header visibly becomes the new name.
+                Nav.Refresh(forceReload: true);
+                return;
+            }
+
+            _success = true;
+            _message = "Cilësimet u ruajtën.";
+        }
+        catch (Exception ex)
+        {
+            _success = false;
+            _message = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private static string ProfileLabel(BusinessProfile p) => p switch
+    {
+        BusinessProfile.FoodAndBeverage => "Restorant",
+        BusinessProfile.Hospitality => "Hoteleri",
+        BusinessProfile.Wholesale => "Shumicë",
+        BusinessProfile.Pharmacy => "Farmaci",
+        BusinessProfile.Rental => "Qira",
+        BusinessProfile.Services => "Shërbime",
+        _ => "Dyqan (Retail)"
+    };
+}

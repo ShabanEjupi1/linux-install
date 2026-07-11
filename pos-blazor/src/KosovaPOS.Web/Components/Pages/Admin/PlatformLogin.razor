@@ -1,0 +1,68 @@
+@page "/admin/login"
+@layout EmptyLayout
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Authentication.Cookies
+@using KosovaPOS.Core.Services
+@inject PlatformAuthService PlatformAuth
+@inject NavigationManager Nav
+
+<PageTitle>Platforma — KosovaPOS</PageTitle>
+
+<div class="login-shell">
+    <div class="login-card">
+        <h1>KosovaPOS</h1>
+        <p class="subtitle">Konsola e platformës</p>
+
+        <EditForm Model="Model" OnValidSubmit="TryLogin" FormName="platform-login" method="post">
+            <DataAnnotationsValidator />
+            <div class="field">
+                <label>Operatori</label>
+                <InputText @bind-Value="Model.Username" class="input" autocomplete="username" />
+            </div>
+            <div class="field">
+                <label>Fjalëkalimi</label>
+                <InputText type="password" @bind-Value="Model.Password" class="input" autocomplete="current-password" />
+            </div>
+
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <div class="error">@_error</div>
+            }
+
+            <button type="submit" class="btn">Kyçu</button>
+        </EditForm>
+
+        <p class="subtitle" style="margin-top:1rem">
+            <a href="/login">Kyçu si përdorues i biznesit</a>
+        </p>
+    </div>
+</div>
+
+@code {
+    [CascadingParameter] public HttpContext HttpContext { get; set; } = default!;
+    [SupplyParameterFromForm] private LoginModel Model { get; set; } = new();
+    private string? _error;
+
+    private async Task TryLogin()
+    {
+        var admin = await PlatformAuth.AuthenticateAsync(Model.Username, Model.Password);
+        if (admin is null)
+        {
+            _error = "Operatori ose fjalëkalimi është gabim.";
+            return;
+        }
+
+        // Signs into the same cookie scheme as a business user, but with a principal
+        // that carries the platform claim and no bizid — so this session can reach
+        // the admin console and no business database at all.
+        var principal = AuthService.BuildPlatformPrincipal(admin, CookieAuthenticationDefaults.AuthenticationScheme);
+        await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal);
+        Nav.NavigateTo("/admin/bizneset", forceLoad: true);
+    }
+
+    public class LoginModel
+    {
+        public string Username { get; set; } = "";
+        public string Password { get; set; } = "";
+    }
+}

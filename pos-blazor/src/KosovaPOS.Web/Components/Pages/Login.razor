@@ -5,6 +5,8 @@
 @using Microsoft.AspNetCore.Authentication.Cookies
 @using KosovaPOS.Core.Services
 @inject AuthService Auth
+@inject BusinessRegistry Businesses
+@inject BusinessHostResolver Hosts
 @inject NavigationManager Nav
 
 <PageTitle>Kyçu — KosovaPOS</PageTitle>
@@ -12,10 +14,30 @@
 <div class="login-shell">
     <div class="login-card">
         <h1>KosovaPOS</h1>
-        <p class="subtitle">Kyçu në sistem</p>
+        @if (_pinnedByHost && _pinnedBusinessName is not null)
+        {
+            <p class="subtitle">@_pinnedBusinessName</p>
+        }
+        else
+        {
+            <p class="subtitle">Kyçu në sistem</p>
+        }
 
         <EditForm Model="Model" OnValidSubmit="TryLogin" FormName="login" method="post">
             <DataAnnotationsValidator />
+
+            @* On a business subdomain the host names the business, so the code is
+               fixed — showing the field would only invite a mismatch. On the apex
+               (pos.spacecode.tech) there is no host business, so it is asked for. *@
+            @if (!_pinnedByHost)
+            {
+                <div class="field">
+                    <label>Kodi i biznesit</label>
+                    <InputText @bind-Value="Model.BusinessCode" class="input" autocomplete="organization"
+                               autocapitalize="off" spellcheck="false" />
+                </div>
+            }
+
             <div class="field">
                 <label>Përdoruesi</label>
                 <InputText @bind-Value="Model.Username" class="input" autocomplete="username" />
@@ -40,22 +62,77 @@
     [SupplyParameterFromForm] private LoginModel Model { get; set; } = new();
     private string? _error;
 
+    private bool _pinnedByHost;
+    private string? _pinnedBusinessName;
+
+    /// <summary>
+    /// Remembers the last business code on this device, for the apex login only.
+    /// A till is used by one shop, so its cashiers should type the code once, not
+    /// every morning. Not a security boundary — it prefills a field, it does not
+    /// grant anything. On a business subdomain the host supplies the code, so this
+    /// is unused.
+    /// </summary>
+    private const string LastBusinessCookie = "KosovaPOS.Biz";
+
+    protected override async Task OnInitializedAsync()
+    {
+        // BL0008: a form post can hand back a null model.
+        Model ??= new();
+
+        // The host is the source of truth when it is a business subdomain. This runs
+        // after form binding, so a POST that tries to smuggle a different business
+        // code onto pos-bmd is overwritten with bmd before it is ever used.
+        var hostCode = Hosts.CodeFromHost(HttpContext.Request.Host.Value);
+        if (hostCode is not null)
+        {
+            _pinnedByHost = true;
+            Model.BusinessCode = hostCode;
+            _pinnedBusinessName = (await Businesses.GetActiveByCodeAsync(hostCode))?.Name;
+        }
+        else if (string.IsNullOrWhiteSpace(Model.BusinessCode))
+        {
+            Model.BusinessCode = HttpContext.Request.Cookies[LastBusinessCookie] ?? "";
+        }
+    }
+
     private async Task TryLogin()
     {
-        var user = await Auth.AuthenticateAsync(Model.Username, Model.Password);
-        if (user is null)
+        var business = await Businesses.GetActiveByCodeAsync(Model.BusinessCode);
+
+        // One message for "no such business", "no such user" and "wrong password".
+        // Distinguishing them would turn this form into an oracle for which
+        // businesses exist on the platform.
+        var user = business is null
+            ? null
+            : await Auth.AuthenticateAsync(business, Model.Username, Model.Password);
+
+        if (business is null || user is null)
         {
-            _error = "Përdoruesi ose fjalëkalimi është gabim.";
+            _error = "Kodi i biznesit, përdoruesi ose fjalëkalimi është gabim.";
             return;
         }
 
-        var principal = AuthService.BuildPrincipal(user, CookieAuthenticationDefaults.AuthenticationScheme);
+        // Only worth remembering on the apex; on a subdomain the host already carries it.
+        if (!_pinnedByHost)
+        {
+            HttpContext.Response.Cookies.Append(LastBusinessCookie, business.Code, new CookieOptions
+            {
+                MaxAge = TimeSpan.FromDays(365),
+                HttpOnly = true,
+                Secure = HttpContext.Request.IsHttps,
+                SameSite = SameSiteMode.Lax,
+                IsEssential = true,
+            });
+        }
+
+        var principal = AuthService.BuildPrincipal(user, business, CookieAuthenticationDefaults.AuthenticationScheme);
         await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal);
         Nav.NavigateTo("/", forceLoad: true);
     }
 
     public class LoginModel
     {
+        public string BusinessCode { get; set; } = "";
         public string Username { get; set; } = "";
         public string Password { get; set; } = "";
     }

@@ -98,13 +98,21 @@ if ($Probe) {
             "{0,-16} {1,10}" -f $t, "MISSING/ERR" | Write-Host
         }
     }
-    # how fresh is the desktop data?
+    # how fresh is the desktop data, per journal?
     $cmd = $conn.CreateCommand()
     $cmd.CommandText = "SELECT MAX([DATA]) FROM [dbo].[DitariD]"
-    Write-Host "`nNewest sale in BMDData: $($cmd.ExecuteScalar())"
-    Write-Host "Web POS currently holds up to: 2026-01-14"
+    Write-Host "`nNewest SALE     in BMDData: $($cmd.ExecuteScalar())"
+    $cmd.CommandText = "SELECT MAX([DATA]) FROM [dbo].[DitariH]"
+    Write-Host "Newest PURCHASE in BMDData: $($cmd.ExecuteScalar())"
+    # Date span of the purchases the web POS is still MISSING (ID > watermark 3365).
+    $cmd.CommandText = "SELECT MIN([DATA]), MAX([DATA]) FROM [dbo].[DitariH] WHERE [ID] > 3365"
+    $rr = $cmd.ExecuteReader(); [void]$rr.Read()
+    if (-not $rr.IsDBNull(0)) { Write-Host "Purchases NEWER than the web POS: $($rr.GetValue(0)) .. $($rr.GetValue(1))" }
+    else { Write-Host "Purchases NEWER than the web POS: NONE (desktop has nothing past ID 3365 / 2026-03-27)" }
+    $rr.Close()
+    Write-Host "`nWeb POS currently holds: sales up to 2026-07-09 (ID 18775), purchases up to 2026-03-27 (ID 3365)."
     $conn.Close()
-    Write-Host "`nProbe only - nothing exported. Send this table back."
+    Write-Host "`nProbe only - nothing exported. Send this output back."
     exit 0
 }
 

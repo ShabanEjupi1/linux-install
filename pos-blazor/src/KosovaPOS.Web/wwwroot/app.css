@@ -539,3 +539,38 @@ a.stat:hover { border-color: var(--accent); }
 .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1.2rem; margin-top: 1rem; }
 .two-col h3 { font-size: .95rem; margin: 0 0 .5rem; color: var(--ink-2); }
 @media (max-width: 720px) { .two-col { grid-template-columns: 1fr; } }
+
+/* VAT books (/librat) */
+.book-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 1.2rem; }
+.book-card {
+  border: 1px solid var(--line); border-radius: var(--r-xl); padding: 1.4rem;
+  background: var(--surface-2, var(--surface)); display: flex; flex-direction: column;
+  align-items: flex-start; gap: .5rem;
+}
+.book-card .book-ico { font-size: 2rem; line-height: 1; }
+.book-card h3 { margin: 0; font-size: 1.05rem; }
+.book-card p { margin: 0; flex: 1; }
+.book-card .btn-primary { margin-top: .6rem; }
+.book-card .book-count { margin: 0; font-weight: 600; font-size: .9rem; }
+.book-card .book-count.zero { color: var(--danger); font-weight: 500; }
+.book-card .book-count .hint { font-weight: 400; color: var(--muted); }
+@media (max-width: 720px) { .book-cards { grid-template-columns: 1fr; } }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Settings (Cilësimet)
+   ═══════════════════════════════════════════════════════════════════════════ */
+/* Utility; .grid-table .mono is more specific, so table cells keep their colour. */
+.mono { font-family: ui-monospace, Menlo, Consolas, monospace; }
+
+.settings-set {
+  border: 1px solid var(--line); border-radius: var(--r-md);
+  padding: .9rem 1rem 1rem; margin-top: 1rem;
+}
+.settings-set legend { padding: 0 .4rem; font-size: .9rem; color: var(--muted); }
+
+.hint { margin: .35rem 0 0; font-size: .78rem; color: var(--muted); line-height: 1.45; }
+.hint.warn {
+  background: var(--warn-bg); border: 1px solid var(--warn-line); color: var(--warn);
+  border-radius: var(--r); padding: .45rem .6rem;
+}
+.hint .mono { font-size: .75rem; }

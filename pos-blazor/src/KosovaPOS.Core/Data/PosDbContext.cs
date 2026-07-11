@@ -17,12 +17,10 @@ public class PosDbContext : DbContext
 {
     static PosDbContext()
     {
-        // The desktop models use DateTime.Now/Today (Kind=Local) as wall-clock
-        // values, not tz-aware instants. Legacy behaviour maps DateTime to
-        // 'timestamp without time zone' and accepts Local/Unspecified kinds, so
-        // the ported services work unchanged. Set before any Npgsql data source
-        // is built (static ctor runs on first type access).
-        AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
+        // Belt and braces: every entry point already calls this before opening any
+        // context (see NpgsqlCompat). Relying on this static constructor alone is
+        // what broke ControlDbContext, which gets used first at startup.
+        NpgsqlCompat.EnableLegacyTimestampBehavior();
     }
 
     public PosDbContext(DbContextOptions<PosDbContext> options) : base(options) { }

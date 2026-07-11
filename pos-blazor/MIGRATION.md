@@ -549,6 +549,175 @@ re-entered by hand before it can ever feed a fiscal receipt.
 `import-bmddata.py` now skips (loudly) any table with no CSV in the export dir, so
 a partial backfill of just the new tables is a supported run.
 
+## Phase 15 — Settings screen; the Enable* flags gate nothing
+
+`/cilesimet` (perm:settings — Admin or Manager) is the first UI over
+`BusinessSettings`, the singleton row the shell and the non-fiscal receipt read.
+It edits exactly four fields, because those are the four anything consumes:
+
+| Field | Consumed by |
+|---|---|
+| `BusinessName` | sidebar brand, app-bar title, receipt header |
+| `Address` | receipt header |
+| `FiscalNumber` | receipt header **only** — see the warning below |
+| `Profile` | sidebar sub-label; `TenantService.IsRestaurantAsync()` |
+
+**The 20 `Enable*` toggles have no consumers and are deliberately not rendered.**
+A grep across `src/` finds exactly two references outside the model and the
+migrations — `EnableTableManagement` and `EnableKitchenDisplay`, both inside
+`IsRestaurantAsync()`, which nothing called before this phase. There are models
+for Loyalty, GiftCards, Rentals, Appointments, KitchenOrder, Delivery, Bundles,
+Variants, PriceRules and PurchaseOrders, but no screens and no code that reads
+the flag. Shipping the switches now would let an operator "enable" features that
+can never turn on. **Each toggle lands in the commit that implements the feature
+it gates, not before.**
+
+`SaveSettingsAsync` therefore copies field-by-field onto the tracked row rather
+than attaching the form's instance: the form binds four columns, and replacing
+the whole row would reset the other ~24 (including `RestApiKey` and any toggle a
+future screen has set) to their CLR defaults.
+
+⚠️ **`BusinessSettings.FiscalNumber` is not the fiscal device's number.** It is
+printed on the courtesy receipt. What ATK sees comes from `FISCAL_NUMBER` in the
+agent's service environment on the shop PC (`install-agent.ps1`). The two are
+independent, and the screen says so.
+
+## Phase 16 — multi-business: one database per business ✅ (2026-07-10)
+
+The platform now serves many businesses. Isolation is the **database boundary**,
+not a `TenantId` column: there are still zero tenant columns across the 70 DbSets,
+and there never will be. A query that forgets to filter by business cannot reach
+another business's rows, because it is not connected to them.
+
+**The seam.** All 12 domain services already injected
+`IDbContextFactory<PosDbContext>` and only ever called `CreateDbContextAsync()`.
+`AddDbContextFactory<PosDbContext>` is gone; a scoped `TenantDbContextFactory`
+takes its place and resolves the database from the signed-in user's `bizid` claim
+on every context it opens. **No service changed.** It has no default and no
+fallback — a scope with no business gets `NoBusinessInScopeException`, never the
+primary database.
+
+**Why the claim and not the URL.** The claim is signed by DataProtection, so it
+cannot be forged, and it survives a Blazor Server circuit:
+`PosAuthStateProvider` captures the principal while the initial HTTP request is
+still in flight, which is the only reason `HttpContext` being long gone by query
+time does not matter. The claim carries the business *id*; the database name is
+looked up in `BusinessRegistry` on every resolve, so **deactivating a business
+locks out its live sessions within the 30s cache TTL** rather than waiting out
+their 12-hour cookies. A deactivated session is signed out and bounced to
+`/login` by middleware, not shown a 500.
+
+**Control database (`pos_control`).** Its own context, its own migration history:
+`Businesses` (Code, Name, DatabaseName, IsActive) and `PlatformAdmins`. Holds no
+business data. `Code` and `DatabaseName` are both unique — two rows sharing either
+would silently cross-wire two businesses.
+
+**Login** grew a "Kodi i biznesit" field, remembered in the `KosovaPOS.Biz` cookie
+so a till types it once. Unknown business, unknown user and wrong password all
+return **one** message: distinguishing them turns the form into an oracle for
+which businesses exist. `AuthService.AuthenticateAsync` now takes the `Business`
+as an argument — at login there is no signed-in user to resolve one from, so it is
+the one service that must not use the tenant-aware factory.
+
+**Platform admins** sign in at `/admin/login` and manage businesses at
+`/admin/bizneset`. They hold `platform` and **no `bizid`**, so the factory opens
+no business database for them at all — reaching business data will be a deliberate,
+audited impersonation step (Phase 17), not a side effect of being an admin. `/` is
+now gated on the `business` policy so they cannot land on a dashboard whose first
+query has nowhere to run.
+
+**Provisioning** (`BusinessProvisioner`) does CREATE DATABASE → migrate → seed
+Admin → register, in that order. Registered **last**: an unregistered database is
+inert and the operation is re-runnable, whereas a registry row pointing at a
+database that failed to migrate is a business whose users can log into a broken
+app. It **never drops a database** — a rollback path is one bug away from deleting
+a live shop.
+
+⚠️ **`PgIdentifier` is the entire defence against SQL injection here.** A database
+name is an identifier, not a value, so `CREATE DATABASE` cannot parameterize it and
+the name is concatenated into the statement. The class allowlists
+`^[a-z][a-z0-9_]*$` rather than escaping, and reserves `control`/`postgres`/
+`template0`/`template1`/`admin` — `control` would otherwise provision `pos_control`
+straight on top of the registry. Verified: `bmd"; DROP DATABASE kosovapos; --` is
+refused. Codes are lowercased before validation, so `UPPER` is accepted **as**
+`upper`, matching what login does with the same input.
+
+**Rollout is a no-op for the existing shop.** On first boot with an empty registry,
+the app adopts the database `POS_DB_CONNECTION` already names as business #1 under
+`POS_PRIMARY_BUSINESS_CODE` (`bmd`), taking its name from `BusinessSettings`. No
+data moves. Its users simply start typing a code. The auth cookie is bumped to
+`KosovaPOS.Auth.v3` because a v2 cookie names no database.
+
+🚨 **`NpgsqlCompat.EnableLegacyTimestampBehavior()` — a global that used to turn on
+by accident.** The switch was set in `PosDbContext`'s *static constructor*, so it
+only applied once something touched that type. `ControlDbContext` is opened first
+at startup, so the switch was still off and writing `DateTime.Now` (Kind=Local)
+threw; the control migration also scaffolded as `timestamptz` while the app writes
+`timestamp`. Both contexts and every entry point (web host, both design-time
+factories) now call it explicitly. **`dotnet ef` must scaffold under the same
+mapping the app runs with**, which is why the design-time factories set it too.
+
+Migrations now need `--context`, and design-time factories exist for both contexts
+because the tooling can no longer pull options out of the host's DI:
+
+```bash
+dotnet ef migrations add <Name> --context PosDbContext \
+  -p src/KosovaPOS.Core -s src/KosovaPOS.Web
+dotnet ef migrations add <Name> --context ControlDbContext \
+  -p src/KosovaPOS.Core -s src/KosovaPOS.Web -o Migrations/Control
+```
+
+Startup migrates every active business serially. That is a loud, early failure for
+a handful of shops; **it makes container start time grow with the customer count**,
+so move it to a background service before this serves dozens.
+
+`TenantService` was renamed `BusinessProfileService`. It selects which *UI* a
+business sees (Retail vs restaurant) and was never tenancy — with a real tenant
+boundary in the codebase, the old name was a landmine.
+
+Verified end-to-end against a throwaway Postgres: shop A's article is invisible to
+shop B over HTTP and vice versa; a platform admin is refused `/`; a business user
+is refused `/admin/bizneset`; deactivation bounces a live session to `/login` while
+the other shop is unaffected; reactivation restores it.
+
+### Per-business subdomains — `pos-<code>.spacecode.tech`
+
+Each shop now has its own hostname; the apex `pos.spacecode.tech` keeps the code-field
+login and hosts `/admin`. The design goal was **zero per-shop ops**: creating a business
+in the console makes its URL work immediately.
+
+- **First-level, `pos-` prefixed, on purpose.** Cloudflare's free Universal SSL covers the
+  apex and *one* subdomain level, so `pos-bmd.spacecode.tech` is inside the free
+  `*.spacecode.tech` cert; `bmd.pos.spacecode.tech` would need paid ACM. The `pos-` prefix
+  keeps shop hosts out of the infra namespace (mail/git/ssh/audit). And cloudflared only
+  wildcards a rule starting with `*.`, so `pos-*` can't be expressed at the edge anyway —
+  the prefix scoping lives in `BusinessHostResolver`, which resolves a Host header to a
+  business code and rejects anything that isn't `pos-<valid-code>` exactly one level deep
+  (`pos-bmd.evil.spacecode.tech` → no match).
+
+- **The Host header resolves the business; the `bizid` claim still owns the data.** On a
+  business subdomain the login form hides the code field and pins the business from the
+  host — a POST that tries to smuggle a different code onto `pos-bmd` is overwritten with
+  `bmd` in `OnInitializedAsync` (which runs after form binding) before it is used.
+
+- **Two layers keep one shop's session off another's host.** The auth cookie is host-only
+  (no `Domain` set), so a cookie minted on `pos-bmd` is never sent to `pos-enisi`. Behind
+  that, a middleware refuses to serve any session whose `bizid` doesn't match the host's
+  business and bounces it to that host's `/login` — without clearing the real session on
+  its own host. Verified: a valid bmd session sent to `pos-enisi` is rejected, then still
+  works on `pos-bmd`; login on each subdomain needs only username + password and shows the
+  right shop's name.
+
+- **Ops is one DNS record + one tunnel rule** (`pos-blazor/deploy/subdomains.md`): a proxied
+  `*` CNAME on the zone, and a `*.spacecode.tech` cloudflared ingress rule placed *after*
+  the specific infra hostnames. nginx `server_name` is now a regex matching `pos-<label>`
+  and bare `pos`. Config: `POS_BASE_HOST` / `POS_HOST_PREFIX`.
+
+  ⚠️ The wildcard makes the POS the catch-all for any otherwise-unmatched first-level
+  subdomain on `spacecode.tech`. Acceptable (the app only answers hosts it recognises), but
+  if you'd rather scope tightly, drop the wildcard and create one `pos-<code>` CNAME per
+  shop at onboarding instead.
+
 ## Known follow-ups
 - **Cut-over to pos.spacecode.tech:** only after Sale + core screens reach parity
   with the live React app; needs explicit go-ahead (replaces a live service).
@@ -556,3 +725,14 @@ a partial backfill of just the new tables is a supported run.
 - **Data migration** from the desktop SQL Server (BMDData) into Postgres.
 - **Auth revalidation:** `PosAuthStateProvider` captures the principal at circuit
   start; consider DB revalidation for long-lived sessions / disabled users.
+- **Phase 17 — impersonation.** "Log in as any user in any company" must be built
+  as *impersonation*, never as a second login: the session records you acting as
+  them, receipts carry both identities, a banner stays visible, and both the control
+  and business databases get an audit row. Anything less makes the ATK audit trail
+  worthless to you and to the shop owner. Needs a `Receipt.ImpersonatedBy` column,
+  i.e. a migration across every business database.
+- **Startup migration sweep** is serial and blocking; move to a background service
+  once the business count grows.
+- **Login is still unthrottled** — now across every business at once.
+- **Read-only DB console** inside the POS (decided against a generic row editor;
+  CloudBeaver/pgAdmin behind the tunnel covers the operator case).

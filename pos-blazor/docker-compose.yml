@@ -1,7 +1,16 @@
 # KosovaPOS Blazor web — deploy on Ampere alongside the existing stack.
 # Ships with its OWN dedicated Postgres (fully isolated from Supabase / pos-web).
-# The app self-provisions its schema (EF migrate) and seeds admin/admin on first
-# run. Set POSTGRES_PASSWORD in a .env file next to this compose file.
+#
+# One database per business. On boot the app creates the control database
+# (pos_control), registers the existing `kosovapos` database as the primary
+# business under POS_PRIMARY_BUSINESS_CODE, and migrates every business it finds.
+# New businesses are created from /admin/bizneset, which needs the app's Postgres
+# role to be able to CREATE DATABASE — `pos` is this container's bootstrap
+# superuser, so it can.
+#
+# Set POSTGRES_PASSWORD and POS_PLATFORM_ADMIN_PASSWORD in a .env file next to
+# this compose file. Without the latter, a random platform password is generated
+# and written once to the container log.
 services:
   pos-blazor-db:
     image: postgres:16-alpine
@@ -28,7 +37,18 @@ services:
       pos-blazor-db:
         condition: service_healthy
     environment:
+      # Template: Database= is swapped per business. The database it names is the
+      # primary business, whose data predates multi-business and never moved.
       POS_DB_CONNECTION: "Host=pos-blazor-db;Port=5432;Database=kosovapos;Username=pos;Password=${POSTGRES_PASSWORD}"
+      # The login code the existing shop's users must now type. Changing it after
+      # the first boot does nothing — adoption only runs while the registry is empty.
+      POS_PRIMARY_BUSINESS_CODE: "bmd"
+      # Per-business subdomains: each shop is served at pos-<code>.<POS_BASE_HOST>.
+      # One-time DNS + tunnel setup in pos-blazor/deploy/subdomains.md.
+      POS_BASE_HOST: "spacecode.tech"
+      POS_HOST_PREFIX: "pos-"
+      POS_PLATFORM_ADMIN_USER: "platform"
+      POS_PLATFORM_ADMIN_PASSWORD: ${POS_PLATFORM_ADMIN_PASSWORD:-}
       POS_KEYS_DIR: /keys
       ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
     volumes:

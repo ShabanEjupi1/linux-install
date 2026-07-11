@@ -2,7 +2,9 @@
 @using System.Security.Claims
 @using KosovaPOS.Core.Services
 @using KosovaPOS.Models
-@inject TenantService Tenant
+@using KosovaPOS.Web.Services
+@inject BusinessProfileService Profile
+@inject CurrentBusiness CurrentBiz
 
 @* The layout renders in static SSR even when the page inside it is
    InteractiveServer, so the sidebar cannot use @onclick. The mobile drawer is
@@ -68,12 +70,13 @@
                 @if (_canReports)
                 {
                     <NavLink class="nav-link" href="/raportet"><span class="nav-ico">📈</span> Raportet</NavLink>
+                    <NavLink class="nav-link" href="/librat"><span class="nav-ico">📚</span> Librat e TVSH-së</NavLink>
                 }
             }
 
             @* Every link under Sistemi is permission-gated, so the heading has to
                go too — a Cashier would otherwise see an empty section. *@
-            @if (_canPartners || _canManageUsers)
+            @if (_canPartners || _canManageUsers || _canSettings)
             {
                 <p class="nav-group">Sistemi</p>
                 @if (_canPartners)
@@ -84,6 +87,16 @@
                 {
                     <NavLink class="nav-link" href="/perdoruesit"><span class="nav-ico">👥</span> Përdoruesit</NavLink>
                 }
+                @if (_canSettings)
+                {
+                    <NavLink class="nav-link" href="/cilesimet"><span class="nav-ico">⚙️</span> Cilësimet</NavLink>
+                }
+            }
+
+            @if (_isPlatformAdmin)
+            {
+                <p class="nav-group">Platforma</p>
+                <NavLink class="nav-link" href="/admin/bizneset"><span class="nav-ico">🏢</span> Bizneset</NavLink>
             }
         </nav>
     </aside>
@@ -127,6 +140,8 @@
     private bool _canArticles;
     private bool _canSell;
     private bool _canStock;
+    private bool _canSettings;
+    private bool _isPlatformAdmin;
     private string _fullName = "";
     private string _role = "";
 
@@ -138,6 +153,7 @@
             _fullName = user.FindFirst(AuthService.FullNameClaim)?.Value
                         ?? user.Identity?.Name ?? "";
             _role = user.FindFirst(ClaimTypes.Role)?.Value ?? "";
+            _isPlatformAdmin = user.HasClaim(AuthService.PlatformAdminClaim, "true");
 
             bool Can(string perm) => user.HasClaim(AuthService.PermissionClaim, perm);
             _canManageUsers = Can("users");
@@ -148,13 +164,18 @@
             _canArticles    = Can("articles");
             _canSell        = Can("sell");
             _canStock       = Can("stock");
+            _canSettings    = Can("settings");
         }
 
-        _settings = await Tenant.GetSettingsAsync();
+        // A platform admin has no business, so there is no database to read settings
+        // from. Asking anyway would throw NoBusinessInScopeException and take down
+        // the shell they navigate the admin console with.
+        if (await CurrentBiz.GetAsync() is not null)
+            _settings = await Profile.GetSettingsAsync();
     }
 
     private string BusinessName => string.IsNullOrWhiteSpace(_settings?.BusinessName)
-        ? "KosovaPOS"
+        ? (_isPlatformAdmin ? "Platforma" : "KosovaPOS")
         : _settings!.BusinessName;
 
     private string ProfileLabel => _settings?.Profile switch
