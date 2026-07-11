@@ -82,4 +82,22 @@ public sealed class BusinessHostResolver
 
     /// <summary>The canonical https URL for a business code.</summary>
     public string UrlForCode(string code) => $"https://{HostForCode(code)}/";
+
+    /// <summary>
+    /// True when a request Host is the zone apex or any subdomain of it — i.e. we
+    /// are genuinely serving under <see cref="BaseHost"/> (production), not a dev
+    /// box on localhost. Redirecting an apex login to <c>pos-&lt;code&gt;.BaseHost</c>
+    /// only makes sense here; on localhost it would bounce the developer to the
+    /// live site. Port and case are ignored.
+    /// </summary>
+    public bool IsUnderBaseHost(string? host)
+    {
+        if (string.IsNullOrWhiteSpace(host))
+            return false;
+        host = host.Trim().ToLowerInvariant();
+        var colon = host.IndexOf(':');
+        if (colon >= 0)
+            host = host[..colon];
+        return host == BaseHost || host.EndsWith(_suffix, StringComparison.Ordinal);
+    }
 }

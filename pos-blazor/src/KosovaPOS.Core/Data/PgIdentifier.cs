@@ -20,6 +20,19 @@ public static partial class PgIdentifier
     [GeneratedRegex("^[a-z][a-z0-9_]*$")]
     private static partial Regex Allowed();
 
+    /// <summary>
+    /// A business code may also start with a digit (a fiscal/business number such
+    /// as "811274183" is a natural code). This is safe where the strict rule is
+    /// not: a code is never concatenated into DDL on its own — it becomes the
+    /// database name only via <see cref="DatabaseNameForCode"/>, which prepends
+    /// "pos_", so the name handed to <c>CREATE DATABASE</c> always starts with a
+    /// letter and still passes <see cref="IsValidDatabaseName"/>. Everywhere else
+    /// the code is used (a control-DB lookup, a hostname label) a leading digit is
+    /// fine. Still lowercase-only, still no dashes/quotes/whitespace.
+    /// </summary>
+    [GeneratedRegex("^[a-z0-9][a-z0-9_]*$")]
+    private static partial Regex AllowedCode();
+
     /// <summary>Postgres truncates identifiers past 63 bytes.</summary>
     public const int MaxDatabaseNameLength = 63;
 
@@ -37,7 +50,7 @@ public static partial class PgIdentifier
     public static bool IsValidCode(string? code) =>
         !string.IsNullOrEmpty(code)
         && code.Length is >= 2 and <= MaxCodeLength
-        && Allowed().IsMatch(code)
+        && AllowedCode().IsMatch(code)
         && !ReservedCodes.Contains(code);
 
     public static bool IsValidDatabaseName(string? name) =>

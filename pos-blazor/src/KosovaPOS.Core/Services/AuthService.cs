@@ -55,6 +55,28 @@ public class AuthService
         return valid ? user : null;
     }
 
+    /// <summary>
+    /// The users of one business, for the platform impersonation console. Uses the
+    /// non-tenant factory with an explicit business because the caller is a platform
+    /// admin, who has no business in scope — the tenant-aware factory would throw.
+    /// </summary>
+    public async Task<List<POSUser>> ListUsersAsync(Business business)
+    {
+        ArgumentNullException.ThrowIfNull(business);
+        await using var db = _posFactory.CreateFor(business);
+        return await db.POSUsers.AsNoTracking()
+            .OrderByDescending(u => u.IsActive).ThenBy(u => u.Username)
+            .ToListAsync();
+    }
+
+    /// <summary>One user of one business by id, for impersonation. See <see cref="ListUsersAsync"/>.</summary>
+    public async Task<POSUser?> FindUserAsync(Business business, int userId)
+    {
+        ArgumentNullException.ThrowIfNull(business);
+        await using var db = _posFactory.CreateFor(business);
+        return await db.POSUsers.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
+    }
+
     public const string FullNameClaim = "full_name";
     public const string UserIdClaim = "uid";
     public const string PermissionClaim = "perm";
@@ -70,6 +92,16 @@ public class AuthService
 
     /// <summary>Marks a platform operator. Mutually exclusive with <see cref="BusinessIdClaim"/>.</summary>
     public const string PlatformAdminClaim = "platform";
+
+    /// <summary>
+    /// Present only while a platform admin is impersonating a business user. Holds
+    /// the platform operator's username, name and id so the banner can name who is
+    /// really driving and "exit impersonation" can restore the platform session
+    /// without a second login. Its presence is what the impersonation banner keys on.
+    /// </summary>
+    public const string ImpersonatorClaim = "impersonator";
+    public const string ImpersonatorNameClaim = "impersonator_name";
+    public const string ImpersonatorIdClaim = "impersonator_uid";
 
     /// <summary>Authorization policy name guarding the /admin area.</summary>
     public const string PlatformPolicy = "platform-admin";
@@ -95,7 +127,8 @@ public class AuthService
     /// including a claim per granted permission so components can gate UI cheaply,
     /// and the business the session is pinned to.
     /// </summary>
-    public static ClaimsPrincipal BuildPrincipal(POSUser user, Business business, string authScheme)
+    public static ClaimsPrincipal BuildPrincipal(POSUser user, Business business, string authScheme,
+        ClaimsPrincipal? impersonator = null)
     {
         var claims = new List<Claim>
         {
@@ -114,6 +147,39 @@ public class AuthService
                 claims.Add(new Claim(PermissionClaim, perm));
         }
 
+        // Stamp who is really driving, so the session is a business user for every
+        // gate and query (the point of impersonation) yet still auditable and
+        // reversible. Only honoured from a genuine platform-admin principal.
+        if (impersonator is not null && impersonator.HasClaim(PlatformAdminClaim, "true"))
+        {
+            claims.Add(new Claim(ImpersonatorClaim, impersonator.Identity?.Name ?? ""));
+            claims.Add(new Claim(ImpersonatorNameClaim,
+                impersonator.FindFirst(FullNameClaim)?.Value ?? impersonator.Identity?.Name ?? ""));
+            claims.Add(new Claim(ImpersonatorIdClaim, impersonator.FindFirst(UserIdClaim)?.Value ?? ""));
+        }
+
+        return new ClaimsPrincipal(new ClaimsIdentity(claims, authScheme));
+    }
+
+    /// <summary>
+    /// Rebuilds a platform-admin principal from the impersonator claims carried by
+    /// an impersonating session, so "exit impersonation" restores the operator
+    /// without a second password prompt. Returns null if the principal is not
+    /// actually impersonating (no impersonator claim).
+    /// </summary>
+    public static ClaimsPrincipal? BuildPrincipalFromImpersonator(ClaimsPrincipal impersonating, string authScheme)
+    {
+        var username = impersonating.FindFirst(ImpersonatorClaim)?.Value;
+        if (string.IsNullOrEmpty(username))
+            return null;
+
+        var claims = new List<Claim>
+        {
+            new(ClaimTypes.Name, username),
+            new(FullNameClaim, impersonating.FindFirst(ImpersonatorNameClaim)?.Value ?? username),
+            new(UserIdClaim, impersonating.FindFirst(ImpersonatorIdClaim)?.Value ?? ""),
+            new(PlatformAdminClaim, "true"),
+        };
         return new ClaimsPrincipal(new ClaimsIdentity(claims, authScheme));
     }
 

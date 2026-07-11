@@ -42,11 +42,18 @@ services:
       POS_DB_CONNECTION: "Host=pos-blazor-db;Port=5432;Database=kosovapos;Username=pos;Password=${POSTGRES_PASSWORD}"
       # The login code the existing shop's users must now type. Changing it after
       # the first boot does nothing — adoption only runs while the registry is empty.
-      POS_PRIMARY_BUSINESS_CODE: "bmd"
+      # (The live business was re-coded from "bmd" to the fiscal number directly in
+      # the control DB; this value only matters for a fresh, empty deployment.)
+      POS_PRIMARY_BUSINESS_CODE: "811274183"
       # Per-business subdomains: each shop is served at pos-<code>.<POS_BASE_HOST>.
       # One-time DNS + tunnel setup in pos-blazor/deploy/subdomains.md.
       POS_BASE_HOST: "spacecode.tech"
       POS_HOST_PREFIX: "pos-"
+      # Share the auth cookie across every pos-<code>.spacecode.tech so an apex login
+      # redirects to the shop's own subdomain already signed in, and a platform admin
+      # can impersonate into a shop on its host. The bizid-vs-host middleware still
+      # refuses one shop's session on another shop's host.
+      POS_COOKIE_DOMAIN: ".spacecode.tech"
       POS_PLATFORM_ADMIN_USER: "platform"
       POS_PLATFORM_ADMIN_PASSWORD: ${POS_PLATFORM_ADMIN_PASSWORD:-}
       POS_KEYS_DIR: /keys

@@ -574,3 +574,15 @@ a.stat:hover { border-color: var(--accent); }
   border-radius: var(--r); padding: .45rem .6rem;
 }
 .hint .mono { font-size: .75rem; }
+
+/* Impersonation banner — a platform admin driving a shop user's session. Amber,
+   sticky at the top of the main pane so it is never lost while scrolling. */
+.impersonation-bar {
+  display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+  padding: .5rem 1rem;
+  background: var(--warn-bg); border-bottom: 2px solid var(--warn-line);
+  color: var(--warn); font-size: .9rem;
+}
+.impersonation-bar > span { flex: 1 1 auto; }
+.impersonation-bar form { margin: 0; }
+.impersonation-bar .btn-ghost { border-color: var(--warn-line); color: var(--warn); }

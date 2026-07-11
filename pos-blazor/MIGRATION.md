@@ -725,12 +725,15 @@ in the console makes its URL work immediately.
 - **Data migration** from the desktop SQL Server (BMDData) into Postgres.
 - **Auth revalidation:** `PosAuthStateProvider` captures the principal at circuit
   start; consider DB revalidation for long-lived sessions / disabled users.
-- **Phase 17 — impersonation.** "Log in as any user in any company" must be built
-  as *impersonation*, never as a second login: the session records you acting as
-  them, receipts carry both identities, a banner stays visible, and both the control
-  and business databases get an audit row. Anything less makes the ATK audit trail
-  worthless to you and to the shop owner. Needs a `Receipt.ImpersonatedBy` column,
-  i.e. a migration across every business database.
+- **Phase 17 — impersonation (session layer DONE, audit layer TODO).** A platform
+  admin can now "log in as" any user in any business from `/admin/imitim/{id}`: the
+  session becomes a full business principal (every gate and tenant query sees exactly
+  what that user sees) stamped with `impersonator*` claims, a persistent amber banner
+  names who is really driving, and "Kthehu te platforma" restores the operator with
+  no second login. It is impersonation, not a second login. **Still TODO:** receipts
+  carrying both identities (`Receipt.ImpersonatedBy`, a migration across every
+  business DB) and a durable audit row in the control + business databases — until
+  then impersonation is not recorded anywhere except the live cookie.
 - **Startup migration sweep** is serial and blocking; move to a background service
   once the business count grows.
 - **Login is still unthrottled** — now across every business at once.

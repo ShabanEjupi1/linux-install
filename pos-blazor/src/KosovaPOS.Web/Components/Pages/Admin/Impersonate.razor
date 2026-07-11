@@ -1,0 +1,91 @@
+@page "/admin/imitim/{BusinessId:int}"
+@attribute [Authorize(Policy = AuthService.PlatformPolicy)]
+@using Microsoft.AspNetCore.Authorization
+@using KosovaPOS.Core.Services
+@using KosovaPOS.Models.BMDData
+@using KosovaPOS.Models.Control
+@inject AuthService Auth
+@inject BusinessRegistry Registry
+@inject BusinessHostResolver Hosts
+
+@* Static SSR (no @rendermode): each "Kyçu si" is a real form POST to
+   /admin/impersonate, which is where HttpContext.SignInAsync can run. Listing a
+   shop's users needs the non-tenant path in AuthService because a platform admin
+   has no business in scope. *@
+
+<PageTitle>Imito një përdorues — Platforma</PageTitle>
+
+<div class="mgmt">
+    <header class="mgmt-head">
+        <div>
+            <h1>Imito një përdorues</h1>
+            @if (_business is not null)
+            {
+                <span class="muted">
+                    @_business.Name · <code>@_business.Code</code> ·
+                    <a href="@Hosts.UrlForCode(_business.Code)" target="_blank" rel="noopener">@Hosts.HostForCode(_business.Code)</a>
+                </span>
+            }
+        </div>
+        <a class="btn-ghost" href="/admin/bizneset">← Bizneset</a>
+    </header>
+
+    @if (_business is null)
+    {
+        <div class="card"><p class="error">Biznesi nuk u gjet ose është joaktiv.</p></div>
+    }
+    else
+    {
+        <div class="card" style="border-left:4px solid var(--warn, #b8860b)">
+            <p class="muted" style="margin:0">
+                Kyçu si cilido përdorues i këtij biznesi. Sesioni do të shënohet si imitim
+                dhe mund të kthehesh te platforma në çdo moment nga shiriti sipër.
+            </p>
+        </div>
+
+        <div class="card">
+            <table class="table">
+                <thead>
+                    <tr><th>Përdoruesi</th><th>Emri</th><th>Roli</th><th>Statusi</th><th></th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var u in _users)
+                    {
+                        <tr class="@(u.IsActive ? "" : "inactive-row")">
+                            <td><code>@u.Username</code></td>
+                            <td>@u.FullName</td>
+                            <td>@u.Role</td>
+                            <td>@(u.IsActive ? "Aktiv" : "Joaktiv")</td>
+                            <td>
+                                <form method="post" action="/admin/impersonate">
+                                    <AntiforgeryToken />
+                                    <input type="hidden" name="businessId" value="@_business.Id" />
+                                    <input type="hidden" name="userId" value="@u.Id" />
+                                    <button type="submit" class="btn-primary" disabled="@(!u.IsActive)">Kyçu si</button>
+                                </form>
+                            </td>
+                        </tr>
+                    }
+                    @if (_users.Count == 0)
+                    {
+                        <tr><td colspan="5" class="muted">Asnjë përdorues.</td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public int BusinessId { get; set; }
+
+    private Business? _business;
+    private List<POSUser> _users = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _business = await Registry.GetActiveByIdAsync(BusinessId);
+        if (_business is not null)
+            _users = await Auth.ListUsersAsync(_business);
+    }
+}

@@ -100,6 +100,10 @@
                         <td><code>@b.DatabaseName</code></td>
                         <td>@(b.IsActive ? "Aktiv" : "Joaktiv")</td>
                         <td>
+                            @if (b.IsActive)
+                            {
+                                <a class="btn-ghost" href="@($"/admin/imitim/{b.Id}")">Imito</a>
+                            }
                             <button class="btn-ghost" @onclick="() => Toggle(b)" disabled="@_busy">
                                 @(b.IsActive ? "Çaktivizo" : "Aktivizo")
                             </button>

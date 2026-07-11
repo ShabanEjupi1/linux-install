@@ -127,6 +127,18 @@
 
         var principal = AuthService.BuildPrincipal(user, business, CookieAuthenticationDefaults.AuthenticationScheme);
         await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal);
+
+        // On the apex (pos.spacecode.tech) send the user to their shop's own
+        // subdomain, so every session lands on a URL that names its business — the
+        // shared cookie carries the sign-in across. Only in production: on a
+        // business subdomain the host already matches, and on localhost there is no
+        // subdomain to go to. Guarded by IsUnderBaseHost so dev stays on "/".
+        if (!_pinnedByHost && Hosts.IsUnderBaseHost(HttpContext.Request.Host.Value))
+        {
+            Nav.NavigateTo(Hosts.UrlForCode(business.Code), forceLoad: true);
+            return;
+        }
+
         Nav.NavigateTo("/", forceLoad: true);
     }
 

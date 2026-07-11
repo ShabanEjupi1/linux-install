@@ -102,6 +102,19 @@
     </aside>
 
     <div class="shell-main">
+        @if (_impersonator is not null)
+        {
+            <div class="impersonation-bar" role="status">
+                <span>
+                    👁️ Po veproni si <strong>@_fullName</strong> në <strong>@BusinessName</strong>.
+                    Operatori: <strong>@_impersonator</strong>.
+                </span>
+                <form method="post" action="/admin/impersonate/exit">
+                    <AntiforgeryToken />
+                    <button type="submit" class="btn-ghost">Kthehu te platforma</button>
+                </form>
+            </div>
+        }
         <header class="appbar">
             <label for="nav-toggle" class="nav-burger" aria-label="Menyja">☰</label>
             <h2 class="appbar-title">@BusinessName</h2>
@@ -142,6 +155,7 @@
     private bool _canStock;
     private bool _canSettings;
     private bool _isPlatformAdmin;
+    private string? _impersonator;
     private string _fullName = "";
     private string _role = "";
 
@@ -154,6 +168,7 @@
                         ?? user.Identity?.Name ?? "";
             _role = user.FindFirst(ClaimTypes.Role)?.Value ?? "";
             _isPlatformAdmin = user.HasClaim(AuthService.PlatformAdminClaim, "true");
+            _impersonator = user.FindFirst(AuthService.ImpersonatorClaim)?.Value is { Length: > 0 } imp ? imp : null;
 
             bool Can(string perm) => user.HasClaim(AuthService.PermissionClaim, perm);
             _canManageUsers = Can("users");

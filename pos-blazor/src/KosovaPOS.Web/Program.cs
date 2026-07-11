@@ -3,6 +3,7 @@ using KosovaPOS.Web.Components;
 using KosovaPOS.Web.Services;
 using KosovaPOS.Core.Data;
 using KosovaPOS.Core.Services;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Components.Authorization;
@@ -86,6 +87,18 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         // v3: sessions now carry the business they are pinned to. A v2 cookie
         // names no database, so it must not be honoured.
         options.Cookie.Name = "KosovaPOS.Auth.v3";
+
+        // Share the cookie across every business subdomain so an apex login can
+        // redirect the user straight to pos-<code>.<zone> already signed in, and a
+        // platform admin can impersonate into a shop on its own host. Set to
+        // ".spacecode.tech" in production (POS_COOKIE_DOMAIN); left unset in dev so
+        // the cookie stays host-only for localhost. Crossing to another shop's host
+        // is still refused by the bizid-vs-host middleware below, so a wide cookie
+        // widens convenience, not reach.
+        var cookieDomain = Environment.GetEnvironmentVariable("POS_COOKIE_DOMAIN");
+        if (!string.IsNullOrWhiteSpace(cookieDomain))
+            options.Cookie.Domain = cookieDomain;
+
         options.LoginPath = "/login";
         options.AccessDeniedPath = "/nuk-keni-leje";
         options.ExpireTimeSpan = TimeSpan.FromHours(12);
@@ -203,5 +216,73 @@ app.MapPost("/auth/logout", async (HttpContext ctx) =>
     await ctx.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
     return Results.Redirect("/login");
 });
+
+// ── Impersonation ───────────────────────────────────────────────────────
+// A platform admin assumes a business user's identity. The session becomes a
+// full business principal (so every permission gate and every tenant query sees
+// exactly what that user sees), stamped with who is really driving so it stays
+// auditable and reversible. Only reachable with the platform policy; only the
+// enter side needs it — exit downgrades and is open to any impersonating session.
+app.MapPost("/admin/impersonate", async (HttpContext ctx) =>
+{
+    var antiforgery = ctx.RequestServices.GetRequiredService<IAntiforgery>();
+    try { await antiforgery.ValidateRequestAsync(ctx); }
+    catch { return Results.Redirect("/admin/bizneset"); }
+
+    var form = await ctx.Request.ReadFormAsync();
+    if (!int.TryParse(form["businessId"], out var bizId) || !int.TryParse(form["userId"], out var userId))
+        return Results.Redirect("/admin/bizneset");
+
+    var registry = ctx.RequestServices.GetRequiredService<BusinessRegistry>();
+    var business = await registry.GetActiveByIdAsync(bizId);
+    if (business is null)
+        return Results.Redirect("/admin/bizneset");
+
+    var auth = ctx.RequestServices.GetRequiredService<AuthService>();
+    var user = await auth.FindUserAsync(business, userId);
+    if (user is null || !user.IsActive)
+        return Results.Redirect($"/admin/imitim/{bizId}");
+
+    // ctx.User is the platform admin (this endpoint required the platform policy);
+    // it is stamped into the new session as the impersonator.
+    var principal = AuthService.BuildPrincipal(
+        user, business, CookieAuthenticationDefaults.AuthenticationScheme, impersonator: ctx.User);
+    await ctx.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal);
+
+    var hosts = ctx.RequestServices.GetRequiredService<BusinessHostResolver>();
+    return Results.Redirect(hosts.IsUnderBaseHost(ctx.Request.Host.Value)
+        ? hosts.UrlForCode(business.Code)
+        : "/");
+}).RequireAuthorization(AuthService.PlatformPolicy);
+
+// Leave an impersonated session and restore the platform operator, without a
+// second login — the operator's identity was carried in the impersonator claims.
+app.MapPost("/admin/impersonate/exit", async (HttpContext ctx) =>
+{
+    var antiforgery = ctx.RequestServices.GetRequiredService<IAntiforgery>();
+    try { await antiforgery.ValidateRequestAsync(ctx); }
+    catch { return Results.Redirect("/"); }
+
+    var platform = AuthService.BuildPrincipalFromImpersonator(
+        ctx.User, CookieAuthenticationDefaults.AuthenticationScheme);
+    if (platform is null)
+    {
+        // Not actually impersonating — just sign out.
+        await ctx.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+        return Results.Redirect("/login");
+    }
+
+    await ctx.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, platform);
+
+    // The platform console lives on the POS apex. If exit was hit on a business
+    // subdomain (the common case — you impersonate into the shop's host), send the
+    // now-platform session back to the apex; a wide cookie carries it. Otherwise
+    // (already on the apex, or localhost in dev) a relative path is right.
+    var hosts = ctx.RequestServices.GetRequiredService<BusinessHostResolver>();
+    var onBusinessHost = hosts.CodeFromHost(ctx.Request.Host.Value) is not null;
+    return Results.Redirect(onBusinessHost
+        ? $"https://pos.{hosts.BaseHost}/admin/bizneset"
+        : "/admin/bizneset");
+}).RequireAuthorization();
 
 app.Run();
