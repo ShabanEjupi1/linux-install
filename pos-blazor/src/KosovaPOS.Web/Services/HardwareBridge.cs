@@ -67,10 +67,11 @@ public sealed class HardwareBridge : IAsyncDisposable
         catch (Exception ex) { return AgentResult.Fail(ex.Message); }
     }
 
-    /// <summary>Prints barcode labels for an article.</summary>
-    public async Task<AgentResult> PrintBarcodeAsync(Article article, int copies = 1)
+    /// <summary>Prints barcode labels for an article, optionally on a named printer (the HPRT).</summary>
+    public async Task<AgentResult> PrintBarcodeAsync(Article article, int copies = 1, string? printerName = null)
     {
-        var req = HardwareMapper.ToBarcodeRequest(article, copies);
+        var req = HardwareMapper.ToBarcodeRequest(article, copies,
+            string.IsNullOrWhiteSpace(printerName) ? null : printerName);
         try
         {
             var m = await ModuleAsync();

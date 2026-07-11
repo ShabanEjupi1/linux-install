@@ -586,3 +586,53 @@ a.stat:hover { border-color: var(--accent); }
 .impersonation-bar > span { flex: 1 1 auto; }
 .impersonation-bar form { margin: 0; }
 .impersonation-bar .btn-ghost { border-color: var(--warn-line); color: var(--warn); }
+
+/* ── A4 legal invoice (faturë) ──────────────────────────────────────────────
+   A printed document: always light/white regardless of the app theme, sized to
+   A4, with the on-screen toolbar hidden when printing. */
+.inv-toolbar {
+  position: sticky; top: 0; z-index: 5;
+  display: flex; justify-content: space-between; gap: 1rem;
+  padding: .6rem 1rem; background: #1e293b;
+}
+.a4 {
+  background: #fff; color: #111; margin: 1rem auto; padding: 16mm 14mm;
+  width: 210mm; max-width: 100%; box-sizing: border-box;
+  box-shadow: 0 2px 14px rgba(0,0,0,.25);
+  font-size: 12px; line-height: 1.4;
+}
+.a4 h1 { font-size: 18px; margin: 0 0 .2rem; color: #111; }
+.a4 h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; margin: 0 0 .3rem; color: #444; }
+.inv-head { display: flex; justify-content: space-between; gap: 2rem; border-bottom: 2px solid #111; padding-bottom: 10px; }
+.inv-ids { display: flex; flex-direction: column; gap: 1px; margin-top: .3rem; color: #333; }
+.inv-title { font-size: 22px; font-weight: 800; text-align: right; letter-spacing: .06em; }
+.inv-meta-tbl { margin-left: auto; }
+.inv-meta-tbl td { padding: 1px 0 1px 8px; text-align: right; }
+.inv-meta-tbl td:first-child { color: #555; text-align: left; }
+.inv-buyer { margin: 12px 0; }
+.inv-buyer-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.inv-buyer-grid label { display: flex; flex-direction: column; font-size: 10px; color: #555; gap: 2px; }
+.inv-in { border: 1px solid #bbb; border-radius: 3px; padding: 3px 5px; font-size: 12px; color: #111; background: #fff; }
+.inv-lines { width: 100%; border-collapse: collapse; margin-top: 6px; }
+.inv-lines th, .inv-lines td { border: 1px solid #ccc; padding: 4px 6px; }
+.inv-lines thead th { background: #f1f5f9; font-size: 10px; text-transform: uppercase; color: #333; }
+.inv-lines .r, .a4 .r { text-align: right; }
+.inv-lines .c, .a4 .c { text-align: center; }
+.inv-foot { display: flex; justify-content: space-between; gap: 2rem; margin-top: 12px; }
+.inv-vat table { border-collapse: collapse; }
+.inv-vat th, .inv-vat td { border: 1px solid #ccc; padding: 3px 8px; font-size: 11px; }
+.inv-totals { min-width: 240px; margin-left: auto; }
+.inv-totals table { width: 100%; border-collapse: collapse; }
+.inv-totals td { padding: 3px 6px; }
+.inv-totals .grand td { border-top: 2px solid #111; font-weight: 800; font-size: 14px; }
+.inv-bank { margin-top: 10px; font-size: 11px; }
+.inv-legal { margin-top: 18px; border-top: 1px solid #ccc; padding-top: 8px; font-size: 10px; color: #666; }
+.inv-sign { display: flex; justify-content: space-between; margin-top: 26px; }
+.inv-sign span { border-top: 1px solid #999; padding-top: 3px; width: 45%; text-align: center; color: #333; }
+
+@media print {
+  .inv-toolbar { display: none !important; }
+  .a4 { margin: 0; box-shadow: none; width: auto; padding: 0; }
+  .inv-in { border: none; padding: 0; }
+  @page { size: A4; margin: 12mm; }
+}

@@ -46,7 +46,11 @@
                             <td>@s.PaymentMethod</td>
                             <td class="num">@s.ItemCount</td>
                             <td class="num strong">@s.TotalAmount.ToString("0.00") €</td>
-                            <td class="actions"><button class="btn-mini">👁️</button></td>
+                            <td class="actions">
+                                <button class="btn-mini" title="Shiko">👁️</button>
+                                <a class="btn-mini" href="@($"/fatura/{s.ReceiptNumber}")" target="_blank"
+                                   title="Printo faturën A4" @onclick:stopPropagation="true">🧾 A4</a>
+                            </td>
                         </tr>
                     }
                     @if (!_sales.Any())
@@ -103,6 +107,7 @@
                 </table>
             }
             <div class="modal-actions">
+                <a class="btn-primary" href="@($"/fatura/{_detailNumber}")" target="_blank">🧾 Printo faturën A4</a>
                 <button class="btn-ghost" @onclick="() => _detailNumber = null">Mbyll</button>
             </div>
         </div>

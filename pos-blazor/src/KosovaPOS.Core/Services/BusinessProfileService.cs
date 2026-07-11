@@ -58,11 +58,15 @@ public class BusinessProfileService
             db.BusinessSettings.Add(row);
         }
 
-        row.BusinessName = Clean(input.BusinessName);
-        row.Address      = Clean(input.Address);
-        row.FiscalNumber = Clean(input.FiscalNumber);
-        row.Profile      = input.Profile;
-        row.IsFirstRun   = false;
+        row.BusinessName   = Clean(input.BusinessName);
+        row.Address        = Clean(input.Address);
+        row.FiscalNumber   = Clean(input.FiscalNumber);
+        row.VatNumber      = Clean(input.VatNumber);
+        row.BankAccount    = Clean(input.BankAccount);
+        row.ReceiptPrinter = Clean(input.ReceiptPrinter);
+        row.BarcodePrinter = Clean(input.BarcodePrinter);
+        row.Profile        = input.Profile;
+        row.IsFirstRun     = false;
 
         await db.SaveChangesAsync();
 

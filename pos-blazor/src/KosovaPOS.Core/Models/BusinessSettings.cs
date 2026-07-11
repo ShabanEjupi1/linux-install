@@ -51,6 +51,24 @@ namespace KosovaPOS.Models
         [StringLength(50)]
         public string? FiscalNumber { get; set; }
 
+        /// <summary>Numri i TVSH-së — the VAT registration number, printed on the A4 tax invoice.</summary>
+        [StringLength(50)]
+        public string? VatNumber { get; set; }
+
+        /// <summary>Bank account / IBAN, printed on the A4 invoice so a business buyer can pay by transfer.</summary>
+        [StringLength(100)]
+        public string? BankAccount { get; set; }
+
+        // ── Local hardware (agent) printer targets ────────────────────────────────
+        // Windows printer names the on-PC agent sends jobs to. Null = the agent's own
+        // env default (RECEIPT_PRINTER / BARCODE_PRINTER). Lets one shop point its
+        // courtesy receipt at any thermal printer and its labels at the HPRT.
+        [StringLength(100)]
+        public string? ReceiptPrinter { get; set; }
+
+        [StringLength(100)]
+        public string? BarcodePrinter { get; set; }
+
         // ── Module toggles ────────────────────────────────────────────────────────
         public bool EnableTableManagement  { get; set; }
         public bool EnableAppointments     { get; set; }

@@ -6,6 +6,7 @@
 @using KosovaPOS.Web.Services
 @inject CatalogService Catalog
 @inject HardwareBridge Hw
+@inject BusinessProfileService Profile
 
 <PageTitle>Barkodi — KosovaPOS</PageTitle>
 
@@ -189,10 +190,12 @@
         _busy = true;
         _message = null;
         var failures = new List<string>();
+        // The shop's configured label printer (the HPRT); null → agent's BARCODE_PRINTER default.
+        var barcodePrinter = (await Profile.GetSettingsAsync())?.BarcodePrinter;
         // Print item-by-item: a jammed label shouldn't discard the rest of the queue.
         foreach (var item in _queue.ToList())
         {
-            var result = await Hw.PrintBarcodeAsync(item.Article, item.Copies);
+            var result = await Hw.PrintBarcodeAsync(item.Article, item.Copies, barcodePrinter);
             if (result.Ok) _queue.Remove(item);
             else failures.Add($"{item.Article.Name}: {result.Error}");
         }

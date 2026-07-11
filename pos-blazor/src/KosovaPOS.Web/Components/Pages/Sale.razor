@@ -107,6 +107,10 @@
                 <input type="checkbox" @bind="_printFiscal" />
                 Printo faturën fiskale
             </label>
+            <label class="fiscal-toggle">
+                <input type="checkbox" @bind="_printReceipt" />
+                Printo kuponin termik
+            </label>
 
             @if (!string.IsNullOrEmpty(_message))
             {
@@ -137,6 +141,8 @@
     private string _cashierName = "";
 
     private bool _printFiscal = true;
+    private bool _printReceipt;
+    private KosovaPOS.Models.BusinessSettings? _shop;
     private bool _agentOnline, _agentReal;
     private string _agentTitle = "Agjenti i pajisjeve nuk është kontrolluar ende";
 
@@ -149,6 +155,7 @@
         }
         _articles = await Catalog.GetAllArticlesAsync();
         _categories = await Catalog.GetCategoriesAsync();
+        _shop = await Profile.GetSettingsAsync();
         _loading = false;
     }
 
@@ -288,6 +295,16 @@
                     _success = false; // amber-style note: sale ok, print not
                     _message += $" · ⚠ Fatura fiskale nuk u printua: {fr.Error}";
                 }
+                await RefreshAgentStatusAsync();
+            }
+
+            // Courtesy thermal receipt on the configured (any) thermal printer. Also
+            // best-effort — the sale stands whether or not it prints.
+            if (_printReceipt)
+            {
+                var rr = await Hw.PrintReceiptAsync(receipt, _shop);
+                _message += rr.Ok ? " · Kuponi u printua" : $" · ⚠ Kuponi nuk u printua: {rr.Error}";
+                if (!rr.Ok) _success = false;
                 await RefreshAgentStatusAsync();
             }
 

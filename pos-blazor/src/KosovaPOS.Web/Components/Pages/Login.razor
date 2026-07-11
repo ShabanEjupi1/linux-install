@@ -83,14 +83,19 @@
         // after form binding, so a POST that tries to smuggle a different business
         // code onto pos-bmd is overwritten with bmd before it is ever used.
         var hostCode = Hosts.CodeFromHost(HttpContext.Request.Host.Value);
-        if (hostCode is not null)
+        var hostBusiness = hostCode is null ? null : await Businesses.GetActiveByCodeAsync(hostCode);
+        if (hostBusiness is not null)
         {
+            // A live business subdomain (e.g. pos-811274183): pin it, hide the code field.
             _pinnedByHost = true;
-            Model.BusinessCode = hostCode;
-            _pinnedBusinessName = (await Businesses.GetActiveByCodeAsync(hostCode))?.Name;
+            Model.BusinessCode = hostBusiness.Code;
+            _pinnedBusinessName = hostBusiness.Name;
         }
         else if (string.IsNullOrWhiteSpace(Model.BusinessCode))
         {
+            // Apex, OR a subdomain naming a business that no longer exists (a retired
+            // code like pos-bmd). Don't pin to a dead code — that would be a login
+            // dead-end with no way to type a valid one; fall back to the normal form.
             Model.BusinessCode = HttpContext.Request.Cookies[LastBusinessCookie] ?? "";
         }
     }

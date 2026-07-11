@@ -1,0 +1,161 @@
+@page "/fatura/{Numri:long}"
+@attribute [Authorize(Policy = "perm:sell")]
+@layout EmptyLayout
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using KosovaPOS.Core.Services
+@using KosovaPOS.Models
+@using KosovaPOS.Web.Services
+@inject SalesService Sales
+@inject BusinessProfileService Profile
+@inject IJSRuntime JS
+
+<PageTitle>Faturë @Numri — KosovaPOS</PageTitle>
+
+@if (_notFound)
+{
+    <div class="inv-toolbar"><a class="btn-ghost" href="/faturat">← Faturat</a></div>
+    <div class="a4"><p class="muted">Fatura #@Numri nuk u gjet.</p></div>
+}
+else if (_invoice is null)
+{
+    <div class="a4"><p class="muted">Duke ngarkuar…</p></div>
+}
+else
+{
+    <div class="inv-toolbar">
+        <a class="btn-ghost" href="/faturat">← Faturat</a>
+        <button class="btn-primary" @onclick="Print">🖨️ Printo / Ruaj PDF</button>
+    </div>
+
+    <div class="a4">
+        <header class="inv-head">
+            <div class="inv-seller">
+                <h1>@SellerName</h1>
+                @if (!string.IsNullOrWhiteSpace(_shop?.Address)) { <div>@_shop!.Address</div> }
+                <div class="inv-ids">
+                    @if (!string.IsNullOrWhiteSpace(_shop?.FiscalNumber)) { <span>Nr. fiskal: <strong>@_shop!.FiscalNumber</strong></span> }
+                    @if (!string.IsNullOrWhiteSpace(_shop?.VatNumber)) { <span>Nr. TVSH: <strong>@_shop!.VatNumber</strong></span> }
+                    @if (!string.IsNullOrWhiteSpace(_shop?.Phone)) { <span>Tel: @_shop!.Phone</span> }
+                    @if (!string.IsNullOrWhiteSpace(_shop?.Email)) { <span>@_shop!.Email</span> }
+                </div>
+            </div>
+            <div class="inv-meta">
+                <div class="inv-title">FATURË</div>
+                <table class="inv-meta-tbl">
+                    <tr><td>Numri:</td><td><strong>@_invoice.Number</strong></td></tr>
+                    <tr><td>Data:</td><td>@_invoice.Date.ToString("dd.MM.yyyy") @_invoice.Time</td></tr>
+                    <tr><td>Pagesa:</td><td>@_invoice.PaymentMethod</td></tr>
+                    <tr><td>Arkëtari:</td><td>@_invoice.CashierName</td></tr>
+                </table>
+            </div>
+        </header>
+
+        <section class="inv-buyer">
+            <h2>Blerësi</h2>
+            <div class="inv-buyer-grid">
+                <label>Emri / Kompania <input class="inv-in" @bind="_buyerName" placeholder="(opsionale — plotësohet për biznes)" /></label>
+                <label>Nr. fiskal / NUI <input class="inv-in" @bind="_buyerFiscal" placeholder="(opsionale)" /></label>
+                <label>Adresa <input class="inv-in" @bind="_buyerAddress" placeholder="(opsionale)" /></label>
+            </div>
+        </section>
+
+        <table class="inv-lines">
+            <thead>
+                <tr>
+                    <th class="c">#</th>
+                    <th>Përshkrimi</th>
+                    <th class="c">Njësia</th>
+                    <th class="r">Sasia</th>
+                    <th class="r">Çmimi pa TVSH</th>
+                    <th class="r">TVSH %</th>
+                    <th class="r">Vlera pa TVSH</th>
+                    <th class="r">TVSH</th>
+                    <th class="r">Vlera me TVSH</th>
+                </tr>
+            </thead>
+            <tbody>
+                @{ var i = 1; }
+                @foreach (var l in _invoice.Lines)
+                {
+                    <tr>
+                        <td class="c">@(i++)</td>
+                        <td>@l.Name</td>
+                        <td class="c">@l.Unit</td>
+                        <td class="r">@l.Quantity.ToString("0.###")</td>
+                        <td class="r">@l.UnitPriceNet.ToString("0.0000") €</td>
+                        <td class="r">@l.VatRate.ToString("0.##")%</td>
+                        <td class="r">@l.NetValue.ToString("0.00") €</td>
+                        <td class="r">@l.VatValue.ToString("0.00") €</td>
+                        <td class="r">@l.GrossValue.ToString("0.00") €</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+
+        <div class="inv-foot">
+            <div class="inv-vat">
+                <h2>Përmbledhja e TVSH-së</h2>
+                <table>
+                    <thead><tr><th class="r">Norma</th><th class="r">Baza</th><th class="r">TVSH</th><th class="r">Totali</th></tr></thead>
+                    <tbody>
+                        @foreach (var v in _invoice.VatSummary)
+                        {
+                            <tr>
+                                <td class="r">@v.Rate.ToString("0.##")%</td>
+                                <td class="r">@v.Net.ToString("0.00") €</td>
+                                <td class="r">@v.Vat.ToString("0.00") €</td>
+                                <td class="r">@v.Gross.ToString("0.00") €</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <div class="inv-totals">
+                <table>
+                    <tr><td>Total pa TVSH:</td><td class="r">@_invoice.TotalNet.ToString("0.00") €</td></tr>
+                    <tr><td>Total TVSH:</td><td class="r">@_invoice.TotalVat.ToString("0.00") €</td></tr>
+                    <tr class="grand"><td>TOTALI PËR PAGESË:</td><td class="r">@_invoice.TotalGross.ToString("0.00") €</td></tr>
+                </table>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(_shop?.BankAccount))
+        {
+            <div class="inv-bank">Llogaria bankare: <strong>@_shop!.BankAccount</strong></div>
+        }
+
+        <footer class="inv-legal">
+            <div>Faturë e gjeneruar nga KosovaPOS · @SellerName</div>
+            <div class="inv-sign"><span>Nënshkrimi i shitësit</span><span>Nënshkrimi i blerësit</span></div>
+        </footer>
+    </div>
+}
+
+@code {
+    [Parameter] public long Numri { get; set; }
+
+    private Invoice? _invoice;
+    private BusinessSettings? _shop;
+    private bool _notFound;
+
+    private string _buyerName = "";
+    private string _buyerFiscal = "";
+    private string _buyerAddress = "";
+
+    private string SellerName => string.IsNullOrWhiteSpace(_shop?.BusinessName) ? "KosovaPOS" : _shop!.BusinessName!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _invoice = await Sales.GetInvoiceAsync(Numri);
+        if (_invoice is null) { _notFound = true; return; }
+        _shop = await Profile.GetSettingsAsync();
+
+        // Prefill the buyer from whatever the sale recorded (blank for a walk-in).
+        _buyerName = _invoice.BuyerName is { } n && n != "Qytetar" ? n : "";
+        _buyerFiscal = _invoice.BuyerFiscalNumber ?? "";
+        _buyerAddress = _invoice.BuyerAddress ?? "";
+    }
+
+    private async Task Print() => await JS.InvokeVoidAsync("print");
+}

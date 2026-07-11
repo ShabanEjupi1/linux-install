@@ -169,6 +169,67 @@ public class SalesService
         return rows;
     }
 
+    /// <summary>
+    /// A full invoice for one receipt (journal number): header + priced lines +
+    /// a VAT-by-rate summary, everything the A4 legal invoice (faturë) needs.
+    /// Returns null when the number matches no journal rows.
+    /// </summary>
+    public async Task<Invoice?> GetInvoiceAsync(long numri)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var rows = await db.DitariD.AsNoTracking()
+            .Where(d => d.Numri == numri)
+            .OrderBy(d => d.NrRendor)
+            .ToListAsync();
+        if (rows.Count == 0)
+            return null;
+
+        var head = rows[0];
+        var lines = rows.Select(d => new InvoiceLine
+        {
+            Name = d.Artikulli ?? "",
+            Unit = string.IsNullOrWhiteSpace(d.Njesia) ? "Copë" : d.Njesia!,
+            Quantity = (decimal)(d.Sasia ?? 0),
+            UnitPriceGross = (decimal)(d.Qmimi ?? 0),
+            UnitPriceNet = (decimal)(d.QmimiPaTvsh ?? 0),
+            VatRate = (decimal)(d.Vat ?? 0),
+            DiscountPercent = (decimal)(d.Rabati ?? 0),
+            NetValue = (decimal)(d.VleraPaTvsh ?? 0),
+            VatValue = (decimal)(d.Tvsh ?? 0),
+            GrossValue = (decimal)(d.VleraMeTvsh ?? 0),
+        }).ToList();
+
+        var vatSummary = lines
+            .GroupBy(l => l.VatRate)
+            .Select(g => new VatSummaryRow
+            {
+                Rate = g.Key,
+                Net = g.Sum(l => l.NetValue),
+                Vat = g.Sum(l => l.VatValue),
+                Gross = g.Sum(l => l.GrossValue),
+            })
+            .OrderByDescending(r => r.Rate)
+            .ToList();
+
+        return new Invoice
+        {
+            Number = numri.ToString(),
+            CouponNumber = head.Kuponi,
+            Date = head.Data ?? DateTime.MinValue,
+            Time = head.Ora ?? "",
+            CashierName = head.Punetori ?? "",
+            PaymentMethod = PaymentMethodName(head.MetodaP ?? 1),
+            BuyerName = head.ShifraKlient,
+            BuyerFiscalNumber = head.NrFiskalKlient,
+            BuyerAddress = head.AdresaKlient,
+            Lines = lines,
+            VatSummary = vatSummary,
+            TotalNet = lines.Sum(l => l.NetValue),
+            TotalVat = lines.Sum(l => l.VatValue),
+            TotalGross = lines.Sum(l => l.GrossValue),
+        };
+    }
+
     private static int GetPaymentMethodId(string method) => method?.ToLowerInvariant() switch
     {
         "para në dorë" or "cash" => 1,
@@ -206,4 +267,48 @@ public class ReceiptLine
     public decimal Price { get; set; }
     public decimal Total { get; set; }
     public decimal VATValue { get; set; }
+}
+
+/// <summary>A full priced invoice for one receipt, for the A4 legal document.</summary>
+public class Invoice
+{
+    public string Number { get; set; } = "";
+    public string? CouponNumber { get; set; }
+    public DateTime Date { get; set; }
+    public string Time { get; set; } = "";
+    public string CashierName { get; set; } = "";
+    public string PaymentMethod { get; set; } = "";
+
+    // Buyer as recorded on the sale (may be blank for a walk-in "Qytetar").
+    public string? BuyerName { get; set; }
+    public string? BuyerFiscalNumber { get; set; }
+    public string? BuyerAddress { get; set; }
+
+    public List<InvoiceLine> Lines { get; set; } = new();
+    public List<VatSummaryRow> VatSummary { get; set; } = new();
+    public decimal TotalNet { get; set; }
+    public decimal TotalVat { get; set; }
+    public decimal TotalGross { get; set; }
+}
+
+public class InvoiceLine
+{
+    public string Name { get; set; } = "";
+    public string Unit { get; set; } = "Copë";
+    public decimal Quantity { get; set; }
+    public decimal UnitPriceGross { get; set; }
+    public decimal UnitPriceNet { get; set; }
+    public decimal VatRate { get; set; }
+    public decimal DiscountPercent { get; set; }
+    public decimal NetValue { get; set; }
+    public decimal VatValue { get; set; }
+    public decimal GrossValue { get; set; }
+}
+
+public class VatSummaryRow
+{
+    public decimal Rate { get; set; }
+    public decimal Net { get; set; }
+    public decimal Vat { get; set; }
+    public decimal Gross { get; set; }
 }

@@ -41,6 +41,9 @@ public static class HardwareMapper
         Total = receipt.TotalAmount,
         Paid = receipt.PaidAmount,
         Change = receipt.PaidAmount - receipt.TotalAmount < 0 ? 0 : receipt.PaidAmount - receipt.TotalAmount,
+        // Let the shop point its courtesy receipt at any thermal printer; null falls
+        // back to the agent's RECEIPT_PRINTER default on the cashier PC.
+        PrinterName = string.IsNullOrWhiteSpace(shop?.ReceiptPrinter) ? null : shop!.ReceiptPrinter,
     };
 
     public static BarcodePrintRequest ToBarcodeRequest(Article article, int copies = 1, string? printerName = null) => new()
