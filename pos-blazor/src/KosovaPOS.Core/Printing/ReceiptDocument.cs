@@ -48,8 +48,7 @@ public static class ReceiptFormatter
 
     private static readonly CultureInfo Money = CultureInfo.InvariantCulture;
 
-    public static List<ReceiptTextLine> Format(Invoice inv, ReceiptHeader shop, int width = DefaultWidth,
-        bool fiscalNotice = true)
+    public static List<ReceiptTextLine> Format(Invoice inv, ReceiptHeader shop, int width = DefaultWidth)
     {
         ArgumentNullException.ThrowIfNull(inv);
         ArgumentNullException.ThrowIfNull(shop);
@@ -102,8 +101,6 @@ public static class ReceiptFormatter
 
         // ── footer ──────────────────────────────────────────────────────
         o.Add(new ReceiptTextLine(Center("Faleminderit për blerjen!", width), Center: true));
-        if (fiscalNotice)
-            o.Add(new ReceiptTextLine(Center("Ky kupon nuk është faturë fiskale.", width), Center: true));
 
         return o;
     }

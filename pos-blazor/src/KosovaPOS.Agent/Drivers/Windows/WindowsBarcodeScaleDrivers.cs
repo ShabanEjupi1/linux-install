@@ -50,10 +50,21 @@ public sealed class WindowsBarcodeDriver : IBarcodeDriver
     /// <summary>Printhead resolution of the HPRT (and every 203dpi label printer): 8 dots/mm.</summary>
     private const int DotsPerMm = 8;
 
-    /// <summary>Glyph width of TSPL's built-in font "2", in dots — used to fit the article name.</summary>
-    private const int NameCharDots = 12;
+    /// <summary>Glyph box of TSPL's built-in fonts, in dots at scale 1: (width, height).</summary>
+    private static readonly (int W, int H) Font2 = (12, 20);   // article name
+    private static readonly (int W, int H) Font4 = (24, 32);   // price
 
-    private static string BuildTspl(BarcodePrintRequest req, int copies)
+    /// <summary>Dots TSPL spends on the human-readable digits it prints under the bars.</summary>
+    private const int DigitDots = 24;
+
+    /// <summary>
+    /// Shortest bar we will print. 5mm is about the floor at which a handheld scanner still
+    /// reads an EAN-13 reliably; below it the price would win at the cost of a label nobody
+    /// can scan, which is not a trade the till can make.
+    /// </summary>
+    private const int MinBarDots = 5 * DotsPerMm;
+
+    internal static string BuildTspl(BarcodePrintRequest req, int copies)
     {
         var wMm = Math.Clamp(req.LabelWidthMm, 20, 200);
         var hMm = Math.Clamp(req.LabelHeightMm, 10, 200);
@@ -62,46 +73,76 @@ public sealed class WindowsBarcodeDriver : IBarcodeDriver
         const int Margin = 8; // 1mm — the printhead cannot reach the very edge of the stock
 
         var usable = wDots - 2 * Margin;
-        var price = Escape(req.Price.ToString("0.00") + " €");
-        var name = Escape(Trunc(req.ArticleName, usable / NameCharDots));
+        var priceText = req.Price.ToString("0.00") + " €";
+        var name = Trunc(req.ArticleName, usable / Font2.W);
+
+        // The price is what the customer reads from a shelf and what the cashier checks at
+        // arm's length, so it is the biggest thing on the label — bigger than the bars, which
+        // only a scanner ever reads. Take the largest scale whose glyphs still fit the label's
+        // width AND still leave a scannable barcode underneath.
+        const int NameTop = 4;
+        var priceTop = NameTop + Font2.H + 4;
+        var forPriceAndBars = hDots - priceTop - DigitDots - Margin;
+        const int Gap = 6;
+
+        var scale = 1;
+        for (var s = 4; s >= 1; s--)
+        {
+            var fitsWidth = priceText.Length * Font4.W * s <= usable;
+            var barsLeft = forPriceAndBars - Font4.H * s - Gap;
+            if (fitsWidth && barsLeft >= MinBarDots) { scale = s; break; }
+        }
+
+        var priceH = Font4.H * scale;
+        var barTop = priceTop + priceH + Gap;
+
+        // Whatever room is left goes to the bars — but never so much that they out-tower the
+        // price on a tall label, which is the whole point of sizing the price first. The floor
+        // still wins over that: on stock where no scale makes the price the taller element (a
+        // four-figure price is too wide to enlarge), the bars keep their 5mm and stay
+        // scannable. A big price on a label nobody can scan is not the trade the till wants.
+        var room = hDots - barTop - DigitDots - Margin;
+        var barHeight = Math.Min(room, Math.Max(MinBarDots, priceH - 8));
 
         var sb = new StringBuilder();
         sb.AppendLine($"SIZE {wMm} mm, {hMm} mm");
         sb.AppendLine("GAP 2 mm, 0 mm");
+        // The bytes below are CP1252 (see PrintAsync). Without this line the printer decodes
+        // them on whatever page it booted with, and every ë in an article name comes out wrong.
+        sb.AppendLine("CODEPAGE 1252");
         sb.AppendLine("DIRECTION 1,0");
         sb.AppendLine("REFERENCE 0,0");
         sb.AppendLine("DENSITY 8");
         sb.AppendLine("SPEED 4");
         sb.AppendLine("CLS");
-        sb.AppendLine($"TEXT {Margin},4,\"2\",0,1,1,\"{name}\"");   // font 2 is 20 dots tall
-        sb.AppendLine($"TEXT {Margin},28,\"4\",0,1,1,\"{price}\""); // font 4 is 32 dots tall
-
-        // The bars start below the price and reach for the bottom of the label, leaving room
-        // for the human-readable digits TSPL prints underneath them.
-        const int BarTop = 68;
-        const int DigitDots = 24;
-        var barHeight = hDots - BarTop - DigitDots - Margin;
+        sb.AppendLine($"TEXT {Centre(name.Length * Font2.W, usable, Margin)},{NameTop},\"2\",0,1,1,\"{Escape(name)}\"");
+        sb.AppendLine($"TEXT {Centre(priceText.Length * Font4.W * scale, usable, Margin)},{priceTop}," +
+                      $"\"4\",0,{scale},{scale},\"{Escape(priceText)}\"");
 
         // A barcode wider than the label is not a wide barcode — it is a clipped one, and a
         // clipped barcode still looks right while scanning nowhere. Shrink the module until
         // the symbol fits; if even the thinnest bar won't fit (or the label is too short for
         // bars at all), print the number as text, exactly as the browser path does.
         var narrow = FitNarrowDots(req.Barcode, usable);
-        if (narrow is null || barHeight < 30)
+        if (narrow is null || barHeight < MinBarDots)
         {
-            sb.AppendLine($"TEXT {Margin},{Math.Min(BarTop, hDots - 24)},\"3\",0,1,1,\"{Escape(req.Barcode)}\"");
+            sb.AppendLine($"TEXT {Margin},{Math.Min(barTop, hDots - DigitDots)},\"3\",0,1,1,\"{Escape(req.Barcode)}\"");
         }
         else
         {
             var type = BarcodeType(req.Barcode);
-            var x = Margin + Math.Max(0, (usable - Modules(req.Barcode) * narrow.Value) / 2);
-            sb.AppendLine($"BARCODE {x},{BarTop},\"{type}\",{barHeight},1,0,{narrow},{narrow * 2},\"{req.Barcode}\"");
+            var x = Centre(Modules(req.Barcode) * narrow.Value, usable, Margin);
+            sb.AppendLine($"BARCODE {x},{barTop},\"{type}\",{barHeight},1,0,{narrow},{narrow * 2},\"{req.Barcode}\"");
         }
 
         sb.AppendLine($"PRINT 1,{copies}");
         sb.AppendLine("EOP");
         return sb.ToString();
     }
+
+    /// <summary>Left edge that centres <paramref name="widthDots"/> inside the usable width.</summary>
+    private static int Centre(int widthDots, int usable, int margin) =>
+        margin + Math.Max(0, (usable - widthDots) / 2);
 
     private static string BarcodeType(string content)
     {

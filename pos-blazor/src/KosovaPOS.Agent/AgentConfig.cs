@@ -22,6 +22,14 @@ public sealed class AgentConfig
     public string? ReceiptPrinter { get; init; }
     public string? BarcodePrinter { get; init; }
 
+    /// <summary>
+    /// The ESC/POS code page the receipt printer is switched to before each job: 1252, 852,
+    /// 858, 850, 437, or "ascii" to strip the accents (ë→e). 1252 is the one that carries the
+    /// Albanian letters and that almost every 80mm printer supports; a printer whose firmware
+    /// ignores the switch can be dropped to "ascii" here without a rebuild.
+    /// </summary>
+    public string ReceiptCodePage { get; init; } = "1252";
+
     // Scale (serial)
     public string ScaleComPort { get; init; } = "COM3";
     public int ScaleBaudRate { get; init; } = 9600;
@@ -56,6 +64,7 @@ public sealed class AgentConfig
             FiscalNumber   = Env("FISCAL_NUMBER") ?? "003910",
             ReceiptPrinter = Env("RECEIPT_PRINTER"),
             BarcodePrinter = Env("BARCODE_PRINTER"),
+            ReceiptCodePage = Env("RECEIPT_CODEPAGE") ?? "1252",
             ScaleComPort   = Env("SCALE_PORT") ?? "COM3",
             ScaleBaudRate  = IntEnv("SCALE_BAUD", 9600),
             AllowedOrigins = Env("AGENT_ALLOWED_ORIGINS") ?? "*",

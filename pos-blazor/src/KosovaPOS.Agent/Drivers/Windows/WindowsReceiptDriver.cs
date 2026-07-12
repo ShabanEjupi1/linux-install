@@ -27,6 +27,41 @@ public sealed class WindowsReceiptDriver : IReceiptDriver
     private static readonly byte[] DoubleHeightOff = { 0x1D, 0x21, 0x00 };
     private static readonly byte[] Cut = { 0x1D, 0x56, 0x42, 0x00 }; // GS V B 0
 
+    /// <summary>
+    /// The code pages an 80mm thermal printer can be switched to with ESC t, and the .NET
+    /// encoding whose bytes that page expects. Sending the bytes without sending ESC t is
+    /// what garbled ë and ç: the printer powers up on PC437 (where 0xEB is δ) no matter what
+    /// the sender meant, so the page has to be selected on every job.
+    /// </summary>
+    private static readonly Dictionary<string, (byte Page, int CodePage)> CodePages = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["1252"] = (16, 1252),  // WPC1252 — has ë ç Ë Ç; the one virtually every clone supports
+        ["852"]  = (18, 852),   // PC852 Latin-2
+        ["858"]  = (19, 858),
+        ["850"]  = (2, 850),    // PC850 Multilingual
+        ["437"]  = (0, 437),    // PC437 — no Albanian letters; transliterated below
+    };
+
+    /// <summary>
+    /// Last resort for a printer whose firmware ignores ESC t. A receipt that says
+    /// "Faleminderit per blerjen" is ugly; one that prints δ where ë belongs is broken.
+    /// Every mapping is one char to one char: ReceiptFormatter has already padded each line
+    /// to the 42-column grid, and a substitution that changed the length would push the
+    /// amount column out of alignment or wrap the line.
+    /// </summary>
+    private static readonly Dictionary<char, char> Ascii = new()
+    {
+        ['ë'] = 'e', ['Ë'] = 'E', ['ç'] = 'c', ['Ç'] = 'C',
+        ['€'] = 'E', ['’'] = '\'', ['–'] = '-', ['—'] = '-',
+    };
+
+    private static string Transliterate(string s) =>
+        string.Create(s.Length, s, static (dst, src) =>
+        {
+            for (var i = 0; i < src.Length; i++)
+                dst[i] = Ascii.TryGetValue(src[i], out var c) ? c : src[i];
+        });
+
     private readonly AgentConfig _cfg;
     private readonly ILogger<WindowsReceiptDriver> _log;
 
@@ -54,7 +89,7 @@ public sealed class WindowsReceiptDriver : IReceiptDriver
 
         try
         {
-            var bytes = Build(req);
+            var bytes = Build(req, _cfg.ReceiptCodePage);
             var ok = RawPrinterHelper.SendBytesToPrinter(printer, bytes);
             _log.LogInformation("Non-fiscal receipt #{No} sent to {Printer}", req.ReceiptNumber, printer);
             return Task.FromResult(ok ? AgentResult.Success() : AgentResult.Fail("Shkrimi te printeri dështoi."));
@@ -65,15 +100,25 @@ public sealed class WindowsReceiptDriver : IReceiptDriver
         }
     }
 
-    private static byte[] Build(ReceiptPrintRequest r)
+    internal static byte[] Build(ReceiptPrintRequest r, string codePage)
     {
-        // 1252 covers the Albanian letters the shop actually prints (ë 0xEB, ç 0xE7), which
-        // the printer's default code page maps back to the right glyphs.
-        var enc = Encoding.GetEncoding(1252);
+        // "ascii" = give up on the accents and print e/c. Everything else picks a page the
+        // printer is told about explicitly, a line below.
+        var transliterateAll = codePage.Equals("ascii", StringComparison.OrdinalIgnoreCase);
+        var (page, cp) = transliterateAll || !CodePages.TryGetValue(codePage, out var sel)
+            ? ((byte)0, 437)
+            : sel;
+
+        var enc = Encoding.GetEncoding(cp,
+            // Anything the page cannot hold — a supplier's Ć, a stray ™ — becomes '?' rather
+            // than throwing away the sale's receipt. Transliterate() catches the ones we know.
+            EncoderFallback.ReplacementFallback, DecoderFallback.ReplacementFallback);
+
         using var ms = new MemoryStream();
         void Raw(byte[] b) => ms.Write(b, 0, b.Length);
 
         Raw(Init);
+        Raw(new byte[] { 0x1B, 0x74, page }); // ESC t n — interpret the bytes below as this page
 
         // Every line is emitted left-aligned and verbatim: ReceiptFormatter already padded it
         // to the column grid, and asking the printer to centre a pre-centred line would centre
@@ -86,7 +131,10 @@ public sealed class WindowsReceiptDriver : IReceiptDriver
                 case 2: Raw(DoubleHeightOn); break;
             }
 
-            var text = enc.GetBytes(line.Text.TrimEnd() + "\n");
+            var body = line.Text.TrimEnd();
+            if (transliterateAll || cp == 437) body = Transliterate(body);
+
+            var text = enc.GetBytes(body + "\n");
             ms.Write(text, 0, text.Length);
 
             switch (line.Emphasis)

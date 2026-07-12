@@ -5,6 +5,7 @@
 @using KosovaPOS.Models
 @using KosovaPOS.Web.Services
 @inject CatalogService Catalog
+@inject BusinessProfileService Profile
 @inject HardwareBridge Hw
 @inject NavigationManager Nav
 
@@ -109,12 +110,17 @@
     <div class="modal-actions">
         <button class="btn-ghost" disabled="@(_queue.Count == 0)" @onclick="() => _queue.Clear()">Pastro radhën</button>
 
-        @* One button, because the choice is not the cashier's to make: /etiketa sends the
-           queue to the agent as raw TSPL when the agent is there (no dialog), and renders it
-           for the browser when it is not. *@
-        <button class="btn-primary" disabled="@(_queue.Count == 0)" @onclick="Print">
-            🖨️ Printo etiketat (@TotalLabels)
+        @* One button, because the choice is not the cashier's to make: with an agent the queue
+           goes straight out as raw TSPL from this page (no dialog, no page change); without
+           one it is handed to /etiketa, which draws the labels for the browser to print. *@
+        <button class="btn-primary" disabled="@(_queue.Count == 0 || _busy)" @onclick="Print">
+            @(_busy ? "Duke printuar…" : $"🖨️ Printo etiketat ({TotalLabels})")
         </button>
+
+        @if (_status is not null)
+        {
+            <span class="muted print-hint">@_status</span>
+        }
     </div>
 </div>
 
@@ -126,14 +132,47 @@
     }
 
     /// <summary>
-    /// Hands the queue to /etiketa, which prints it — through the agent if this PC has one,
-    /// otherwise through the browser. The queue travels in the URL (<c>id x copies</c>) so a
-    /// jam can be reprinted by reloading, without rebuilding it.
+    /// With an agent on this PC the labels are printed from right here: raw TSPL, no dialog,
+    /// no page change, the queue still on screen for the next batch. Leaving the till screen
+    /// to reach a printer is a step the cashier never asked for.
+    ///
+    /// Without an agent the labels have to be *drawn* by the browser, and a page can only
+    /// print itself — so that case still hands the queue to /etiketa. The queue travels in the
+    /// URL (<c>id x copies</c>) so a jam can be reprinted by reloading, without rebuilding it.
     /// </summary>
-    private void Print()
+    private async Task Print()
     {
-        var q = string.Join(",", _queue.Select(i => $"{i.Article.Id}x{i.Copies}"));
-        Nav.NavigateTo($"/etiketa?q={Uri.EscapeDataString(q)}&auto=1");
+        if (!_agentOnline)
+        {
+            var q = string.Join(",", _queue.Select(i => $"{i.Article.Id}x{i.Copies}"));
+            Nav.NavigateTo($"/etiketa?q={Uri.EscapeDataString(q)}&auto=1");
+            return;
+        }
+
+        _busy = true;
+        _status = null;
+        try
+        {
+            var sent = 0;
+            var failed = new List<string>();
+
+            // Article by article, so a jam does not discard the rest of the queue.
+            foreach (var item in _queue.ToList())
+            {
+                var result = await Hw.PrintBarcodeAsync(item.Article, item.Copies, _labelPrinter);
+                if (result.Ok) sent += item.Copies;
+                else failed.Add($"{item.Article.Name}: {result.Error}");
+            }
+
+            // What printed is off the queue; what failed stays on it, ready to be retried
+            // without being typed in again.
+            _queue.RemoveAll(i => !failed.Any(f => f.StartsWith(i.Article.Name + ":", StringComparison.Ordinal)));
+
+            _status = failed.Count == 0
+                ? $"✅ {sent} etiketa u printuan."
+                : $"{sent} u printuan · {failed.Count} dështuan: {string.Join(" · ", failed.Take(2))}";
+        }
+        finally { _busy = false; }
     }
 
     private List<Article> _all = new();
@@ -141,10 +180,21 @@
     private string _search = "";
     private int _copies = 1;
 
-    private bool _agentOnline, _agentReal;
+    private bool _agentOnline, _agentReal, _busy;
+    private string? _status;
     private string _agentTitle = "Agjenti i pajisjeve nuk është kontrolluar ende";
 
-    protected override async Task OnInitializedAsync() => _all = await Catalog.GetAllArticlesAsync();
+    /// <summary>
+    /// The label printer, named. Leaving it null lets the agent fall back to this PC's default
+    /// printer — which in a shop is the receipt printer, and 30 labels come out as 30 receipts.
+    /// </summary>
+    private string? _labelPrinter;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _all = await Catalog.GetAllArticlesAsync();
+        _labelPrinter = (await Profile.GetSettingsAsync())?.BarcodePrinter;
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {

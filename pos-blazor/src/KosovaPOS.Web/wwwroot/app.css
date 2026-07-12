@@ -718,7 +718,9 @@ a.stat:hover { border-color: var(--accent); }
 .lbl-shop   { font-size: 2.1mm; line-height: 1.1; text-align: center; }
 .lbl-name   { font-size: 2.6mm; line-height: 1.15; text-align: center; font-weight: 600;
               max-height: 6mm; overflow: hidden; }
-.lbl-price  { font-size: 5.2mm; line-height: 1.2; font-weight: 800; margin: .4mm 0; }
+/* The price is read from a shelf; the bars are read by a scanner an inch away. It is the
+   biggest thing on the label, and taller than the barcode — same rule the agent's TSPL uses. */
+.lbl-price  { font-size: 7.5mm; line-height: 1.15; font-weight: 800; margin: .3mm 0; }
 .lbl-code   { margin-top: auto; display: flex; flex-direction: column; align-items: center; }
 .lbl-code svg { display: block; }
 .lbl-digits { font-family: "Courier New", monospace; font-size: 2.3mm; letter-spacing: .3mm; margin-top: .3mm; }
