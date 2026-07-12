@@ -40,9 +40,14 @@ public sealed class WindowsReceiptDriver : IReceiptDriver
 
     public Task<AgentResult> PrintAsync(ReceiptPrintRequest req, CancellationToken ct = default)
     {
-        var printer = req.PrinterName ?? _cfg.ReceiptPrinter;
+        // The POS's choice wins; then the one the agent was installed with; then this PC's
+        // default printer. Erroring out just because nobody named a printer was wrong — the
+        // shop had a working printer and a saved sale, and got nothing but a red line.
+        var printer = WindowsPrinters.Resolve(req.PrinterName, _cfg.ReceiptPrinter);
         if (string.IsNullOrWhiteSpace(printer))
-            return Task.FromResult(AgentResult.Fail("Asnjë printer faturash nuk është konfiguruar (RECEIPT_PRINTER)."));
+            return Task.FromResult(AgentResult.Fail(
+                "Asnjë printer faturash nuk është zgjedhur, dhe ky kompjuter nuk ka printer të parazgjedhur. " +
+                "Zgjidhe te Cilësimet → Pajisjet."));
 
         if (req.Lines.Count == 0)
             return Task.FromResult(AgentResult.Fail("Kuponi erdhi bosh — asnjë rresht për të printuar."));

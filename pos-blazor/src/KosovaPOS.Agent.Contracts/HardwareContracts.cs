@@ -23,6 +23,21 @@ public sealed class AgentHealth
     public DateTimeOffset ServerTime { get; set; } = DateTimeOffset.Now;
 }
 
+/// <summary>
+/// The printers installed on the cashier PC. The POS asks for these so the shop can PICK a
+/// printer from a list instead of typing a Windows printer name exactly right — getting that
+/// name wrong is silent, and looks identical to a printer that is switched off.
+/// </summary>
+public sealed class PrinterList
+{
+    public List<string> Printers { get; set; } = new();
+    /// <summary>The Windows default printer — what the agent uses when nothing is configured.</summary>
+    public string? Default { get; set; }
+    /// <summary>What the agent is configured to use today (RECEIPT_PRINTER / BARCODE_PRINTER).</summary>
+    public string? ConfiguredReceipt { get; set; }
+    public string? ConfiguredBarcode { get; set; }
+}
+
 public sealed class AgentCapabilities
 {
     public bool Fiscal { get; set; }

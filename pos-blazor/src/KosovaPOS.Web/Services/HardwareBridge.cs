@@ -87,6 +87,42 @@ public sealed class HardwareBridge : IAsyncDisposable
         catch (Exception ex) { return AgentResult.Fail(ex.Message); }
     }
 
+    /// <summary>
+    /// Prints a short test slip on the chosen receipt printer. The shop must be able to prove
+    /// the printer works without ringing up a sale to find out — the first sale is the worst
+    /// possible place to discover the printer name is wrong.
+    /// </summary>
+    public async Task<AgentResult> PrintTestReceiptAsync()
+    {
+        var shop = await _profile.GetSettingsAsync();
+        var name = string.IsNullOrWhiteSpace(shop?.BusinessName) ? "KosovaPOS" : shop!.BusinessName!;
+
+        const int w = ReceiptFormatter.DefaultWidth;
+        var lines = new List<ReceiptTextLine>
+        {
+            new(Center(name.ToUpperInvariant(), w), ReceiptEmphasis.Title),
+            new(new string('-', w)),
+            new(Center("PROVË PRINTIMI", w), ReceiptEmphasis.Bold),
+            new(Center($"{DateTime.Now:dd.MM.yyyy HH:mm}", w)),
+            new(new string('-', w)),
+            new(Center("Printeri punon. Ky nuk është kupon.", w)),
+        };
+
+        var req = HardwareMapper.ToReceiptRequest("TEST", lines, shop);
+        try
+        {
+            var m = await ModuleAsync();
+            return await m.InvokeAsync<AgentResult>("printReceipt", req);
+        }
+        catch (Exception ex) { return AgentResult.Fail(ex.Message); }
+
+        static string Center(string s, int width)
+        {
+            if (s.Length >= width) return s[..width];
+            return new string(' ', (width - s.Length) / 2) + s;
+        }
+    }
+
     /// <summary>The shop header both the browser page and the agent print. One definition, one receipt.</summary>
     public static ReceiptHeader ReceiptHeaderFor(BusinessSettings? shop) => new(
         Name: string.IsNullOrWhiteSpace(shop?.BusinessName) ? "KosovaPOS" : shop!.BusinessName!,
@@ -109,6 +145,22 @@ public sealed class HardwareBridge : IAsyncDisposable
             return await m.InvokeAsync<AgentResult>("printBarcode", req);
         }
         catch (Exception ex) { return AgentResult.Fail(ex.Message); }
+    }
+
+    /// <summary>
+    /// The printers installed on the cashier PC, so the shop can pick one rather than type its
+    /// Windows name. Null when the agent is offline — the caller falls back to a free-text box.
+    /// </summary>
+    public async Task<PrinterList?> GetPrintersAsync()
+    {
+        try
+        {
+            var m = await ModuleAsync();
+            var list = await m.InvokeAsync<PrinterList?>("printers");
+            // The offline path returns {ok:false,...}, which deserialises to an empty list.
+            return list is null || list.Printers.Count == 0 ? null : list;
+        }
+        catch (Exception) { return null; }
     }
 
     /// <summary>Reads the current weight from the scale.</summary>

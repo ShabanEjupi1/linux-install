@@ -49,25 +49,67 @@
         </div>
     }
 
-    <h2 class="section-title">1. Emrat e printerëve</h2>
-    <p class="muted setup-p">
-        Shkruaj emrat ashtu si duken te <em>Windows → Printers &amp; scanners</em>. Ruhen për
-        gjithë biznesin, prandaj mjafton një herë — çdo kompjuter i dyqanit i merr nga këtu.
-    </p>
-    <div class="setup-grid">
-        <label>Printeri i kuponave (80mm)
-            <input @bind="_receiptPrinter" placeholder="p.sh. POS-80" />
-        </label>
-        <label>Printeri i etiketave
-            <input @bind="_barcodePrinter" placeholder="p.sh. HPRT HT300" />
-        </label>
-        <button class="btn-primary" @onclick="SavePrinters" disabled="@_saving">
-            @(_saving ? "Duke ruajtur…" : "Ruaj emrat")
-        </button>
-    </div>
-    @if (_saved)
+    <h2 class="section-title">1. Zgjidh printerët</h2>
+
+    @if (_printers is not null)
     {
-        <div class="sale-msg ok">Emrat u ruajtën. Ekzekuto komandën më poshtë që agjenti t'i marrë.</div>
+        @* The agent is here, so the PC's real printers can be listed. Picking beats typing:
+           a mistyped Windows printer name fails silently and looks exactly like a printer
+           that is switched off. *@
+        <p class="muted setup-p">
+            Printerët e instaluar në këtë kompjuter. Zgjedhja ruhet për gjithë biznesin dhe
+            zbatohet menjëherë — agjenti nuk ka nevojë të riinstalohet.
+        </p>
+        <div class="setup-grid">
+            <label>Printeri i kuponave (80mm)
+                <select @bind="_receiptPrinter">
+                    <option value="">— printeri i parazgjedhur i Windows-it —</option>
+                    @foreach (var p in _printers.Printers)
+                    {
+                        <option value="@p">@p @(p == _printers.Default ? "(parazgjedhur)" : "")</option>
+                    }
+                </select>
+            </label>
+            <label>Printeri i etiketave
+                <select @bind="_barcodePrinter">
+                    <option value="">— printeri i parazgjedhur i Windows-it —</option>
+                    @foreach (var p in _printers.Printers)
+                    {
+                        <option value="@p">@p @(p == _printers.Default ? "(parazgjedhur)" : "")</option>
+                    }
+                </select>
+            </label>
+            <button class="btn-primary" @onclick="SavePrinters" disabled="@_saving">
+                @(_saving ? "Duke ruajtur…" : "Ruaj")
+            </button>
+            <button class="btn-ghost" @onclick="TestPrint" disabled="@_saving">🧾 Provo kuponin</button>
+        </div>
+    }
+    else
+    {
+        @* No agent on this PC (or an older one, before /printers existed): the list cannot be
+           read, so fall back to typing the names. *@
+        <p class="muted setup-p">
+            Agjenti nuk po përgjigjet, prandaj lista e printerëve nuk lexohet dot. Shkruaj emrat
+            ashtu si duken te <em>Windows → Printers &amp; scanners</em>, ose instalo agjentin
+            më poshtë dhe rifresko këtë faqe për t'i zgjedhur nga lista.
+        </p>
+        <div class="setup-grid">
+            <label>Printeri i kuponave (80mm)
+                <input @bind="_receiptPrinter" placeholder="p.sh. POS-80" />
+            </label>
+            <label>Printeri i etiketave
+                <input @bind="_barcodePrinter" placeholder="p.sh. HPRT HT300" />
+            </label>
+            <button class="btn-primary" @onclick="SavePrinters" disabled="@_saving">
+                @(_saving ? "Duke ruajtur…" : "Ruaj emrat")
+            </button>
+        </div>
+    }
+
+    @if (_saveMsg is not null)
+    {
+        <div class="sale-msg @(_saveOk ? "ok" : "err")">@_saveMsg</div>
     }
 
     <h2 class="section-title">2. Instalo agjentin në këtë kompjuter</h2>
@@ -125,7 +167,9 @@
 @code {
     private BusinessSettings? _shop;
     private string? _receiptPrinter, _barcodePrinter;
-    private bool _saving, _saved;
+    private KosovaPOS.Agent.Contracts.PrinterList? _printers;
+    private bool _saving, _saveOk;
+    private string? _saveMsg;
 
     private bool _agentOnline, _agentReal;
     private string? _agentVersion;
@@ -176,6 +220,22 @@
         _agentTitle = health is null
             ? "Agjenti i pajisjeve nuk po përgjigjet"
             : $"{(health.RealHardware ? "pajisje reale" : "modaliteti test")}";
+
+        _printers = _agentOnline ? await Hw.GetPrintersAsync() : null;
+    }
+
+    private async Task TestPrint()
+    {
+        _saving = true;
+        try
+        {
+            var r = await Hw.PrintTestReceiptAsync();
+            _saveOk = r.Ok;
+            _saveMsg = r.Ok
+                ? "Prova u dërgua te printeri i kuponave."
+                : $"Prova dështoi: {r.Error}";
+        }
+        finally { _saving = false; }
     }
 
     /// <summary>
@@ -186,7 +246,7 @@
     private async Task SavePrinters()
     {
         _saving = true;
-        _saved = false;
+        _saveMsg = null;
         try
         {
             var shop = _shop ??= await Profile.GetSettingsAsync();
@@ -194,7 +254,10 @@
             shop.BarcodePrinter = _barcodePrinter;
 
             await Profile.SaveSettingsAsync(shop);
-            _saved = true;
+            _saveOk = true;
+            // The POS sends the printer name with every print job, so this takes effect on the
+            // next sale — the agent is not reconfigured and does not need reinstalling.
+            _saveMsg = "U ruajt. Zbatohet menjëherë, pa riinstalim të agjentit.";
         }
         finally { _saving = false; }
     }

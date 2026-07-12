@@ -27,9 +27,11 @@ public sealed class WindowsBarcodeDriver : IBarcodeDriver
 
     public Task<AgentResult> PrintAsync(BarcodePrintRequest req, CancellationToken ct = default)
     {
-        var printer = req.PrinterName ?? _cfg.BarcodePrinter;
+        var printer = WindowsPrinters.Resolve(req.PrinterName, _cfg.BarcodePrinter);
         if (string.IsNullOrWhiteSpace(printer))
-            return Task.FromResult(AgentResult.Fail("Asnjë printer barkodi nuk është konfiguruar (BARCODE_PRINTER)."));
+            return Task.FromResult(AgentResult.Fail(
+                "Asnjë printer etiketash nuk është zgjedhur, dhe ky kompjuter nuk ka printer të parazgjedhur. " +
+                "Zgjidhe te Cilësimet → Pajisjet."));
 
         var copies = Math.Clamp(req.Copies, 1, 1000);
         var tspl = BuildTspl(req, copies);

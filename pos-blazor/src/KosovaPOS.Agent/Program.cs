@@ -69,6 +69,7 @@ if (useReal)
     builder.Services.AddSingleton<IReceiptDriver, WindowsReceiptDriver>();
     builder.Services.AddSingleton<IBarcodeDriver, WindowsBarcodeDriver>();
     builder.Services.AddSingleton<IScaleDriver, WindowsScaleDriver>();
+    builder.Services.AddSingleton<IPrinterEnumerator, WindowsPrinterEnumerator>();
 }
 else
 {
@@ -76,6 +77,7 @@ else
     builder.Services.AddSingleton<IReceiptDriver, MockReceiptDriver>();
     builder.Services.AddSingleton<IBarcodeDriver, MockBarcodeDriver>();
     builder.Services.AddSingleton<IScaleDriver, MockScaleDriver>();
+    builder.Services.AddSingleton<IPrinterEnumerator, MockPrinterEnumerator>();
 }
 
 var app = builder.Build();
@@ -108,6 +110,10 @@ app.MapPost("/receipt/print", async (ReceiptPrintRequest req, IReceiptDriver rec
 
 app.MapPost("/barcode/print", async (BarcodePrintRequest req, IBarcodeDriver barcode, CancellationToken ct) =>
     Results.Ok(await barcode.PrintAsync(req, ct)));
+
+// The printers on THIS PC, so the POS can offer them as a list instead of asking the shop to
+// type a Windows printer name exactly right.
+app.MapGet("/printers", (IPrinterEnumerator printers) => Results.Ok(printers.List()));
 
 app.MapGet("/scale/read", async (IScaleDriver scale, CancellationToken ct) =>
     Results.Ok(await scale.ReadAsync(ct)));

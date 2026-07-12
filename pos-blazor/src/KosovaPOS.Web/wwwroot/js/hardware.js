@@ -49,6 +49,10 @@ export async function printBarcode(req) {
     return await call("/barcode/print", { method: "POST", body: req });
 }
 
+export async function printers() {
+    return await call("/printers", { timeoutMs: 4000 });
+}
+
 export async function readScale() {
     return await call("/scale/read", { timeoutMs: 4000 });
 }

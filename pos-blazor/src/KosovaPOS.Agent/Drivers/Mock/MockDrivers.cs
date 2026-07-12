@@ -83,3 +83,18 @@ public sealed class MockScaleDriver : IScaleDriver
             Stable = true,
         });
 }
+
+/// <summary>Stand-in printer list, so the POS's printer pickers can be exercised off Windows.</summary>
+public sealed class MockPrinterEnumerator : IPrinterEnumerator
+{
+    private readonly AgentConfig _cfg;
+    public MockPrinterEnumerator(AgentConfig cfg) => _cfg = cfg;
+
+    public PrinterList List() => new()
+    {
+        Printers = ["EPSON TM-T20 Receipt", "HPRT HT300 (labels)", "Microsoft Print to PDF"],
+        Default = "Microsoft Print to PDF",
+        ConfiguredReceipt = _cfg.ReceiptPrinter,
+        ConfiguredBarcode = _cfg.BarcodePrinter,
+    };
+}

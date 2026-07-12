@@ -33,3 +33,9 @@ public interface IScaleDriver
     bool Available { get; }
     Task<ScaleReadResult> ReadAsync(CancellationToken ct = default);
 }
+
+/// <summary>Lists the printers installed on this PC, so the POS can offer them as a choice.</summary>
+public interface IPrinterEnumerator
+{
+    PrinterList List();
+}
