@@ -188,19 +188,75 @@ public static class BarcodeSvg
     ];
 
     private const int StartB = 104;
+    private const int StartC = 105;
+    private const int CodeB = 100;       // switch to subset B
+    private const int CodeC = 99;        // switch to subset C
     private const int Stop = 106;
 
+    /// <summary>
+    /// Subset C packs TWO digits into one symbol. It is not an optimisation — it is what
+    /// makes a long numeric code fit on the label at all: a 14-digit code in subset B is
+    /// ~62mm of bars, which overflows a 55mm label and prints a barcode no scanner can
+    /// read (and, being clipped rather than absent, looks fine to the eye). In subset C
+    /// the same code is ~36mm.
+    /// </summary>
     private static bool[]? EncodeCode128B(string s)
     {
         if (s.Length == 0 || s.Any(c => c < 32 || c > 126))
             return null;
 
-        var values = new List<int> { StartB };
-        foreach (var c in s)
-            values.Add(c - 32);           // subset B: value = ASCII - 32
+        var values = new List<int>();
+        int i2 = 0;
+        bool inC = false;
+
+        // Start in C if the code opens with at least 4 digits (the usual case for a
+        // barcode), which is the standard heuristic: below that the switch costs more
+        // than it saves.
+        if (DigitRun(s, 0) >= 4)
+        {
+            values.Add(StartC);
+            inC = true;
+        }
+        else
+        {
+            values.Add(StartB);
+        }
+
+        while (i2 < s.Length)
+        {
+            var run = DigitRun(s, i2);
+
+            if (inC)
+            {
+                // C encodes pairs, so an odd digit at the end of a run must be handed to B.
+                if (run >= 2)
+                {
+                    var pairs = run / 2;
+                    for (int k = 0; k < pairs; k++)
+                    {
+                        values.Add((s[i2] - '0') * 10 + (s[i2 + 1] - '0'));
+                        i2 += 2;
+                    }
+                    continue;
+                }
+
+                values.Add(CodeB);
+                inC = false;
+            }
+            else if (run >= 6 && run % 2 == 0)
+            {
+                // Long even digit run: worth switching to C.
+                values.Add(CodeC);
+                inC = true;
+                continue;
+            }
+
+            values.Add(s[i2] - 32);      // subset B: value = ASCII - 32
+            i2++;
+        }
 
         // Checksum: start value + sum(value_i * position_i), mod 103.
-        long sum = StartB;
+        long sum = values[0];
         for (int i = 1; i < values.Count; i++)
             sum += (long)values[i] * i;
         values.Add((int)(sum % 103));
@@ -220,6 +276,35 @@ public static class BarcodeSvg
         }
 
         return bits.ToArray();
+    }
+
+    private static int DigitRun(string s, int from)
+    {
+        int n = 0;
+        while (from + n < s.Length && char.IsAsciiDigit(s[from + n])) n++;
+        return n;
+    }
+
+    /// <summary>
+    /// The narrow-bar width that makes <paramref name="content"/> fit inside
+    /// <paramref name="availableMm"/>, or null if it cannot fit even at the smallest width a
+    /// scanner can be trusted to read.
+    ///
+    /// This exists because the failure it prevents is invisible: a barcode wider than the
+    /// label is simply clipped by the label's edge, and a clipped barcode still LOOKS like a
+    /// barcode. It scans nowhere. Better to shrink the bars — or, past the floor, refuse and
+    /// print the number as text.
+    /// </summary>
+    public static double? FitModuleMm(string? content, double availableMm, double preferredMm = DefaultModuleMm)
+    {
+        const double ScannerFloorMm = 0.19;   // ~1.5 dots at 203dpi; below this, reads get unreliable
+
+        var natural = WidthMm(content, preferredMm);
+        if (natural <= 0) return null;
+        if (natural <= availableMm) return preferredMm;
+
+        var needed = preferredMm * (availableMm / natural);
+        return needed >= ScannerFloorMm ? needed : null;
     }
 
     private static string F(double mm) => mm.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);

@@ -57,9 +57,10 @@ else
         @* Screen-only: a code that cannot be encoded still prints, but as text, exactly as
            the desktop did. Saying so beats letting the shop discover it at the scanner. *@
         <div class="sale-msg err lbl-warn">
-            @_unencodable.Count artikuj nuk kanë barkod të vlefshëm (bosh, me shkronja jo-ASCII,
-            ose 13 shifra me shifër kontrolli të gabuar) — etiketa printohet, por vetëm me tekst,
-            pa vija që lexohen nga skaneri: @string.Join(", ", _unencodable.Take(6))@(_unencodable.Count > 6 ? "…" : "")
+            @_unencodable.Count artikuj nuk kanë barkod që printohet dot në këtë etiketë (bosh,
+            me shkronja jo-ASCII, 13 shifra me shifër kontrolli të gabuar, ose shumë i gjatë për
+            @(_wMm) mm) — etiketa printohet, por vetëm me tekst, pa vija që lexohen nga skaneri:
+            @string.Join(", ", _unencodable.Take(6))@(_unencodable.Count > 6 ? "…" : "")
         </div>
     }
 
@@ -130,11 +131,19 @@ else
         // switches to taller stock.
         var barMm = Math.Max(4.0, _hMm * 0.18);
 
+        // The bars must fit INSIDE the label, minus its side padding. A barcode wider than
+        // the label is not a wide barcode — it is a clipped one, and a clipped barcode still
+        // looks right while scanning nowhere. Shrink the module to fit; if even the smallest
+        // scannable bar won't fit, print the number as text and say so.
+        var usableMm = _wMm - 3;
+
         foreach (var (id, copies) in wanted)
         {
             if (!articles.TryGetValue(id, out var a)) continue;
 
-            var svg = BarcodeSvg.Render(a.Barcode, heightMm: barMm);
+            var module = BarcodeSvg.FitModuleMm(a.Barcode, usableMm);
+            var svg = module is null ? null : BarcodeSvg.Render(a.Barcode, heightMm: barMm, moduleMm: module.Value);
+
             if (svg is null && !_unencodable.Contains(a.Name))
                 _unencodable.Add(a.Name);
 
