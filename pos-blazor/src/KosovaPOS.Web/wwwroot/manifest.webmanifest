@@ -1,0 +1,21 @@
+{
+  "name": "KosovaPOS",
+  "short_name": "KosovaPOS",
+  "description": "Arka, shitjet, stoku dhe faturat.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#1e293b",
+  "theme_color": "#1e293b",
+  "orientation": "any",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Shitje", "url": "/sale" },
+    { "name": "Faturat", "url": "/faturat" },
+    { "name": "Blerjet", "url": "/blerjet" }
+  ]
+}

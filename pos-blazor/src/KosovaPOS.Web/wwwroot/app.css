@@ -636,3 +636,34 @@ a.stat:hover { border-color: var(--accent); }
   .inv-in { border: none; padding: 0; }
   @page { size: A4; margin: 12mm; }
 }
+
+/* "editing an existing document" badge on the purchase entry form */
+.edit-badge {
+  background: var(--warn-bg); border: 1px solid var(--warn-line); color: var(--warn);
+  border-radius: var(--r); padding: .3rem .55rem; font-size: .8rem; white-space: nowrap;
+}
+.btn-mini.danger { color: var(--danger, #dc2626); }
+
+/* ── 80mm thermal receipt, printed by the browser (no agent) ──────────────── */
+.r80 {
+  background: #fff; color: #000; margin: 1rem auto; padding: 4mm;
+  width: 80mm; max-width: 100%; box-sizing: border-box;
+  box-shadow: 0 2px 14px rgba(0,0,0,.25);
+  font-family: "Consolas", "Courier New", monospace; font-size: 12px; line-height: 1.35;
+}
+.r80-c { text-align: center; }
+.r80-big { font-size: 15px; font-weight: 700; }
+.r80-small { font-size: 10px; }
+.r80-sep { border-top: 1px dashed #000; margin: 4px 0; }
+.r80-row { display: flex; justify-content: space-between; gap: 6px; }
+.r80-item { font-weight: 600; }
+.r80-total { font-size: 15px; font-weight: 800; border-top: 1px solid #000; margin-top: 3px; padding-top: 3px; }
+
+@media print {
+  /* The roll is continuous: height auto, no margins, or the printer feeds a blank page. */
+  .r80 { margin: 0; padding: 0; box-shadow: none; width: auto; }
+  @page { size: 80mm auto; margin: 2mm; }
+}
+
+/* Post-sale print shortcuts (browser printing, no agent required) */
+.print-links { display: flex; gap: .5rem; flex-wrap: wrap; margin-top: .5rem; }

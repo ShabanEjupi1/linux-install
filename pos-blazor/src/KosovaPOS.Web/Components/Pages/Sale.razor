@@ -117,6 +117,16 @@
                 <div class="sale-msg @(_success ? "ok" : "err")">@_message</div>
             }
 
+            @* Printing that needs no agent: the browser prints straight to the shop's
+               thermal (80mm) or A4 printer. Shown after a sale is saved. *@
+            @if (_lastNumri is not null)
+            {
+                <div class="print-links">
+                    <a class="btn-ghost" href="@($"/kupon/{_lastNumri}?auto=1")" target="_blank">🧾 Printo kuponin (80mm)</a>
+                    <a class="btn-ghost" href="@($"/fatura/{_lastNumri}")" target="_blank">📄 Faturë A4</a>
+                </div>
+            }
+
             <button class="complete" disabled="@(_cart.Count == 0 || _busy)" @onclick="Complete">
                 @(_busy ? "Duke ruajtur…" : "PËRFUNDO (F12)")
             </button>
@@ -142,6 +152,8 @@
 
     private bool _printFiscal = true;
     private bool _printReceipt;
+    /// <summary>The journal number of the sale just saved, so it can be printed from the browser.</summary>
+    private long? _lastNumri;
     private KosovaPOS.Models.BusinessSettings? _shop;
     private bool _agentOnline, _agentReal;
     private string _agentTitle = "Agjenti i pajisjeve nuk është kontrolluar ende";
@@ -280,6 +292,7 @@
             }
 
             _success = true;
+            _lastNumri = savedNumri;
             var change = Change;
             _message = $"Fatura #{savedNumri} u ruajt · Kusuri {change:0.00} €";
 

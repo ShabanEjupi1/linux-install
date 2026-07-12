@@ -1,0 +1,103 @@
+@page "/kupon/{Numri:long}"
+@attribute [Authorize(Policy = "perm:sell")]
+@layout EmptyLayout
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using KosovaPOS.Core.Services
+@using KosovaPOS.Models
+@inject SalesService Sales
+@inject BusinessProfileService Profile
+@inject IJSRuntime JS
+
+@* An 80mm thermal receipt rendered as a web page and printed by the BROWSER.
+   Deliberately not routed through the hardware agent: the browser already talks to
+   every printer Windows knows about, so this prints on the shop's thermal printer
+   with nothing installed on the PC. The FISCAL receipt still needs the agent —
+   F-Link is driven by dropping a file in a watched folder, which a browser cannot
+   do — so this is the courtesy/customer copy, not the ATK-fiscal one. *@
+
+<PageTitle>Kupon @Numri — KosovaPOS</PageTitle>
+
+@if (_notFound)
+{
+    <div class="inv-toolbar"><a class="btn-ghost" href="/faturat">← Faturat</a></div>
+    <div class="r80"><p>Fatura #@Numri nuk u gjet.</p></div>
+}
+else if (_invoice is null)
+{
+    <div class="r80"><p>Duke ngarkuar…</p></div>
+}
+else
+{
+    <div class="inv-toolbar">
+        <a class="btn-ghost" href="/faturat">← Faturat</a>
+        <button class="btn-primary" @onclick="Print">🖨️ Printo kuponin</button>
+    </div>
+
+    <div class="r80">
+        <div class="r80-c r80-big">@SellerName</div>
+        @if (!string.IsNullOrWhiteSpace(_shop?.Address)) { <div class="r80-c">@_shop!.Address</div> }
+        @if (!string.IsNullOrWhiteSpace(_shop?.FiscalNumber)) { <div class="r80-c">Nr. fiskal: @_shop!.FiscalNumber</div> }
+        @if (!string.IsNullOrWhiteSpace(_shop?.VatNumber)) { <div class="r80-c">Nr. TVSH: @_shop!.VatNumber</div> }
+
+        <div class="r80-sep"></div>
+        <div class="r80-row"><span>Kuponi</span><span>#@_invoice.Number</span></div>
+        <div class="r80-row"><span>Data</span><span>@_invoice.Date.ToString("dd.MM.yyyy") @_invoice.Time</span></div>
+        <div class="r80-row"><span>Arkëtari</span><span>@_invoice.CashierName</span></div>
+        <div class="r80-sep"></div>
+
+        @foreach (var l in _invoice.Lines)
+        {
+            <div class="r80-item">@l.Name</div>
+            <div class="r80-row">
+                <span>@l.Quantity.ToString("0.###") × @l.UnitPriceGross.ToString("0.00")</span>
+                <span>@l.GrossValue.ToString("0.00")</span>
+            </div>
+        }
+
+        <div class="r80-sep"></div>
+        <div class="r80-row"><span>Pa TVSH</span><span>@_invoice.TotalNet.ToString("0.00") €</span></div>
+        @foreach (var v in _invoice.VatSummary)
+        {
+            <div class="r80-row"><span>TVSH @v.Rate.ToString("0.##")%</span><span>@v.Vat.ToString("0.00") €</span></div>
+        }
+        <div class="r80-row r80-total"><span>TOTALI</span><span>@_invoice.TotalGross.ToString("0.00") €</span></div>
+        <div class="r80-row"><span>Pagesa</span><span>@_invoice.PaymentMethod</span></div>
+        <div class="r80-sep"></div>
+
+        <div class="r80-c">Faleminderit!</div>
+        <div class="r80-c r80-small">Ky kupon nuk është faturë fiskale.</div>
+    </div>
+}
+
+@code {
+    [Parameter] public long Numri { get; set; }
+
+    /// <summary>?auto=1 opens the print dialog as soon as the receipt has rendered.</summary>
+    [SupplyParameterFromQuery(Name = "auto")] public string? Auto { get; set; }
+
+    private KosovaPOS.Core.Services.Invoice? _invoice;
+    private BusinessSettings? _shop;
+    private bool _notFound;
+    private bool _printed;
+
+    private string SellerName => string.IsNullOrWhiteSpace(_shop?.BusinessName) ? "KosovaPOS" : _shop!.BusinessName!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _invoice = await Sales.GetInvoiceAsync(Numri);
+        if (_invoice is null) { _notFound = true; return; }
+        _shop = await Profile.GetSettingsAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Print once, after the receipt is actually on screen — printing during
+        // prerender would produce a blank page.
+        if (_printed || _invoice is null || Auto != "1") return;
+        _printed = true;
+        await Print();
+    }
+
+    private async Task Print() => await JS.InvokeVoidAsync("print");
+}

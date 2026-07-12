@@ -8,6 +8,15 @@
     <ResourcePreloader />
     <link rel="stylesheet" href="@Assets["app.css"]" />
     <link rel="stylesheet" href="@Assets["KosovaPOS.Web.styles.css"]" />
+
+    @* Installable as a desktop app (Edge/Chrome "Install KosovaPOS") so the till
+       runs in its own window instead of a browser tab. *@
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icon-192.png" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <meta name="theme-color" content="#1e293b" />
+    <meta name="application-name" content="KosovaPOS" />
+
     <ImportMap />
     <HeadOutlet />
 </head>
@@ -17,6 +26,13 @@
     <ReconnectModal />
     <script src="@Assets["_framework/blazor.web.js"]"></script>
     <script src="@Assets["js/download.js"]"></script>
+    <script>
+        // Registering a fetch-handling service worker is what makes the browser
+        // offer "Install". It caches nothing — see service-worker.js.
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => navigator.serviceWorker.register('/service-worker.js'));
+        }
+    </script>
 </body>
 
 </html>

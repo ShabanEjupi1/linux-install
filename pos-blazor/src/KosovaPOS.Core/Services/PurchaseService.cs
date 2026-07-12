@@ -146,6 +146,167 @@ public class PurchaseService
             .ToList();
     }
 
+    /// <summary>
+    /// Deletes a purchase document and reverses exactly the stock it added.
+    ///
+    /// The reversal subtracts each line's own recorded quantity rather than
+    /// recomputing anything, so a correction undoes precisely what the original
+    /// entry did. Stock is allowed to go negative here: the goods may already have
+    /// been sold, and refusing would make a mistaken purchase impossible to correct
+    /// — the honest outcome is a visible negative on /stoku, not a fabricated one.
+    /// Article prices (CFurnizimit/CShitjes) are NOT rolled back: the later price is
+    /// a business fact, and no earlier value is recorded to restore.
+    /// </summary>
+    public async Task<bool> DeletePurchaseAsync(long numri)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        await using var tx = await db.Database.BeginTransactionAsync();
+        try
+        {
+            var rows = await db.DitariH.Where(d => d.Numri == numri).ToListAsync();
+            if (rows.Count == 0) return false;
+
+            await ReverseStockAsync(db, rows);
+            db.DitariH.RemoveRange(rows);
+
+            await db.SaveChangesAsync();
+            await tx.CommitAsync();
+            return true;
+        }
+        catch
+        {
+            await tx.RollbackAsync();
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Rewrites an existing purchase document in place: reverses the stock the old
+    /// lines added, replaces them with the draft's lines under the same document
+    /// number, and applies the new stock. One transaction, so a failure leaves the
+    /// original untouched.
+    /// </summary>
+    public async Task<bool> UpdatePurchaseAsync(long numri, PurchaseDraft draft)
+    {
+        if (draft.Items.Count == 0) return false;
+
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        await using var tx = await db.Database.BeginTransactionAsync();
+        try
+        {
+            var old = await db.DitariH.Where(d => d.Numri == numri).ToListAsync();
+            if (old.Count == 0) return false;
+
+            await ReverseStockAsync(db, old);
+            db.DitariH.RemoveRange(old);
+            await db.SaveChangesAsync();   // flush the delete before re-inserting the same Numri
+
+            int nrRendor = 1;
+            foreach (var item in draft.Items)
+            {
+                var priceAfterRabat = item.PurchasePrice * (1 - item.DiscountPercent / 100);
+                var vatValue = priceAfterRabat * item.Quantity * (item.VATRate / 100);
+                var totalWithVat = priceAfterRabat * item.Quantity + vatValue;
+
+                db.DitariH.Add(new DitariH
+                {
+                    Data = draft.Date,
+                    Ora = draft.Date.ToString("HH:mm:ss"),
+                    Numri = numri,
+                    NrFatures = draft.DocumentNumber,
+                    NrDUD = draft.DocumentNumber,
+                    Subjekti = draft.SupplierId > 0 ? draft.SupplierId : null,
+                    Tipi = draft.PurchaseType,
+                    Punetori = draft.Worker,
+                    Barkodi = item.Barcode,
+                    ArtikullId = item.ArticleId,
+                    Artikulli = item.ArticleName,
+                    Njesia = "Copë",
+                    Sasia = (double)item.Quantity,
+                    CmimiFurn = (double)item.PurchasePrice,
+                    RabatiPer = (double)item.DiscountPercent,
+                    RabatiVl = (double)(item.PurchasePrice * item.Quantity * item.DiscountPercent / 100),
+                    VleraFurn = (double)(priceAfterRabat * item.Quantity),
+                    TvshPer = (double)item.VATRate,
+                    TvshVl = (double)vatValue,
+                    VleraMeTvsh = (double)totalWithVat,
+                    CmShitjes = (double)item.SalesPrice,
+                    PerPagese = (double)totalWithVat,
+                    Pagoi = draft.IsPaid ? (double)totalWithVat : 0,
+                    Mbeti = draft.IsPaid ? 0 : (double)totalWithVat,
+                    NrRendor = nrRendor++
+                });
+
+                var artikull = await db.Artikujt.FirstOrDefaultAsync(a => a.Id == item.ArticleId);
+                if (artikull != null)
+                {
+                    artikull.Sasia = (artikull.Sasia ?? 0) + (double)item.Quantity;
+                    artikull.SasiaHyrje = (artikull.SasiaHyrje ?? 0) + (double)item.Quantity;
+                    artikull.CFurnizimit = (double)item.PurchasePrice;
+                    if (item.SalesPrice > 0)
+                        artikull.CShitjes = (double)item.SalesPrice;
+                }
+            }
+
+            await db.SaveChangesAsync();
+            await tx.CommitAsync();
+            return true;
+        }
+        catch
+        {
+            await tx.RollbackAsync();
+            return false;
+        }
+    }
+
+    /// <summary>Subtracts the stock a set of purchase lines had added.</summary>
+    private static async Task ReverseStockAsync(PosDbContext db, List<DitariH> rows)
+    {
+        foreach (var row in rows)
+        {
+            if (row.ArtikullId is null) continue;
+            var artikull = await db.Artikujt.FirstOrDefaultAsync(a => a.Id == row.ArtikullId);
+            if (artikull is null) continue;
+
+            var qty = row.Sasia ?? 0;
+            artikull.Sasia = (artikull.Sasia ?? 0) - qty;
+            artikull.SasiaHyrje = (artikull.SasiaHyrje ?? 0) - qty;
+        }
+    }
+
+    /// <summary>The draft behind an existing document, so it can be loaded into the edit form.</summary>
+    public async Task<PurchaseDraft?> GetPurchaseDraftAsync(long numri)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var rows = await db.DitariH.AsNoTracking()
+            .Where(d => d.Numri == numri)
+            .OrderBy(d => d.NrRendor)
+            .ToListAsync();
+        if (rows.Count == 0) return null;
+
+        var head = rows[0];
+        return new PurchaseDraft
+        {
+            DocumentNumber = head.NrFatures ?? numri.ToString(),
+            Date = head.Data ?? DateTime.Now,
+            SupplierId = head.Subjekti ?? 0,
+            PurchaseType = head.Tipi ?? "Vendore",
+            Worker = head.Punetori ?? "",
+            IsPaid = (head.Mbeti ?? 0) <= 0,
+            Items = rows.Select(d => new PurchaseDraftItem
+            {
+                ArticleId = d.ArtikullId ?? 0,
+                ArticleName = d.Artikulli ?? "",
+                Barcode = d.Barkodi ?? "",
+                Quantity = (decimal)(d.Sasia ?? 0),
+                PurchasePrice = (decimal)(d.CmimiFurn ?? 0),
+                SalesPrice = (decimal)(d.CmShitjes ?? 0),
+                DiscountPercent = (decimal)(d.RabatiPer ?? 0),
+                VATRate = (decimal)(d.TvshPer ?? 0),
+            }).ToList()
+        };
+    }
+
     /// <summary>Line items of one purchase document, in order.</summary>
     public async Task<List<PurchaseLineView>> GetPurchaseDetailAsync(long numri)
     {

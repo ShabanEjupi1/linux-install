@@ -17,7 +17,11 @@
             <div class="search-row">
                 <input @bind="_search" @bind:event="oninput" @onkeydown="OnSearchKey"
                        placeholder="Kërko emër ose skano barkod…" class="search-box" autofocus />
-                <button class="btn-ghost" @onclick="ShowRecent">Blerjet e fundit</button>
+                @if (_editingNumri is not null)
+                {
+                    <span class="edit-badge">✏️ Duke ndryshuar blerjen #@_editingNumri</span>
+                }
+                <button class="btn-ghost" @onclick="ShowRecent">← Blerjet</button>
             </div>
             <div class="grid">
                 @if (_loading)
@@ -157,7 +161,12 @@ else
                                 <td>@p.PurchaseType</td>
                                 <td class="num">@p.ItemCount</td>
                                 <td class="num strong">@p.TotalAmount.ToString("0.00") €</td>
-                                <td class="actions"><button class="btn-mini">👁️</button></td>
+                                <td class="actions" @onclick:stopPropagation="true">
+                                    <button class="btn-mini" title="Shiko" @onclick="() => OpenDetail(p.DocumentNumber)">👁️</button>
+                                    <button class="btn-mini" title="Ndrysho" @onclick="() => EditPurchase(p.DocumentNumber)">✏️</button>
+                                    <button class="btn-mini danger" title="Fshi"
+                                            @onclick="() => _deleteNumber = long.Parse(p.DocumentNumber)">🗑️</button>
+                                </td>
                             </tr>
                         }
                         @if (!_recent.Any())
@@ -203,7 +212,28 @@ else
                 </table>
             }
             <div class="modal-actions">
+                <button class="btn-primary" @onclick="() => EditPurchase(_detailNumber!.Value.ToString())">✏️ Ndrysho</button>
                 <button class="btn-ghost" @onclick="() => _detailNumber = null">Mbyll</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (_deleteNumber is not null)
+{
+    <div class="modal-backdrop" @onclick="() => _deleteNumber = null">
+        <div class="modal" @onclick:stopPropagation="true">
+            <h2>Fshi blerjen #@_deleteNumber?</h2>
+            <p class="muted">
+                Rreshtat e blerjes fshihen dhe <strong>stoku që kjo blerje shtoi do të zbritet</strong>.
+                Nëse artikujt janë shitur ndërkohë, stoku mund të dalë negativ — kjo është e vërteta e
+                gjendjes, jo gabim. Veprimi nuk kthehet mbrapa.
+            </p>
+            <div class="modal-actions">
+                <button class="btn-danger" @onclick="ConfirmDelete" disabled="@_busy">
+                    @(_busy ? "Duke fshirë…" : "Fshi")
+                </button>
+                <button class="btn-ghost" @onclick="() => _deleteNumber = null">Anulo</button>
             </div>
         </div>
     </div>
@@ -214,7 +244,12 @@ else
 
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
 
-    private View _view = View.Entry;
+    // The tab opens on the LIST, like /faturat. Opening on the empty entry form made
+    // 361 existing purchase documents look like they didn't exist.
+    private View _view = View.Recent;
+
+    /// <summary>Set while the entry form is editing an existing document rather than creating one.</summary>
+    private long? _editingNumri;
 
     // Entry state
     private List<Article> _articles = new();
@@ -248,6 +283,14 @@ else
         _suppliers = await PurchaseSvc.GetSuppliersAsync();
         _docNumber = await PurchaseSvc.GetNextDocumentNumberAsync();
         _loading = false;
+        await LoadRecent();
+    }
+
+    private async Task LoadRecent()
+    {
+        _recentLoading = true;
+        _recent = await PurchaseSvc.GetRecentPurchasesAsync(100);
+        _recentLoading = false;
     }
 
     private IEnumerable<Article> FilteredArticles
@@ -324,21 +367,40 @@ else
                 Worker = _worker,
                 Items = _lines.ToList()
             };
-            var savedNumri = await PurchaseSvc.SavePurchaseAsync(draft);
-            if (savedNumri is null)
+            if (_editingNumri is { } editNumri)
             {
-                _success = false;
-                _message = "Ruajtja dështoi. Provo përsëri.";
-                return;
+                // Rewrites the document in place: old stock reversed, new applied.
+                if (!await PurchaseSvc.UpdatePurchaseAsync(editNumri, draft))
+                {
+                    _success = false;
+                    _message = "Ndryshimi dështoi. Provo përsëri.";
+                    return;
+                }
+                _success = true;
+                _message = $"Blerja #{editNumri} u ndryshua · stoku u rregullua.";
             }
-            _success = true;
-            _message = $"Blerja #{savedNumri} u ruajt · stoku u përditësua.";
+            else
+            {
+                var savedNumri = await PurchaseSvc.SavePurchaseAsync(draft);
+                if (savedNumri is null)
+                {
+                    _success = false;
+                    _message = "Ruajtja dështoi. Provo përsëri.";
+                    return;
+                }
+                _success = true;
+                _message = $"Blerja #{savedNumri} u ruajt · stoku u përditësua.";
+            }
+
+            _editingNumri = null;
             _lines.Clear();
             _invoiceNumber = "";
             _isPaid = false;
             // Refresh catalogue stock + next doc number for the following entry.
             _articles = await Catalog.GetAllArticlesAsync();
             _docNumber = await PurchaseSvc.GetNextDocumentNumberAsync();
+            await LoadRecent();
+            _view = View.Recent;
         }
         finally
         {
@@ -349,12 +411,63 @@ else
     private async Task ShowRecent()
     {
         _view = View.Recent;
-        _recentLoading = true;
-        _recent = await PurchaseSvc.GetRecentPurchasesAsync(100);
-        _recentLoading = false;
+        await LoadRecent();
     }
 
-    private void ShowEntry() => _view = View.Entry;
+    /// <summary>Opens the entry form for a NEW purchase (never an edit).</summary>
+    private void ShowEntry()
+    {
+        _editingNumri = null;
+        _lines.Clear();
+        _invoiceNumber = "";
+        _isPaid = false;
+        _supplierId = 0;
+        _purchaseType = "Vendore";
+        _message = null;
+        _view = View.Entry;
+    }
+
+    /// <summary>Loads an existing document into the entry form for editing.</summary>
+    private async Task EditPurchase(string documentNumber)
+    {
+        if (!long.TryParse(documentNumber, out var numri)) return;
+        var draft = await PurchaseSvc.GetPurchaseDraftAsync(numri);
+        if (draft is null) return;
+
+        _editingNumri = numri;
+        _lines.Clear();
+        _lines.AddRange(draft.Items);
+        _invoiceNumber = draft.DocumentNumber;
+        _supplierId = draft.SupplierId;
+        _purchaseType = draft.PurchaseType;
+        _isPaid = draft.IsPaid;
+        _message = null;
+        _detailNumber = null;
+        _view = View.Entry;
+    }
+
+    private long? _deleteNumber;
+
+    private async Task ConfirmDelete()
+    {
+        if (_deleteNumber is not { } numri) return;
+        _busy = true;
+        try
+        {
+            var ok = await PurchaseSvc.DeletePurchaseAsync(numri);
+            _success = ok;
+            _message = ok
+                ? $"Blerja #{numri} u fshi · stoku u kthye."
+                : $"Fshirja e blerjes #{numri} dështoi.";
+            _deleteNumber = null;
+            _articles = await Catalog.GetAllArticlesAsync();
+            await LoadRecent();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
 
     private async Task OpenDetail(string documentNumber)
     {

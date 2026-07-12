@@ -48,8 +48,10 @@
                             <td class="num strong">@s.TotalAmount.ToString("0.00") €</td>
                             <td class="actions">
                                 <button class="btn-mini" title="Shiko">👁️</button>
+                                <a class="btn-mini" href="@($"/kupon/{s.ReceiptNumber}?auto=1")" target="_blank"
+                                   title="Printo kuponin 80mm" @onclick:stopPropagation="true">🧾 Kupon</a>
                                 <a class="btn-mini" href="@($"/fatura/{s.ReceiptNumber}")" target="_blank"
-                                   title="Printo faturën A4" @onclick:stopPropagation="true">🧾 A4</a>
+                                   title="Printo faturën A4" @onclick:stopPropagation="true">📄 A4</a>
                             </td>
                         </tr>
                     }
