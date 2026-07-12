@@ -164,6 +164,34 @@ if (!app.Environment.IsDevelopment())
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
 app.UseHttpsRedirection();
 
+// A business host that names no active business is not this application. One
+// *.<base> DNS record and one ingress rule route EVERY pos-<label> host here, so
+// without this the app answers on hosts no shop has: a retired code still serves a
+// working login page (pos-bmd survived the shop being re-coded to its fiscal
+// number), and so does any typo or probe. Refuse them outright rather than invite
+// a cashier to type a password into a subdomain that leads nowhere.
+//
+// The registry is a cached singleton, so this is a dictionary lookup, not a query.
+// It runs before authentication: a dead host serves nothing at all, not even the
+// login form or a static asset.
+app.Use(async (ctx, next) =>
+{
+    var hosts = ctx.RequestServices.GetRequiredService<BusinessHostResolver>();
+    var code = hosts.CodeFromHost(ctx.Request.Host.Value);
+    if (code is not null)
+    {
+        var registry = ctx.RequestServices.GetRequiredService<BusinessRegistry>();
+        if (await registry.GetActiveByCodeAsync(code) is null)
+        {
+            ctx.Response.StatusCode = StatusCodes.Status404NotFound;
+            ctx.Response.ContentType = "text/plain; charset=utf-8";
+            await ctx.Response.WriteAsync("Ky biznes nuk ekziston.");
+            return;
+        }
+    }
+    await next();
+});
+
 app.UseAuthentication();
 
 // Defence in depth: a session must not be usable on a business subdomain other
