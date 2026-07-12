@@ -113,17 +113,26 @@ public class PurchaseService
         }
     }
 
-    /// <summary>Recent purchase documents, newest first (mirror of GetRecentSales).</summary>
-    public async Task<List<PurchaseSummary>> GetRecentPurchasesAsync(int count = 50)
+    /// <summary>
+    /// Every purchase document the shop has, newest first. The screen that shows these has a
+    /// search box, and a search that can only see the newest 100 documents is a search that
+    /// quietly lies about the other 261.
+    /// </summary>
+    public Task<List<PurchaseSummary>> GetAllPurchasesAsync() => GetRecentPurchasesAsync(null);
+
+    /// <summary>Recent purchase documents, newest first (mirror of GetRecentSales). Null = all.</summary>
+    public async Task<List<PurchaseSummary>> GetRecentPurchasesAsync(int? count = 50)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
 
-        var recentNumbers = await db.DitariH.AsNoTracking()
+        var numbers = db.DitariH.AsNoTracking()
             .Select(d => d.Numri)
             .Distinct()
-            .OrderByDescending(n => n)
-            .Take(count)
-            .ToListAsync();
+            .OrderByDescending(n => n);
+
+        var recentNumbers = count is { } take
+            ? await numbers.Take(take).ToListAsync()
+            : await numbers.ToListAsync();
 
         var rows = await db.DitariH.AsNoTracking()
             .Where(d => recentNumbers.Contains(d.Numri))

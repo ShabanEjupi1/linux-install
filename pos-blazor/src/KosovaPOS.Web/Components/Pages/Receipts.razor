@@ -51,11 +51,14 @@
                             <td class="actions">
                                 <button class="btn-mini" title="Shiko">👁️</button>
                                 <button class="btn-mini" title="Printo kuponin 80mm" disabled="@_printing"
-                                        @onclick="() => Print(s.ReceiptNumber, false)"
+                                        @onclick="() => Print(s.ReceiptNumber, Doc.Receipt80)"
                                         @onclick:stopPropagation="true">🧾 Kupon</button>
                                 <button class="btn-mini" title="Printo faturën A4" disabled="@_printing"
-                                        @onclick="() => Print(s.ReceiptNumber, true)"
+                                        @onclick="() => Print(s.ReceiptNumber, Doc.InvoiceA4)"
                                         @onclick:stopPropagation="true">📄 A4</button>
+                                <button class="btn-mini" title="Printo fletëdërgesën A4" disabled="@_printing"
+                                        @onclick="() => Print(s.ReceiptNumber, Doc.WaybillA4)"
+                                        @onclick:stopPropagation="true">🚚 Fletëdërgesë</button>
                             </td>
                         </tr>
                     }
@@ -118,9 +121,11 @@
             }
             <div class="modal-actions">
                 <button class="btn-ghost" disabled="@_printing"
-                        @onclick="() => Print(_detailNumber!.Value.ToString(), false)">🧾 Kuponi 80mm</button>
+                        @onclick="() => Print(_detailNumber!.Value.ToString(), Doc.Receipt80)">🧾 Kuponi 80mm</button>
+                <button class="btn-ghost" disabled="@_printing"
+                        @onclick="() => Print(_detailNumber!.Value.ToString(), Doc.WaybillA4)">🚚 Fletëdërgesë A4</button>
                 <button class="btn-primary" disabled="@_printing"
-                        @onclick="() => Print(_detailNumber!.Value.ToString(), true)">📄 Printo faturën A4</button>
+                        @onclick="() => Print(_detailNumber!.Value.ToString(), Doc.InvoiceA4)">📄 Printo faturën A4</button>
                 <button class="btn-ghost" @onclick="() => _detailNumber = null">Mbyll</button>
             </div>
         </div>
@@ -137,22 +142,28 @@
     private bool _printing;
     private string? _printError;
 
+    /// <summary>Which paper a past sale is being asked for.</summary>
+    private enum Doc { Receipt80, InvoiceA4, WaybillA4 }
+
     /// <summary>
     /// Reprints a past sale without leaving the list. The 80mm receipt goes to the thermal
-    /// printer as raw ESC/POS when the agent is installed; the A4 invoice is drawn by the
-    /// browser in a hidden frame. Neither opens a tab — the shop searching for a receipt from
-    /// last Tuesday should still be looking at that search when the paper comes out.
+    /// printer as raw ESC/POS when the agent is installed; the A4 invoice and the A4 waybill are
+    /// drawn by the browser in a hidden frame. None of them opens a tab — the shop searching for
+    /// a receipt from last Tuesday should still be looking at that search when the paper comes out.
     /// </summary>
-    private async Task Print(string receiptNumber, bool a4)
+    private async Task Print(string receiptNumber, Doc doc)
     {
         if (!long.TryParse(receiptNumber, out var numri)) return;
         _printing = true;
         _printError = null;
         try
         {
-            var r = a4
-                ? await Hw.PrintUrlAsync($"/fatura/{numri}")
-                : await Hw.PrintReceiptAnyWayAsync(numri);
+            var r = doc switch
+            {
+                Doc.InvoiceA4 => await Hw.PrintUrlAsync($"/fatura/{numri}"),
+                Doc.WaybillA4 => await Hw.PrintUrlAsync($"/fletedergese/{numri}"),
+                _ => await Hw.PrintReceiptAnyWayAsync(numri),
+            };
 
             if (!r.Ok) _printError = $"Printimi dështoi: {r.Error}";
         }

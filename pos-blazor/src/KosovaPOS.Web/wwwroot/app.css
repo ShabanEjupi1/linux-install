@@ -761,3 +761,63 @@ a.stat:hover { border-color: var(--accent); }
 
 /* Post-sale print shortcuts (browser printing, no agent required) */
 .print-links { display: flex; gap: .5rem; flex-wrap: wrap; margin-top: .5rem; }
+
+/* ── Touch controls ─────────────────────────────────────────────────────────────
+   The till is a touchscreen. A native number input's spinner arrows are about ten
+   pixels tall, which on glass is a coin toss between printing 3 labels and 30 —
+   so the count gets real buttons. 56px is the size a fingertip actually hits. */
+.stepper { display: inline-flex; align-items: stretch; gap: .35rem; }
+.step-btn {
+  width: 44px; height: 44px; flex: 0 0 auto;
+  border: 1px solid var(--line); border-radius: var(--r-sm);
+  background: #f8fafc; color: var(--ink-2);
+  font-size: 1.4rem; line-height: 1; font-weight: 600;
+  cursor: pointer; user-select: none; touch-action: manipulation;
+}
+.step-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.step-btn:active:not(:disabled) { transform: scale(.94); }
+.step-btn:disabled { opacity: .4; cursor: default; }
+.step-val {
+  width: 72px; height: 44px; text-align: center;
+  border: 1px solid var(--line); border-radius: var(--r-sm);
+  font-family: inherit; font-size: 1.05rem; font-weight: 600;
+  font-variant-numeric: tabular-nums; color: var(--ink);
+}
+.step-val:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+.stepper.big .step-btn { width: 56px; height: 56px; font-size: 1.7rem; }
+.stepper.big .step-val { width: 88px; height: 56px; font-size: 1.3rem; }
+
+/* The cart's qty buttons are pressed all day on the same glass. */
+.cl-qty.touch button { width: 44px; height: 44px; font-size: 1.35rem; touch-action: manipulation; }
+.cl-qty.touch span { min-width: 2.2rem; text-align: center; font-size: 1.05rem; font-weight: 600; }
+
+.big-print { min-height: 56px; padding-inline: 1.4rem; font-size: 1rem; }
+
+.printer-pick { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.printer-pick .cat-select { min-height: 44px; }
+
+/* ── "Show more" foot of a long list ──────────────────────────────────────────── */
+.more-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  padding: .8rem .2rem; border-top: 1px solid var(--line-2);
+}
+
+.modal-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.modal-head h2 { margin: 0 0 .6rem; }
+
+/* ── Fletëdërgesa (A4 delivery note) ───────────────────────────────────────────
+   Shares .a4 / .inv-* with the invoice; only what a waybill has and an invoice
+   does not is defined here. */
+.wb-transport { margin-top: 1rem; }
+.wb-transport h2 { font-size: .95rem; margin: 0 0 .5rem; }
+.wb-note {
+  margin-top: 1rem; padding: .6rem .8rem;
+  border-left: 3px solid var(--line); background: var(--line-2);
+  font-size: .82rem; color: var(--ink-3);
+}
+.wb-sign { display: flex; justify-content: space-between; gap: 2rem; margin-top: 2.5rem; }
+.wb-sign span {
+  flex: 1; border-top: 1px solid var(--ink-2); padding-top: .4rem;
+  text-align: center; font-size: .8rem; color: var(--ink-3);
+}

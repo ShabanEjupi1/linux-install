@@ -7,6 +7,7 @@
 @inject CatalogService Catalog
 @inject BusinessProfileService Profile
 @inject HardwareBridge Hw
+@inject LocalState Local
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
@@ -49,27 +50,17 @@
             }
         </div>
 
-        @* Bound on input, not on change: the button says how many labels it is about to print,
-           and a count that only catches up when the box loses focus is a count that lies right
-           up until the moment it is pressed. *@
+        @* The count is a stepper, not a spinbox. This runs on a touchscreen till, where the native
+           number-input arrows are a few pixels tall and a fat-fingered miss is a wasted roll of
+           labels. It still takes a typed number for the shop that wants 120 of them. *@
         <label class="chk">Kopje
-            <input type="number" min="1" max="200" class="thresh" @bind="_copies" @bind:event="oninput" />
+            <CopyStepper @bind-Value="_copies" Min="1" Max="200" />
         </label>
 
-        @if (_printers is not null)
-        {
-            <label class="chk">Printeri
-                <select @bind="_labelPrinter" class="cat-select">
-                    <option value="">— i parazgjedhuri —</option>
-                    @foreach (var p in _printers.Printers)
-                    {
-                        <option value="@p">@p</option>
-                    }
-                </select>
-            </label>
-        }
+        <PrinterPicker Label="Printeri" Printers="_printers"
+                       Value="_labelPrinter" ValueChanged="SetLabelPrinter" />
 
-        <button class="btn-primary" disabled="@(_selected is null || _busy)" @onclick="PrintSelected">
+        <button class="btn-primary big-print" disabled="@(_selected is null || _busy)" @onclick="PrintSelected">
             @(_busy ? "Duke printuar…" : $"🖨️ Printo ({Math.Max(1, _copies)})")
         </button>
     </div>
@@ -152,9 +143,8 @@
                             <td class="mono">@item.Article.Barcode</td>
                             <td>@item.Article.Name</td>
                             <td class="num">
-                                <button class="btn-mini" @onclick="() => Bump(item, -1)">−</button>
-                                @item.Copies
-                                <button class="btn-mini" @onclick="() => Bump(item, 1)">+</button>
+                                <CopyStepper Value="item.Copies" Big="false"
+                                             ValueChanged="n => SetCopies(item, n)" Min="1" Max="200" />
                             </td>
                             <td><button class="btn-mini" @onclick="() => _queue.Remove(item)">Hiq</button></td>
                         </tr>
@@ -213,6 +203,13 @@
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender) return;
+
+        // What this PC last printed labels on wins over the shop-wide default: the setting is one
+        // row shared by every till, and the printer is not. Chosen once here, it is also the one
+        // the Articles screen prints from.
+        if (await Local.LoadAsync<string>(LocalKeys.LabelPrinter) is { Length: > 0 } saved)
+            _labelPrinter = saved;
+
         await RefreshAgentStatusAsync();
         // The scanner types into whatever has focus; this page has exactly one thing worth
         // typing into, so it may as well already be focused when the page opens.
@@ -347,9 +344,11 @@
         else _queue.Add(new QueueItem { Article = a, Copies = copies });
     }
 
-    private void Bump(QueueItem item, int by)
+    private async Task SetLabelPrinter(string? printer)
     {
-        item.Copies += by;
-        if (item.Copies < 1) _queue.Remove(item);
+        _labelPrinter = printer;
+        await Local.SaveAsync(LocalKeys.LabelPrinter, printer ?? "");
     }
+
+    private void SetCopies(QueueItem item, int copies) => item.Copies = copies;
 }

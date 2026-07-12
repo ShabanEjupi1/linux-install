@@ -93,14 +93,14 @@ public sealed class HardwareBridge : IAsyncDisposable
     /// what was actually persisted, so the paper matches the <c>/kupon/{n}</c> page and a
     /// reprint months later matches the original.
     /// </summary>
-    public async Task<AgentResult> PrintReceiptAsync(long receiptNumber)
+    public async Task<AgentResult> PrintReceiptAsync(long receiptNumber, string? printerName = null)
     {
         var invoice = await _sales.GetInvoiceAsync(receiptNumber);
         if (invoice is null) return AgentResult.Fail($"Fatura #{receiptNumber} nuk u gjet.");
 
         var shop = await _profile.GetSettingsAsync();
         var lines = ReceiptFormatter.Format(invoice, ReceiptHeaderFor(shop));
-        var req = HardwareMapper.ToReceiptRequest(invoice.Number, lines, shop);
+        var req = HardwareMapper.ToReceiptRequest(invoice.Number, lines, shop, printerName);
 
         try
         {
@@ -284,9 +284,9 @@ public sealed class HardwareBridge : IAsyncDisposable
     /// agent (no dialog, no navigation), and if there is no agent, the same document drawn by
     /// the browser in a hidden frame. Either way the cashier stays on the screen they were on.
     /// </summary>
-    public async Task<AgentResult> PrintReceiptAnyWayAsync(long receiptNumber)
+    public async Task<AgentResult> PrintReceiptAnyWayAsync(long receiptNumber, string? printerName = null)
     {
-        var sent = await PrintReceiptAsync(receiptNumber);
+        var sent = await PrintReceiptAsync(receiptNumber, printerName);
         return sent.Ok ? sent : await PrintUrlAsync($"/kupon/{receiptNumber}");
     }
 

@@ -31,7 +31,7 @@
         <div class="card" style="border-left:4px solid var(--ok, #2e7d32)">
             <h3>Biznesi "@_created.Business.Name" u krijua.</h3>
             <p class="muted">Kodi i kyçjes: <strong>@_created.Business.Code</strong> · Baza: <code>@_created.Business.DatabaseName</code></p>
-            <p>Adresa: <a href="@Hosts.UrlForCode(_created.Business.Code)" target="_blank" rel="noopener">@Hosts.HostForCode(_created.Business.Code)</a></p>
+            <p>Adresa: <a href="@Hosts.UrlForCode(_created.Business.Code)">@Hosts.HostForCode(_created.Business.Code)</a></p>
             @if (_created.GeneratedAdminPassword is not null)
             {
                 <p>
@@ -100,7 +100,7 @@
                     <tr>
                         <td>@b.Name</td>
                         <td><code>@b.Code</code></td>
-                        <td><a href="@Hosts.UrlForCode(b.Code)" target="_blank" rel="noopener">@Hosts.HostForCode(b.Code)</a></td>
+                        <td><a href="@Hosts.UrlForCode(b.Code)">@Hosts.HostForCode(b.Code)</a></td>
                         <td><code>@b.DatabaseName</code></td>
                         <td>@(b.IsActive ? "Aktiv" : "Joaktiv")</td>
                         <td>

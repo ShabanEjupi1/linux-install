@@ -72,6 +72,10 @@ public class CatalogService
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
 
+        // "Shtepi" typed today must land on the "Shtëpi" that 81 articles already use, or the
+        // category list grows a second entry that looks identical and splits the shelf in two.
+        article.Category = await CanonicalCategoryAsync(db, article.Category);
+
         var art = article.Id > 0
             ? await db.Artikujt.FirstOrDefaultAsync(a => a.Id == (long)article.Id)
             : null;
@@ -100,15 +104,78 @@ public class CatalogService
         return true;
     }
 
+    /// <summary>
+    /// The categories the shop actually uses, one entry each.
+    ///
+    /// A plain SQL DISTINCT lists "Kozmetike" and "Kozmetikë" as two categories, because to
+    /// Postgres they are two strings — but to the shopkeeper reading the dropdown they are one
+    /// category printed twice, and picking the wrong twin hides 101 articles. Diacritics are
+    /// what a Kosovar keyboard drops when someone is in a hurry, so they cannot be trusted to
+    /// tell two categories apart. Variants are folded together and the best-spelled one wins.
+    /// </summary>
     public async Task<List<string>> GetCategoriesAsync()
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
-        return await db.Artikujt.AsNoTracking()
+        var raw = await db.Artikujt.AsNoTracking()
+            .Where(a => a.Kategoria != null && a.Kategoria != "")
+            .Select(a => a.Kategoria!)
+            .ToListAsync();
+
+        return raw.Where(c => !string.IsNullOrWhiteSpace(c))
+                  .GroupBy(c => CategoryKey(c), StringComparer.Ordinal)
+                  .Select(g => PreferredSpelling(g))
+                  .OrderBy(c => c, StringComparer.CurrentCulture)
+                  .ToList();
+    }
+
+    /// <summary>
+    /// Folds a category to the key two spellings of the same word share: trimmed, case-blind,
+    /// and stripped of the diacritics an Albanian keyboard is most likely to lose.
+    /// </summary>
+    public static string CategoryKey(string category)
+    {
+        var s = category.Trim().ToLowerInvariant();
+        var sb = new System.Text.StringBuilder(s.Length);
+        foreach (var ch in s.Normalize(System.Text.NormalizationForm.FormD))
+        {
+            if (System.Globalization.CharUnicodeInfo.GetUnicodeCategory(ch)
+                != System.Globalization.UnicodeCategory.NonSpacingMark)
+                sb.Append(ch);
+        }
+        // Whitespace too: "Plazh &  Vere" and "Plazh & Vere" are not two shelves.
+        return string.Join(' ', sb.ToString().Split(' ', StringSplitOptions.RemoveEmptyEntries));
+    }
+
+    /// <summary>
+    /// Of the spellings a category is stored under, the one to show. The accented one is the
+    /// deliberate one — nobody types "ë" by accident — so it wins even when the shop typed the
+    /// bare form more often. Between equals, the commonest spelling wins.
+    /// </summary>
+    private static string PreferredSpelling(IEnumerable<string> variants) =>
+        variants.GroupBy(v => v.Trim(), StringComparer.Ordinal)
+                .OrderByDescending(g => g.Key.Count(ch => ch is 'ë' or 'ç' or 'Ë' or 'Ç'))
+                .ThenByDescending(g => g.Count())
+                .First().Key;
+
+    /// <summary>
+    /// The spelling this shop already uses for the category being saved, so a re-typed variant
+    /// joins the existing shelf instead of forking it. Unknown categories are kept verbatim
+    /// (trimmed) — a new category is a legitimate thing to create.
+    /// </summary>
+    private static async Task<string> CanonicalCategoryAsync(PosDbContext db, string? category)
+    {
+        if (string.IsNullOrWhiteSpace(category)) return "";
+        var typed = category.Trim();
+        var key = CategoryKey(typed);
+
+        var existing = await db.Artikujt.AsNoTracking()
             .Where(a => a.Kategoria != null && a.Kategoria != "")
             .Select(a => a.Kategoria!)
             .Distinct()
-            .OrderBy(c => c)
             .ToListAsync();
+
+        var match = existing.Where(c => CategoryKey(c) == key).ToList();
+        return match.Count == 0 ? typed : PreferredSpelling(match.Append(typed));
     }
 
     // Ported verbatim from ArticleDataService.MapToArticle

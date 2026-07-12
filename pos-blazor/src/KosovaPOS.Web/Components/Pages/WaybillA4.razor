@@ -1,0 +1,163 @@
+@page "/fletedergese/{Numri:long}"
+@attribute [Authorize(Policy = "perm:sell")]
+@layout EmptyLayout
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using KosovaPOS.Core.Services
+@using KosovaPOS.Models
+@using KosovaPOS.Web.Services
+@inject SalesService Sales
+@inject BusinessProfileService Profile
+@inject IJSRuntime JS
+
+<PageTitle>Fletëdërgesë @Numri — KosovaPOS</PageTitle>
+
+@* A4 only while this document is on screen — @@page is a global rule, and left in app.css it
+   would lay the 80mm thermal receipt out for A4 as well. *@
+<HeadContent>
+    <style>
+        @@media print {
+            @@page { size: A4; margin: 12mm; }
+        }
+    </style>
+</HeadContent>
+
+@if (_notFound)
+{
+    <div class="inv-toolbar"><a class="btn-ghost" href="/faturat">← Faturat</a></div>
+    <div class="a4"><p class="muted">Fatura #@Numri nuk u gjet.</p></div>
+}
+else if (_invoice is null)
+{
+    <div class="a4"><p class="muted">Duke ngarkuar…</p></div>
+}
+else
+{
+    <div class="inv-toolbar">
+        <a class="btn-ghost" href="/faturat">← Faturat</a>
+        <button class="btn-primary" @onclick="Print">🖨️ Printo / Ruaj PDF</button>
+    </div>
+
+    <div class="a4">
+        <header class="inv-head">
+            <div class="inv-seller">
+                <h1>@SellerName</h1>
+                @if (!string.IsNullOrWhiteSpace(_shop?.Address)) { <div>@_shop!.Address</div> }
+                <div class="inv-ids">
+                    @if (!string.IsNullOrWhiteSpace(_shop?.FiscalNumber)) { <span>Nr. fiskal: <strong>@_shop!.FiscalNumber</strong></span> }
+                    @if (!string.IsNullOrWhiteSpace(_shop?.VatNumber)) { <span>Nr. TVSH: <strong>@_shop!.VatNumber</strong></span> }
+                    @if (!string.IsNullOrWhiteSpace(_shop?.Phone)) { <span>Tel: @_shop!.Phone</span> }
+                </div>
+            </div>
+            <div class="inv-meta">
+                <div class="inv-title">FLETËDËRGESË</div>
+                <table class="inv-meta-tbl">
+                    <tr><td>Numri:</td><td><strong>@_invoice.Number</strong></td></tr>
+                    <tr><td>Data:</td><td>@_invoice.Date.ToString("dd.MM.yyyy") @_invoice.Time</td></tr>
+                    <tr><td>Sipas faturës:</td><td>#@_invoice.Number</td></tr>
+                </table>
+            </div>
+        </header>
+
+        @* Blank on a walk-in sale, and typed in here. A delivery note whose receiver is nobody
+           proves nothing about where the goods went, which is the only reason it exists. *@
+        <section class="inv-buyer">
+            <h2>Pranuesi</h2>
+            <div class="inv-buyer-grid">
+                <label>Emri / Kompania <input class="inv-in" @bind="_buyerName" placeholder="(kush i pranon mallrat)" /></label>
+                <label>Nr. fiskal / NUI <input class="inv-in" @bind="_buyerFiscal" placeholder="(opsionale)" /></label>
+                <label>Adresa e dërgesës <input class="inv-in" @bind="_buyerAddress" placeholder="(ku dërgohen mallrat)" /></label>
+            </div>
+        </section>
+
+        <table class="inv-lines">
+            <thead>
+                <tr>
+                    <th class="c">#</th>
+                    <th>Përshkrimi i mallit</th>
+                    <th class="c">Njësia</th>
+                    <th class="r">Sasia</th>
+                    <th class="r">Çmimi</th>
+                    <th class="r">Vlera</th>
+                </tr>
+            </thead>
+            <tbody>
+                @{ var i = 1; }
+                @foreach (var l in _invoice.Lines)
+                {
+                    <tr>
+                        <td class="c">@(i++)</td>
+                        <td>@l.Name</td>
+                        <td class="c">@l.Unit</td>
+                        <td class="r">@l.Quantity.ToString("0.###")</td>
+                        <td class="r">@l.UnitPriceGross.ToString("0.00") €</td>
+                        <td class="r">@l.GrossValue.ToString("0.00") €</td>
+                    </tr>
+                }
+            </tbody>
+            <tfoot>
+                <tr class="grand">
+                    <td colspan="3"></td>
+                    <td class="r"><strong>@TotalQuantity.ToString("0.###")</strong></td>
+                    <td class="r">TOTALI</td>
+                    <td class="r"><strong>@_invoice.TotalGross.ToString("0.00") €</strong></td>
+                </tr>
+            </tfoot>
+        </table>
+
+        <section class="wb-transport">
+            <h2>Transporti</h2>
+            <div class="inv-buyer-grid">
+                <label>Automjeti (targa) <input class="inv-in" @bind="_vehicle" placeholder="(nr. i targës)" /></label>
+                <label>Vendi i ngarkimit <input class="inv-in" @bind="_from" placeholder="@(_shop?.Address ?? "")" /></label>
+                <label>Ora e nisjes <input class="inv-in" @bind="_departure" placeholder="@DateTime.Now.ToString("HH:mm")" /></label>
+            </div>
+        </section>
+
+        @* A fletëdërgesë travels WITH the goods and is not itself the tax document. Saying so on
+           the paper is what stops it being handed over in place of the invoice. *@
+        <p class="wb-note">
+            Kjo fletëdërgesë shoqëron mallin gjatë transportit dhe nuk zëvendëson faturën tatimore.
+            Fatura përkatëse: <strong>#@_invoice.Number</strong> e datës @_invoice.Date.ToString("dd.MM.yyyy").
+        </p>
+
+        <footer class="inv-legal">
+            <div class="inv-sign wb-sign">
+                <span>Dërguesi (nënshkrimi)</span>
+                <span>Transportuesi (nënshkrimi)</span>
+                <span>Pranuesi (nënshkrimi)</span>
+            </div>
+        </footer>
+    </div>
+}
+
+@code {
+    [Parameter] public long Numri { get; set; }
+
+    private Invoice? _invoice;
+    private BusinessSettings? _shop;
+    private bool _notFound;
+
+    private string _buyerName = "";
+    private string _buyerFiscal = "";
+    private string _buyerAddress = "";
+    private string _vehicle = "";
+    private string _from = "";
+    private string _departure = "";
+
+    private string SellerName => string.IsNullOrWhiteSpace(_shop?.BusinessName) ? "KosovaPOS" : _shop!.BusinessName!;
+    private decimal TotalQuantity => _invoice?.Lines.Sum(l => l.Quantity) ?? 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _invoice = await Sales.GetInvoiceAsync(Numri);
+        if (_invoice is null) { _notFound = true; return; }
+        _shop = await Profile.GetSettingsAsync();
+
+        _buyerName = _invoice.BuyerName is { } n && n != "Qytetar" ? n : "";
+        _buyerFiscal = _invoice.BuyerFiscalNumber ?? "";
+        _buyerAddress = _invoice.BuyerAddress ?? "";
+    }
+
+    private async Task Print() => await JS.InvokeVoidAsync("print");
+}

@@ -25,7 +25,8 @@ public static class HardwareMapper
     /// <c>/kupon/{n}</c> — so the paper and the screen cannot show different documents.
     /// </summary>
     public static ReceiptPrintRequest ToReceiptRequest(
-        string receiptNumber, IEnumerable<ReceiptTextLine> lines, BusinessSettings? shop = null) => new()
+        string receiptNumber, IEnumerable<ReceiptTextLine> lines, BusinessSettings? shop = null,
+        string? printerOverride = null) => new()
     {
         ReceiptNumber = receiptNumber,
         Lines = lines.Select(l => new ReceiptDocumentLine
@@ -36,9 +37,12 @@ public static class HardwareMapper
             // page and every one of them looks identical — which is the opposite of its job.
             CodePage = l.CodePage,
         }).ToList(),
-        // Let the shop point its courtesy receipt at any thermal printer; null falls
-        // back to the agent's RECEIPT_PRINTER default on the cashier PC.
-        PrinterName = string.IsNullOrWhiteSpace(shop?.ReceiptPrinter) ? null : shop!.ReceiptPrinter,
+        // Let the shop point its courtesy receipt at any thermal printer; null falls back to the
+        // agent's RECEIPT_PRINTER default on the cashier PC. The override wins over the shop
+        // setting because it is chosen on the till that is doing the printing, and two tills
+        // sharing one settings row do not share a printer.
+        PrinterName = !string.IsNullOrWhiteSpace(printerOverride) ? printerOverride
+                    : string.IsNullOrWhiteSpace(shop?.ReceiptPrinter) ? null : shop!.ReceiptPrinter,
         CodePage = string.IsNullOrWhiteSpace(shop?.ReceiptCodePage) ? null : shop!.ReceiptCodePage,
     };
 

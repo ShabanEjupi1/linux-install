@@ -6,7 +6,9 @@
 @using KosovaPOS.Web.Services
 @using System.Text.Json
 @inject CatalogService Catalog
+@inject BusinessProfileService Profile
 @inject HardwareBridge Hw
+@inject LocalState Local
 @inject Audit Audit
 
 <PageTitle>Artikujt — KosovaPOS</PageTitle>
@@ -21,10 +23,11 @@
     </header>
 
     <div class="search-row">
-        <input @bind="_search" @bind:event="oninput" placeholder="Kërko emër ose barkod…" class="search-box" />
+        <input @bind="_search" @bind:event="oninput" @bind:after="OnSearchChanged"
+               placeholder="Kërko emër ose barkod…" class="search-box" />
         @if (_categories.Count > 0)
         {
-            <select @bind="_activeCategory" class="cat-select">
+            <select @bind="_activeCategory" @bind:after="OnSearchChanged" class="cat-select">
                 <option value="">Të gjitha kategoritë</option>
                 @foreach (var c in _categories)
                 {
@@ -59,7 +62,7 @@
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var a in Filtered)
+                    @foreach (var a in Shown)
                     {
                         <tr>
                             <td class="mono">@a.Barcode</td>
@@ -84,6 +87,14 @@
                     }
                 </tbody>
             </table>
+
+            @if (Filtered.Count() > _shown)
+            {
+                <div class="more-row">
+                    <span class="muted">Po shfaqen @_shown nga @Filtered.Count() artikuj.</span>
+                    <button class="btn-ghost" @onclick="ShowMore">Shfaq më shumë</button>
+                </div>
+            }
         }
     </div>
 </div>
@@ -156,13 +167,22 @@
     </div>
 }
 
-@* Labels, printed from the product list itself. Re-pricing an article and then having to go
-   find it a second time on another screen just to re-label it is two searches for one job. *@
+@* Labels, printed from the product list itself, with the same controls /barkod has — the count,
+   the printer, and whether there is an agent to print through. Re-pricing an article and then
+   having to go find it a second time on another screen just to re-label it is two searches for
+   one job, and a label dialog that cannot say WHICH printer will print it is a dialog that sends
+   30 price tags to the receipt roll. *@
 @if (_labelling is not null)
 {
     <div class="modal-backdrop" @onclick="() => _labelling = null">
         <div class="modal small" @onclick:stopPropagation="true">
-            <h2>Printo barkodin</h2>
+            <div class="modal-head">
+                <h2>Printo barkodin</h2>
+                <span class="agent-badge @(_agentOnline ? (_agentReal ? "on" : "mock") : "off")">
+                    <span class="dot"></span>@(_agentOnline ? "Pajisje" : "Pa pajisje")
+                </span>
+            </div>
+
             <p>
                 <strong>@_labelling.Name</strong><br />
                 <span class="mono">@_labelling.Barcode</span> ·
@@ -171,8 +191,11 @@
 
             <div class="field">
                 <label>Sa etiketa?</label>
-                <input class="input" type="number" min="1" max="200" @bind="_labelCopies" />
+                <CopyStepper @bind-Value="_labelCopies" Min="1" Max="200" />
             </div>
+
+            <PrinterPicker Label="Printeri i etiketave" Printers="_printers"
+                           Value="_labelPrinter" ValueChanged="SetLabelPrinter" />
 
             @if (_labelError is not null)
             {
@@ -180,10 +203,10 @@
             }
 
             <div class="modal-actions">
-                <a class="btn-ghost" href="/barkod">Më shumë opsione</a>
+                <a class="btn-ghost" href="/barkod">Printim me shumicë</a>
                 <button class="btn-ghost" @onclick="() => _labelling = null">Anulo</button>
                 <button class="btn-primary" disabled="@_busy" @onclick="PrintLabels">
-                    @(_busy ? "Duke printuar…" : "🖨️ Printo")
+                    @(_busy ? "Duke printuar…" : $"🖨️ Printo ({Math.Max(1, _labelCopies)})")
                 </button>
             </div>
         </div>
@@ -218,7 +241,39 @@
     private int _labelCopies = 1;
     private string? _labelError;
 
+    private bool _agentOnline, _agentReal;
+    private KosovaPOS.Agent.Contracts.PrinterList? _printers;
+
+    /// <summary>
+    /// The label printer chosen on THIS PC. Remembered in the browser and shared with /barkod,
+    /// so picking it once is picking it everywhere; the shop's saved default is only the
+    /// starting point.
+    /// </summary>
+    private string? _labelPrinter;
+
     protected override async Task OnInitializedAsync() => await Reload();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        var health = await Hw.GetHealthAsync();
+        _agentOnline = health is not null;
+        _agentReal = health?.RealHardware ?? false;
+        _printers = _agentOnline ? await Hw.GetPrintersAsync() : null;
+
+        _labelPrinter = await Local.LoadAsync<string>(LocalKeys.LabelPrinter);
+        if (string.IsNullOrWhiteSpace(_labelPrinter))
+            _labelPrinter = (await Profile.GetSettingsAsync())?.BarcodePrinter;
+
+        StateHasChanged();
+    }
+
+    private async Task SetLabelPrinter(string? printer)
+    {
+        _labelPrinter = printer;
+        await Local.SaveAsync(LocalKeys.LabelPrinter, printer ?? "");
+    }
 
     private void OpenLabels(Article a)
     {
@@ -240,7 +295,7 @@
         try
         {
             var copies = Math.Clamp(_labelCopies, 1, 200);
-            var r = await Hw.PrintBarcodeAsync(_labelling, copies);
+            var r = await Hw.PrintBarcodeAsync(_labelling, copies, _labelPrinter);
             if (!r.Ok)
                 // No &auto=1: the print frame itself calls print() once the labels have
                 // rendered. Asking the page to print too would raise two dialogs.
@@ -273,16 +328,39 @@
         {
             IEnumerable<Article> q = _all.OrderBy(a => a.Name);
             if (!string.IsNullOrWhiteSpace(_activeCategory))
-                q = q.Where(a => a.Category == _activeCategory);
+            {
+                // Folded, not compared: the same shelf is stored as both "Kozmetike" and
+                // "Kozmetikë", and an equality test on one spelling hides the articles filed
+                // under the other.
+                var key = CatalogService.CategoryKey(_activeCategory);
+                q = q.Where(a => !string.IsNullOrWhiteSpace(a.Category)
+                              && CatalogService.CategoryKey(a.Category) == key);
+            }
             if (!string.IsNullOrWhiteSpace(_search))
             {
                 var s = _search.Trim();
                 q = q.Where(a => a.Name.Contains(s, StringComparison.OrdinalIgnoreCase)
                               || a.Barcode.Contains(s, StringComparison.OrdinalIgnoreCase));
             }
-            return q.Take(200);
+            return q;
         }
     }
+
+    /// <summary>
+    /// What the table actually draws. The list is not capped — the cap used to be 200 and the
+    /// other 1400 articles were simply not there — but a browser asked to lay out 1600 rows at
+    /// once stalls the tab, so it grows on demand instead.
+    /// </summary>
+    private IEnumerable<Article> Shown => Filtered.Take(_shown);
+
+    private int _shown = PageSize;
+    private const int PageSize = 200;
+
+    private void ShowMore() => _shown += PageSize;
+
+    // A new search starts from the top: keeping the previous page depth would mean typing a
+    // three-letter search and waiting for 1600 rows of the OLD one to be replaced.
+    private void OnSearchChanged() => _shown = PageSize;
 
     private void OpenEditor(Article? a)
     {

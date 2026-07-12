@@ -1,0 +1,32 @@
+@* The printers this PC has, named. Rendered nowhere when the agent is offline: an empty
+   dropdown that cannot be filled is worse than no dropdown, because it looks broken. *@
+
+@if (Printers is { Printers.Count: > 0 })
+{
+    <label class="chk printer-pick">
+        <span>@Label</span>
+        <select class="cat-select" value="@(Value ?? "")"
+                @onchange="e => OnChange(e.Value?.ToString())">
+            <option value="">— i parazgjedhuri —</option>
+            @foreach (var p in Printers.Printers)
+            {
+                <option value="@p">@p</option>
+            }
+        </select>
+    </label>
+}
+
+@code {
+    [Parameter] public string Label { get; set; } = "Printeri";
+
+    /// <summary>The agent's printer list, or null when there is no agent on this PC.</summary>
+    [Parameter] public KosovaPOS.Agent.Contracts.PrinterList? Printers { get; set; }
+
+    /// <summary>The chosen printer; empty/null means "let the agent use its default".</summary>
+    [Parameter] public string? Value { get; set; }
+
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+
+    private async Task OnChange(string? chosen) =>
+        await ValueChanged.InvokeAsync(string.IsNullOrWhiteSpace(chosen) ? null : chosen);
+}

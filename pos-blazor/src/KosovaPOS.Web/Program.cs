@@ -77,6 +77,7 @@ builder.Services.AddScoped<FinanceService>();
 builder.Services.AddScoped<AuditService>();
 builder.Services.AddScoped<KosovaPOS.Web.Services.Audit>();
 builder.Services.AddScoped<KosovaPOS.Web.Services.HardwareBridge>();
+builder.Services.AddScoped<KosovaPOS.Web.Services.LocalState>();
 
 // Singleton: the package on disk does not change while the process runs.
 builder.Services.AddSingleton<KosovaPOS.Web.Services.AgentPackage>();

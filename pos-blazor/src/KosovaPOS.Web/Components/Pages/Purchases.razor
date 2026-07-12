@@ -133,11 +133,26 @@ else
     <div class="mgmt">
         <header class="mgmt-head">
             <div>
-                <h1>Blerjet e fundit</h1>
-                <span class="muted">@_recent.Count blerje</span>
+                <h1>Blerjet</h1>
+                <span class="muted">
+                    @if (FilteredRecent.Count() == _recent.Count)
+                    {
+                        @($"{_recent.Count} blerje")
+                    }
+                    else
+                    {
+                        @($"{FilteredRecent.Count()} nga {_recent.Count} blerje")
+                    }
+                </span>
             </div>
             <button class="btn-primary" @onclick="ShowEntry">+ Blerje e re</button>
         </header>
+
+        <div class="search-row">
+            <input @bind="_recentSearch" @bind:event="oninput" @bind:after="() => _shown = PageSize"
+                   placeholder="Kërko nr. dokumenti, nr. fature, lloj ose datë…" class="search-box" />
+        </div>
+
         <div class="table-wrap">
             @if (_recentLoading)
             {
@@ -153,7 +168,7 @@ else
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var p in _recent)
+                        @foreach (var p in ShownRecent)
                         {
                             <tr class="clickable" @onclick="() => OpenDetail(p.DocumentNumber)">
                                 <td class="mono">#@p.DocumentNumber</td>
@@ -171,12 +186,22 @@ else
                                 </td>
                             </tr>
                         }
-                        @if (!_recent.Any())
+                        @if (!FilteredRecent.Any())
                         {
-                            <tr><td colspan="8" class="muted center">Asnjë blerje ende.</td></tr>
+                            <tr><td colspan="8" class="muted center">
+                                @(_recent.Count == 0 ? "Asnjë blerje ende." : "Asnjë blerje nuk përputhet me kërkimin.")
+                            </td></tr>
                         }
                     </tbody>
                 </table>
+
+                @if (FilteredRecent.Count() > _shown)
+                {
+                    <div class="more-row">
+                        <span class="muted">Po shfaqen @_shown nga @FilteredRecent.Count() blerje.</span>
+                        <button class="btn-ghost" @onclick="() => _shown += PageSize">Shfaq më shumë</button>
+                    </div>
+                }
             }
         </div>
     </div>
@@ -274,6 +299,33 @@ else
     private List<PurchaseLineView> _detail = new();
     private bool _detailLoading;
 
+    private string _recentSearch = "";
+    private int _shown = PageSize;
+    private const int PageSize = 100;
+
+    /// <summary>
+    /// Every purchase the shop has ever entered, narrowed by whatever was typed. The list used to
+    /// stop at the newest 100 documents with nothing to say the rest existed — a shop with 361 of
+    /// them could not find last spring's delivery at all.
+    /// </summary>
+    private IEnumerable<PurchaseSummary> FilteredRecent
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(_recentSearch)) return _recent;
+            var s = _recentSearch.Trim();
+            return _recent.Where(p =>
+                p.DocumentNumber.Contains(s, StringComparison.OrdinalIgnoreCase)
+                || p.InvoiceNumber.Contains(s, StringComparison.OrdinalIgnoreCase)
+                || p.PurchaseType.Contains(s, StringComparison.OrdinalIgnoreCase)
+                || p.Date.ToString("dd.MM.yyyy").Contains(s, StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    // Drawn a page at a time: the whole history is IN the list, but handing the browser 361 rows
+    // of table on first paint is a stall the till does not need.
+    private IEnumerable<PurchaseSummary> ShownRecent => FilteredRecent.Take(_shown);
+
     protected override async Task OnInitializedAsync()
     {
         if (AuthState is not null)
@@ -291,7 +343,7 @@ else
     private async Task LoadRecent()
     {
         _recentLoading = true;
-        _recent = await PurchaseSvc.GetRecentPurchasesAsync(100);
+        _recent = await PurchaseSvc.GetAllPurchasesAsync();
         _recentLoading = false;
     }
 

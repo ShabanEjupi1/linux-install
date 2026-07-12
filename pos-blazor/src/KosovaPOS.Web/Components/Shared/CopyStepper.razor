@@ -1,0 +1,38 @@
+@* How many labels. Sized for a finger, not a mouse pointer.
+
+   The till is a touchscreen, and the old control was a number input whose native spinners are
+   about 10 pixels tall — on glass that is a coin toss between 3 labels and 30, and a wrong count
+   is a wasted roll. The −/+ are 56px targets, the number is big enough to read from standing
+   height, and the box itself still accepts a typed count for the shop that wants 120 of them. *@
+
+<div class="stepper @(Big ? "big" : "")">
+    <button type="button" class="step-btn" @onclick="() => Bump(-Step)"
+            disabled="@(Value <= Min)" aria-label="Më pak">−</button>
+
+    <input type="number" class="step-val" min="@Min" max="@Max"
+           value="@Value" @onchange="OnTyped" @onclick:stopPropagation="true" />
+
+    <button type="button" class="step-btn" @onclick="() => Bump(Step)"
+            disabled="@(Value >= Max)" aria-label="Më shumë">+</button>
+</div>
+
+@code {
+    [Parameter] public int Value { get; set; } = 1;
+    [Parameter] public EventCallback<int> ValueChanged { get; set; }
+
+    [Parameter] public int Min { get; set; } = 1;
+    [Parameter] public int Max { get; set; } = 200;
+
+    /// <summary>How much one press moves the count.</summary>
+    [Parameter] public int Step { get; set; } = 1;
+
+    /// <summary>Full touch size. Off for the dense queue table, on for the main print bar.</summary>
+    [Parameter] public bool Big { get; set; } = true;
+
+    private async Task Bump(int by) => await Set(Value + by);
+
+    private async Task OnTyped(ChangeEventArgs e) =>
+        await Set(int.TryParse(e.Value?.ToString(), out var n) ? n : Min);
+
+    private async Task Set(int n) => await ValueChanged.InvokeAsync(Math.Clamp(n, Min, Max));
+}

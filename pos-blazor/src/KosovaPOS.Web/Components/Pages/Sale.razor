@@ -8,6 +8,7 @@
 @inject CatalogService Catalog
 @inject SalesService Sales
 @inject HardwareBridge Hw
+@inject LocalState Local
 @inject Audit Audit
 
 <PageTitle>Shitje — KosovaPOS</PageTitle>
@@ -71,7 +72,7 @@
             {
                 <div class="cart-line">
                     <div class="cl-name">@line.ArticleName</div>
-                    <div class="cl-qty">
+                    <div class="cl-qty touch">
                         <button @onclick="() => ChangeQty(line, -1)">−</button>
                         <span>@line.Quantity.ToString("0.##")</span>
                         <button @onclick="() => ChangeQty(line, 1)">+</button>
@@ -92,25 +93,33 @@
             <div class="pay-methods">
                 @foreach (var m in _methods)
                 {
-                    <button class="pm @(_payment == m ? "active" : "")" @onclick="() => _payment = m">@m</button>
+                    <button class="pm @(_payment == m ? "active" : "")" @onclick="() => SetPayment(m)">@m</button>
                 }
             </div>
             <div class="pay-row">
                 <label>Paguar</label>
-                <input type="number" step="0.01" @bind="_paid" class="paid-box" />
+                <input type="number" step="0.01" @bind="_paid" @bind:after="SaveDraft" class="paid-box" />
             </div>
             <div class="pay-row change">
                 <span>Kusuri</span>
                 <span>@Change.ToString("0.00") €</span>
             </div>
             <label class="fiscal-toggle">
-                <input type="checkbox" @bind="_printFiscal" />
+                <input type="checkbox" @bind="_printFiscal" @bind:after="SaveDraft" />
                 Printo faturën fiskale
             </label>
             <label class="fiscal-toggle">
-                <input type="checkbox" @bind="_printReceipt" />
+                <input type="checkbox" @bind="_printReceipt" @bind:after="SaveDraft" />
                 Printo kuponin termik
             </label>
+
+            @* The printer belongs to this PC, not to the shop row: two tills share one login and
+               one settings table, but not one printer. So the choice is remembered in this
+               browser — and it is remembered, which is the whole point: it used to be re-read
+               from settings on every visit and any pick the cashier made was gone by the time
+               they came back from another screen. *@
+            <PrinterPicker Label="Printeri i kuponit" Printers="_printers"
+                           Value="_receiptPrinter" ValueChanged="SetReceiptPrinter" />
 
             @if (!string.IsNullOrEmpty(_message))
             {
@@ -132,11 +141,14 @@
             @if (_lastNumri is not null)
             {
                 <div class="print-links">
-                    <button class="btn-ghost" disabled="@_printing" @onclick="() => Reprint(false)">
-                        🧾 Printo kuponin (80mm)
+                    <button class="btn-ghost" disabled="@_printing" @onclick="() => Reprint(Doc.Receipt80)">
+                        🧾 Kupon 80mm
                     </button>
-                    <button class="btn-ghost" disabled="@_printing" @onclick="() => Reprint(true)">
+                    <button class="btn-ghost" disabled="@_printing" @onclick="() => Reprint(Doc.InvoiceA4)">
                         📄 Faturë A4
+                    </button>
+                    <button class="btn-ghost" disabled="@_printing" @onclick="() => Reprint(Doc.WaybillA4)">
+                        🚚 Fletëdërgesë A4
                     </button>
                 </div>
             }
@@ -173,6 +185,91 @@
     private bool _agentOnline, _agentReal, _printing;
     private string _agentTitle = "Agjenti i pajisjeve nuk është kontrolluar ende";
 
+    /// <summary>The receipt printer chosen on THIS PC; empty means the shop default.</summary>
+    private string? _receiptPrinter;
+    private KosovaPOS.Agent.Contracts.PrinterList? _printers;
+
+    /// <summary>Which paper the cashier asked for. All three come off the same saved sale.</summary>
+    private enum Doc { Receipt80, InvoiceA4, WaybillA4 }
+
+    // ---- The unfinished sale ---------------------------------------------------------------
+    //
+    // Blazor destroys this component the moment the cashier opens another screen, and it used
+    // to take the cart with it: a customer's basket, already scanned, gone because someone
+    // checked a price on /stoku. The cart therefore lives in the browser as well as in the
+    // circuit, and is written on every change — scanning is the expensive part, not storing.
+
+    private sealed record DraftLine(int ArticleId, string Barcode, string Name,
+                                    decimal Price, decimal Quantity, decimal VatRate);
+
+    private sealed record SaleDraftState(List<DraftLine> Lines, string Payment, decimal Paid,
+                                         bool PrintFiscal, bool PrintReceipt);
+
+    private bool _restored;
+
+    private async Task SaveDraft()
+    {
+        if (!_restored) return; // don't overwrite a stored cart with the empty one we start with
+
+        if (_cart.Count == 0)
+        {
+            await Local.RemoveAsync(LocalKeys.SaleDraft);
+            return;
+        }
+
+        await Local.SaveAsync(LocalKeys.SaleDraft, new SaleDraftState(
+            _cart.Select(l => new DraftLine(l.ArticleId, l.Barcode, l.ArticleName,
+                                            l.Price, l.Quantity, l.VATRate)).ToList(),
+            _payment, _paid, _printFiscal, _printReceipt));
+    }
+
+    /// <summary>
+    /// Puts back the cart that was on this till when the cashier last left it. Prices come from
+    /// the DRAFT, not from the catalogue: what was quoted to the customer standing there is what
+    /// was scanned, and silently re-pricing a basket behind their back is worse than losing it.
+    /// </summary>
+    private async Task RestoreDraftAsync()
+    {
+        var draft = await Local.LoadAsync<SaleDraftState>(LocalKeys.SaleDraft);
+        _restored = true;
+        if (draft is null || draft.Lines.Count == 0) return;
+
+        _cart.Clear();
+        foreach (var l in draft.Lines)
+        {
+            _cart.Add(new ReceiptItem
+            {
+                ArticleId = l.ArticleId,
+                Barcode = l.Barcode,
+                ArticleName = l.Name,
+                Price = l.Price,
+                Quantity = l.Quantity,
+                VATRate = l.VatRate,
+            });
+        }
+
+        if (!string.IsNullOrWhiteSpace(draft.Payment)) _payment = draft.Payment;
+        _printFiscal = draft.PrintFiscal;
+        _printReceipt = draft.PrintReceipt;
+        // Whatever was typed into "Paguar" is kept, but a zero is re-defaulted to the total —
+        // the same thing SyncPaid does for a fresh scan.
+        _paid = draft.Paid > 0 ? draft.Paid : Total;
+        _message = "Shporta e papërfunduar u rikthye.";
+        _success = true;
+    }
+
+    private async Task SetPayment(string method)
+    {
+        _payment = method;
+        await SaveDraft();
+    }
+
+    private async Task SetReceiptPrinter(string? printer)
+    {
+        _receiptPrinter = printer;
+        await Local.SaveAsync(LocalKeys.ReceiptPrinter, printer ?? "");
+    }
+
     /// <summary>
     /// Re-sends the fiscal receipt for the sale that was just refused, after the printer's article
     /// memory has been cleared. The sale is already in the database and is not touched: this
@@ -196,19 +293,22 @@
 
     /// <summary>
     /// Reprints the sale just saved without leaving the till. The 80mm receipt goes out as raw
-    /// ESC/POS when the agent is here and is drawn by the browser when it is not; the A4 invoice
-    /// is always drawn by the browser (the agent has no A4 path) — but in a hidden frame, so the
-    /// cart, the change due and the customer in front of the cashier all stay on screen.
+    /// ESC/POS when the agent is here and is drawn by the browser when it is not; the two A4
+    /// documents are always drawn by the browser (the agent has no A4 path) — but in a hidden
+    /// frame, so the cart, the change due and the customer in front of the cashier stay on screen.
     /// </summary>
-    private async Task Reprint(bool a4)
+    private async Task Reprint(Doc doc)
     {
         if (_lastNumri is null) return;
         _printing = true;
         try
         {
-            var r = a4
-                ? await Hw.PrintUrlAsync($"/fatura/{_lastNumri}")
-                : await Hw.PrintReceiptAnyWayAsync(_lastNumri.Value);
+            var r = doc switch
+            {
+                Doc.InvoiceA4 => await Hw.PrintUrlAsync($"/fatura/{_lastNumri}"),
+                Doc.WaybillA4 => await Hw.PrintUrlAsync($"/fletedergese/{_lastNumri}"),
+                _ => await Hw.PrintReceiptAnyWayAsync(_lastNumri.Value, _receiptPrinter),
+            };
 
             if (!r.Ok)
             {
@@ -231,10 +331,13 @@
         _loading = false;
     }
 
-    // JS interop is only available after the component becomes interactive.
+    // JS interop is only available after the component becomes interactive — which is also the
+    // first moment the browser can be asked what was on this till when it was last left.
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender) return;
+        await RestoreDraftAsync();
+        _receiptPrinter = await Local.LoadAsync<string>(LocalKeys.ReceiptPrinter);
         await RefreshAgentStatusAsync();
     }
 
@@ -246,6 +349,7 @@
         _agentTitle = health is null
             ? "Agjenti i pajisjeve nuk u gjet — faturat fiskale nuk do të printohen."
             : $"{health.Fiscal.Model} · {health.Fiscal.ComPort} · {(health.RealHardware ? "pajisje reale" : "modaliteti test")}";
+        _printers = _agentOnline ? await Hw.GetPrintersAsync() : null;
         StateHasChanged();
     }
 
@@ -255,7 +359,13 @@
         {
             IEnumerable<Article> q = _articles;
             if (!string.IsNullOrWhiteSpace(_activeCategory))
-                q = q.Where(a => a.Category == _activeCategory);
+            {
+                // Folded, not compared: the shelf is stored as both "Shtepi" and "Shtëpi", and
+                // an equality test on the dropdown's spelling hides most of it.
+                var key = CatalogService.CategoryKey(_activeCategory);
+                q = q.Where(a => !string.IsNullOrWhiteSpace(a.Category)
+                              && CatalogService.CategoryKey(a.Category) == key);
+            }
             if (!string.IsNullOrWhiteSpace(_search))
             {
                 var s = _search.Trim();
@@ -274,12 +384,12 @@
                   ?? await Catalog.FindByBarcodeAsync(_search.Trim());
         if (hit is not null)
         {
-            AddToCart(hit);
+            await AddToCart(hit);
             _search = "";
         }
     }
 
-    private void AddToCart(Article a)
+    private async Task AddToCart(Article a)
     {
         var existing = _cart.FirstOrDefault(l => l.ArticleId == a.Id);
         if (existing is not null)
@@ -300,19 +410,22 @@
         }
         _message = null;
         SyncPaid();
+        await SaveDraft();
     }
 
-    private void ChangeQty(ReceiptItem line, decimal delta)
+    private async Task ChangeQty(ReceiptItem line, decimal delta)
     {
         line.Quantity += delta;
         if (line.Quantity <= 0) _cart.Remove(line);
         SyncPaid();
+        await SaveDraft();
     }
 
-    private void Remove(ReceiptItem line)
+    private async Task Remove(ReceiptItem line)
     {
         _cart.Remove(line);
         SyncPaid();
+        await SaveDraft();
     }
 
     // Keep "paid" defaulted to the total for quick cash sales until the user overrides.
@@ -391,7 +504,7 @@
             // was just persisted, so the paper is the sale, not the cart it came from.
             if (_printReceipt)
             {
-                var rr = await Hw.PrintReceiptAsync(savedNumri.Value);
+                var rr = await Hw.PrintReceiptAsync(savedNumri.Value, _receiptPrinter);
                 _message += rr.Ok ? " · Kuponi u printua" : $" · ⚠ Kuponi nuk u printua: {rr.Error}";
                 if (!rr.Ok) _success = false;
                 await RefreshAgentStatusAsync();
@@ -399,6 +512,9 @@
 
             _cart.Clear();
             _paid = 0;
+            // The basket is now a sale in the database. Leaving it in the browser as well would
+            // hand the next customer the last one's shopping.
+            await Local.RemoveAsync(LocalKeys.SaleDraft);
             // Refresh stock counts shown in the grid
             _articles = await Catalog.GetAllArticlesAsync();
         }
