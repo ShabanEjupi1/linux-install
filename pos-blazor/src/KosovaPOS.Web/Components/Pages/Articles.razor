@@ -6,6 +6,7 @@
 @using KosovaPOS.Web.Services
 @using System.Text.Json
 @inject CatalogService Catalog
+@inject HardwareBridge Hw
 @inject Audit Audit
 
 <PageTitle>Artikujt — KosovaPOS</PageTitle>
@@ -68,6 +69,10 @@
                             <td class="num">@a.VATRate.ToString("0") %</td>
                             <td class="num @(a.StockQuantity <= 0 ? "out" : "")">@a.StockQuantity.ToString("0.##")</td>
                             <td class="actions">
+                                @if (!string.IsNullOrWhiteSpace(a.Barcode))
+                                {
+                                    <button class="btn-mini" title="Printo barkodin" @onclick="() => OpenLabels(a)">🏷️</button>
+                                }
                                 <button class="btn-mini" @onclick="() => OpenEditor(a)">✏️</button>
                                 <button class="btn-mini danger" @onclick="() => AskDelete(a)">🗑️</button>
                             </td>
@@ -151,6 +156,40 @@
     </div>
 }
 
+@* Labels, printed from the product list itself. Re-pricing an article and then having to go
+   find it a second time on another screen just to re-label it is two searches for one job. *@
+@if (_labelling is not null)
+{
+    <div class="modal-backdrop" @onclick="() => _labelling = null">
+        <div class="modal small" @onclick:stopPropagation="true">
+            <h2>Printo barkodin</h2>
+            <p>
+                <strong>@_labelling.Name</strong><br />
+                <span class="mono">@_labelling.Barcode</span> ·
+                <span class="price-tag">@_labelling.SalesPrice.ToString("0.00") €</span>
+            </p>
+
+            <div class="field">
+                <label>Sa etiketa?</label>
+                <input class="input" type="number" min="1" max="200" @bind="_labelCopies" />
+            </div>
+
+            @if (_labelError is not null)
+            {
+                <div class="sale-msg err">@_labelError</div>
+            }
+
+            <div class="modal-actions">
+                <a class="btn-ghost" href="/barkod">Më shumë opsione</a>
+                <button class="btn-ghost" @onclick="() => _labelling = null">Anulo</button>
+                <button class="btn-primary" disabled="@_busy" @onclick="PrintLabels">
+                    @(_busy ? "Duke printuar…" : "🖨️ Printo")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @if (_deleting is not null)
 {
     <div class="modal-backdrop" @onclick="() => _deleting = null">
@@ -175,8 +214,50 @@
 
     private Article? _editing;
     private Article? _deleting;
+    private Article? _labelling;
+    private int _labelCopies = 1;
+    private string? _labelError;
 
     protected override async Task OnInitializedAsync() => await Reload();
+
+    private void OpenLabels(Article a)
+    {
+        _labelling = a;
+        _labelCopies = 1;
+        _labelError = null;
+    }
+
+    /// <summary>
+    /// Raw TSPL through the agent when the shop has one — no dialog, no page change. Without an
+    /// agent the label has to be drawn by the browser, which happens at /etiketa inside a hidden
+    /// print frame, so the article list (and the search that found it) survives the print.
+    /// </summary>
+    private async Task PrintLabels()
+    {
+        if (_labelling is null) return;
+        _busy = true;
+        _labelError = null;
+        try
+        {
+            var copies = Math.Clamp(_labelCopies, 1, 200);
+            var r = await Hw.PrintBarcodeAsync(_labelling, copies);
+            if (!r.Ok)
+                // No &auto=1: the print frame itself calls print() once the labels have
+                // rendered. Asking the page to print too would raise two dialogs.
+                r = await Hw.PrintUrlAsync($"/etiketa?q={_labelling.Id}x{copies}");
+
+            if (!r.Ok)
+            {
+                _labelError = $"Printimi dështoi: {r.Error}";
+                return;
+            }
+
+            _success = true;
+            _message = $"{copies} etiketa u dërguan te printeri.";
+            _labelling = null;
+        }
+        finally { _busy = false; }
+    }
 
     private async Task Reload()
     {

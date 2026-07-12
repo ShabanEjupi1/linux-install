@@ -41,6 +41,12 @@ export async function printFiscal(req) {
     return await call("/fiscal/print", { method: "POST", body: req, timeoutMs: t });
 }
 
+// Clears the fiscal printer's article memory. Give it the same room as a fiscal print — it is
+// the same round trip through F-Link and the same serial device.
+export async function clearFiscalArticles() {
+    return await call("/fiscal/clear-articles", { method: "POST", body: {}, timeoutMs: 35000 });
+}
+
 export async function printReceipt(req) {
     return await call("/receipt/print", { method: "POST", body: req });
 }
@@ -55,4 +61,44 @@ export async function printers() {
 
 export async function readScale() {
     return await call("/scale/read", { timeoutMs: 4000 });
+}
+
+// --- Browser fallback printing ------------------------------------------------
+//
+// When there is no agent on this PC, the *browser* has to draw the document — and a page can
+// only print itself. That used to mean target="_blank": the receipt opened in a second tab,
+// which the cashier then had to notice and close, and the till screen (with the sale still on
+// it) was no longer the tab in front of them.
+//
+// A hidden iframe prints the same document from the page that is already open. The tab never
+// changes, nothing is left behind to close, and with Chrome's --kiosk-printing the dialog does
+// not even appear. Same-origin, so we can reach into it to call print().
+export function printUrl(url) {
+    return new Promise((resolve) => {
+        const old = document.getElementById("pos-print-frame");
+        if (old) old.remove();
+
+        const frame = document.createElement("iframe");
+        frame.id = "pos-print-frame";
+        frame.setAttribute("aria-hidden", "true");
+        frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;";
+
+        // Chrome discards the print job if the iframe goes away while the dialog is still up,
+        // so it is removed on a timer rather than when print() returns (print() returns as soon
+        // as the dialog opens, not when the user answers it).
+        frame.onload = () => {
+            try {
+                frame.contentWindow.focus();
+                frame.contentWindow.print();
+                resolve({ ok: true });
+            } catch (e) {
+                resolve({ ok: false, error: String(e) });
+            } finally {
+                setTimeout(() => frame.remove(), 60000);
+            }
+        };
+
+        frame.src = url;
+        document.body.appendChild(frame);
+    });
 }

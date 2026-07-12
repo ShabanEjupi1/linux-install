@@ -53,6 +53,18 @@ public sealed class WindowsBarcodeDriver : IBarcodeDriver
     /// <summary>Glyph box of TSPL's built-in fonts, in dots at scale 1: (width, height).</summary>
     private static readonly (int W, int H) Font2 = (12, 20);   // article name
     private static readonly (int W, int H) Font4 = (24, 32);   // price
+    private static readonly (int W, int H) Font5 = (32, 48);   // price, when the label has the room
+
+    /// <summary>
+    /// Every way we are willing to draw the price, smallest first: TSPL's two large built-in
+    /// fonts at each multiplier. The layout takes the LAST one that fits, so the price ends up
+    /// as big as the label allows rather than as big as one hardcoded font happens to be.
+    /// </summary>
+    private static readonly (string Font, (int W, int H) Box, int Scale)[] PriceFonts =
+    {
+        ("4", Font4, 1), ("5", Font5, 1), ("4", Font4, 2), ("5", Font5, 2),
+        ("4", Font4, 3), ("5", Font5, 3), ("4", Font4, 4),
+    };
 
     /// <summary>Dots TSPL spends on the human-readable digits it prints under the bars.</summary>
     private const int DigitDots = 24;
@@ -64,7 +76,7 @@ public sealed class WindowsBarcodeDriver : IBarcodeDriver
     /// </summary>
     private const int MinBarDots = 5 * DotsPerMm;
 
-    internal static string BuildTspl(BarcodePrintRequest req, int copies)
+    public static string BuildTspl(BarcodePrintRequest req, int copies)
     {
         var wMm = Math.Clamp(req.LabelWidthMm, 20, 200);
         var hMm = Math.Clamp(req.LabelHeightMm, 10, 200);
@@ -76,32 +88,45 @@ public sealed class WindowsBarcodeDriver : IBarcodeDriver
         var priceText = req.Price.ToString("0.00") + " €";
         var name = Trunc(req.ArticleName, usable / Font2.W);
 
-        // The price is what the customer reads from a shelf and what the cashier checks at
-        // arm's length, so it is the biggest thing on the label — bigger than the bars, which
-        // only a scanner ever reads. Take the largest scale whose glyphs still fit the label's
-        // width AND still leave a scannable barcode underneath.
+        // The price is what the customer reads off the shelf and what the cashier checks at
+        // arm's length. The bars are read only by a scanner, which does not care how tall they
+        // are as long as they are there, and the digits TSPL prints under the bars are read by
+        // nobody — they only matter on the day the barcode is smudged and someone keys it in.
+        //
+        // So the label is laid out in that order of worth: the price takes the largest font the
+        // stock can carry; the digits are the first thing given up to make it bigger; the bar
+        // height is the second; and the 5mm scannability floor is never given up at all. On the
+        // shop's 55×25 stock, keeping the digits caps the price at 8mm — dropping them buys 12mm.
         const int NameTop = 4;
         var priceTop = NameTop + Font2.H + 4;
-        var forPriceAndBars = hDots - priceTop - DigitDots - Margin;
         const int Gap = 6;
 
-        var scale = 1;
-        for (var s = 4; s >= 1; s--)
+        var best = (Price: PriceFonts[0], Digits: true, Height: 0);
+        foreach (var digits in new[] { true, false })
         {
-            var fitsWidth = priceText.Length * Font4.W * s <= usable;
-            var barsLeft = forPriceAndBars - Font4.H * s - Gap;
-            if (fitsWidth && barsLeft >= MinBarDots) { scale = s; break; }
+            var forPriceAndBars = hDots - priceTop - (digits ? DigitDots : 0) - Margin;
+            foreach (var candidate in PriceFonts)
+            {
+                var h = candidate.Box.H * candidate.Scale;
+                var fitsWidth = priceText.Length * candidate.Box.W * candidate.Scale <= usable;
+                var barsLeft = forPriceAndBars - h - Gap;
+
+                // Ties keep the digits: they are only sacrificed when that actually buys a
+                // bigger price, never merely because they could be.
+                if (fitsWidth && barsLeft >= MinBarDots && h > best.Height)
+                    best = (candidate, digits, h);
+            }
         }
 
-        var priceH = Font4.H * scale;
+        var (price, showDigits, priceH) = best;
         var barTop = priceTop + priceH + Gap;
 
         // Whatever room is left goes to the bars — but never so much that they out-tower the
-        // price on a tall label, which is the whole point of sizing the price first. The floor
-        // still wins over that: on stock where no scale makes the price the taller element (a
-        // four-figure price is too wide to enlarge), the bars keep their 5mm and stay
-        // scannable. A big price on a label nobody can scan is not the trade the till wants.
-        var room = hDots - barTop - DigitDots - Margin;
+        // price, which is the whole point of sizing the price first. The floor still wins over
+        // that: on stock where no font makes the price the taller element (a four-figure price
+        // on a narrow label is too wide to enlarge), the bars keep their 5mm and stay scannable.
+        // A big price on a label nobody can scan is not a trade the till can make.
+        var room = hDots - barTop - (showDigits ? DigitDots : 0) - Margin;
         var barHeight = Math.Min(room, Math.Max(MinBarDots, priceH - 8));
 
         var sb = new StringBuilder();
@@ -116,8 +141,18 @@ public sealed class WindowsBarcodeDriver : IBarcodeDriver
         sb.AppendLine("SPEED 4");
         sb.AppendLine("CLS");
         sb.AppendLine($"TEXT {Centre(name.Length * Font2.W, usable, Margin)},{NameTop},\"2\",0,1,1,\"{Escape(name)}\"");
-        sb.AppendLine($"TEXT {Centre(priceText.Length * Font4.W * scale, usable, Margin)},{priceTop}," +
-                      $"\"4\",0,{scale},{scale},\"{Escape(priceText)}\"");
+
+        // TSPL's built-in fonts have no bold attribute — the only way to thicken them is to
+        // draw the same text again, shifted by a dot, into the same image buffer. Two passes
+        // read as bold at ordinary sizes; a 12mm glyph needs a third, or the stroke stays as
+        // thin as it was on a 4mm one and the price reads spindly rather than heavy.
+        var priceX = Centre(priceText.Length * price.Box.W * price.Scale, usable, Margin);
+        var strokes = priceH >= 80 ? 3 : 2;
+        for (var d = 0; d < strokes; d++)
+        {
+            sb.AppendLine($"TEXT {priceX + d},{priceTop},\"{price.Font}\",0,{price.Scale},{price.Scale}," +
+                          $"\"{Escape(priceText)}\"");
+        }
 
         // A barcode wider than the label is not a wide barcode — it is a clipped one, and a
         // clipped barcode still looks right while scanning nowhere. Shrink the module until
@@ -132,7 +167,12 @@ public sealed class WindowsBarcodeDriver : IBarcodeDriver
         {
             var type = BarcodeType(req.Barcode);
             var x = Centre(Modules(req.Barcode) * narrow.Value, usable, Margin);
-            sb.AppendLine($"BARCODE {x},{barTop},\"{type}\",{barHeight},1,0,{narrow},{narrow * 2},\"{req.Barcode}\"");
+
+            // The 4th argument is TSPL's human-readable flag. It must agree with the layout: if
+            // the space for the digits was spent on the price, printing them anyway runs them off
+            // the bottom of the label — or, worse, into the next one.
+            var human = showDigits ? 1 : 0;
+            sb.AppendLine($"BARCODE {x},{barTop},\"{type}\",{barHeight},{human},0,{narrow},{narrow * 2},\"{req.Barcode}\"");
         }
 
         sb.AppendLine($"PRINT 1,{copies}");

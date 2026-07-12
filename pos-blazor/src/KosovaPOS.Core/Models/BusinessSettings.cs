@@ -69,6 +69,26 @@ namespace KosovaPOS.Models
         [StringLength(100)]
         public string? BarcodePrinter { get; set; }
 
+        /// <summary>
+        /// The ESC/POS code page the thermal printer is switched to before every receipt:
+        /// 1252, 852, 858, 850, 1250, 437, or "ascii" to print e/c instead of ë/ç.
+        ///
+        /// It is a per-shop setting because a printer's firmware decides which pages it really
+        /// honours, and nothing but paper can tell you which one that is. The sample slip at
+        /// /pajisjet prints one line per candidate; the shop picks the line that came out right.
+        /// </summary>
+        [StringLength(10)]
+        public string ReceiptCodePage { get; set; } = "1252";
+
+        /// <summary>
+        /// The label stock in the barcode printer, in mm. The TSPL document is laid out against
+        /// these — labels built for 55×25 and printed on 40×30 stock come out cropped, and a
+        /// clipped barcode still looks right while scanning nowhere.
+        /// </summary>
+        public int LabelWidthMm { get; set; } = 55;
+
+        public int LabelHeightMm { get; set; } = 25;
+
         // ── Module toggles ────────────────────────────────────────────────────────
         public bool EnableTableManagement  { get; set; }
         public bool EnableAppointments     { get; set; }

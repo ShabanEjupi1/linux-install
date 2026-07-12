@@ -36,6 +36,13 @@ public static class AuditAction
     public const string BusinessCreate = "BUSINESS_CREATE";
     public const string BusinessUpdate = "BUSINESS_UPDATE";
 
+    /// <summary>
+    /// The fiscal printer's article memory was wiped. Logged because it is a command sent to the
+    /// tax device, it is run by whoever happens to be on the till, and "the printer started
+    /// refusing receipts" is a question someone will ask afterwards.
+    /// </summary>
+    public const string FiscalClear = "FISCAL_CLEAR";
+
     /// <summary>Albanian labels for the audit screens. Unknown verbs fall back to themselves.</summary>
     public static string Label(string action) => action switch
     {
@@ -55,6 +62,7 @@ public static class AuditAction
         StockAdjust       => "Korrigjim stoku",
         BusinessCreate    => "Biznes i ri",
         BusinessUpdate    => "Ndryshim biznesi",
+        FiscalClear       => "Pastrim i printerit fiskal",
         _                 => action,
     };
 }

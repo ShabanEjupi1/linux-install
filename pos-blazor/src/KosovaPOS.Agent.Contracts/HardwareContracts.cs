@@ -98,6 +98,18 @@ public sealed class ReceiptPrintRequest
     public string ReceiptNumber { get; set; } = "";
     public List<ReceiptDocumentLine> Lines { get; set; } = new();
     public string? PrinterName { get; set; }
+
+    /// <summary>
+    /// The ESC/POS code page this printer is to be switched to: "1252", "852", "858", "850",
+    /// "1250", "437", or "ascii" to strip the accents. Null = whatever the agent was installed
+    /// with.
+    ///
+    /// It travels with the job rather than living in the agent's environment because there is
+    /// no way to know from here which page a given printer's firmware actually honours — the
+    /// shop finds out by printing the sample at <c>/pajisjet</c> and picking the line that
+    /// rendered ë correctly. That has to be changeable from the POS, without reinstalling.
+    /// </summary>
+    public string? CodePage { get; set; }
 }
 
 /// <param name="Emphasis">0 normal · 1 bold · 2 double-height. Matches <c>ReceiptEmphasis</c>.</param>
@@ -105,6 +117,13 @@ public sealed class ReceiptDocumentLine
 {
     public string Text { get; set; } = "";
     public int Emphasis { get; set; }
+
+    /// <summary>
+    /// Prints this one line under a different code page than the rest of the job. Only the
+    /// encoding sample uses it — one line per candidate page, so the shop can hold the paper
+    /// up and see which one prints "ë ç" instead of "Î´Ã§".
+    /// </summary>
+    public string? CodePage { get; set; }
 }
 
 // --- Barcode label ----------------------------------------------------------

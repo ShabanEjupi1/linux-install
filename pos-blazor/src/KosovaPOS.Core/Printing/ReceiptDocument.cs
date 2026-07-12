@@ -15,7 +15,40 @@ public enum ReceiptEmphasis
 }
 
 /// <param name="Text">Already padded to the document's column width. Never re-wrap it.</param>
-public readonly record struct ReceiptTextLine(string Text, ReceiptEmphasis Emphasis = ReceiptEmphasis.Normal, bool Center = false);
+/// <param name="CodePage">
+/// Overrides the job's code page for this one line. Only the encoding sample uses it — every
+/// other line is printed under the shop's configured page.
+/// </param>
+public readonly record struct ReceiptTextLine(
+    string Text,
+    ReceiptEmphasis Emphasis = ReceiptEmphasis.Normal,
+    bool Center = false,
+    string? CodePage = null);
+
+/// <summary>
+/// The ESC/POS code pages a receipt printer can be asked to switch to. Which of them a given
+/// printer's firmware actually honours is not knowable from here — two printers with the same
+/// model number on the box can differ — so the shop prints the sample slip and picks the line
+/// whose ë came out as ë. Ordered best-guess first.
+/// </summary>
+public static class ReceiptCodePages
+{
+    public const string Default = "1252";
+
+    /// <param name="Label">What the shop sees in the dropdown.</param>
+    public readonly record struct Option(string Value, string Label);
+
+    public static readonly Option[] All =
+    {
+        new("1252",  "1252 — Windows Latin-1 (zakonisht kjo)"),
+        new("852",   "852 — Latin-2"),
+        new("858",   "858"),
+        new("850",   "850 — Multilingual"),
+        new("1250",  "1250 — Europa Qendrore"),
+        new("437",   "437 — pa ë/ç (zëvendësohen me e/c)"),
+        new("ascii", "Pa theks — ë→e, ç→c (funksionon gjithmonë)"),
+    };
+}
 
 /// <summary>The shop's header block. Kept separate from BusinessSettings so Core printing has no EF dependency.</summary>
 public sealed record ReceiptHeader(

@@ -8,6 +8,7 @@
 @inject BusinessProfileService Profile
 @inject HardwareBridge Hw
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 
 <PageTitle>Barkodi — KosovaPOS</PageTitle>
 
@@ -15,7 +16,7 @@
     <header class="mgmt-head">
         <div>
             <h1>Printimi i barkodave</h1>
-            <span class="muted">Kërko artikujt, shto në radhë dhe printo etiketat.</span>
+            <span class="muted">Zgjidh artikullin, printo, kalo te tjetri.</span>
         </div>
         <span class="agent-badge @(_agentOnline ? (_agentReal ? "on" : "mock") : "off")" title="@_agentTitle">
             <span class="dot"></span>@(_agentOnline ? (_agentReal ? "Pajisje" : "Pajisje (test)") : "Pa pajisje")
@@ -26,13 +27,65 @@
     {
         <div class="sale-msg err">
             Agjenti i pajisjeve nuk po përgjigjet në këtë kompjuter. Etiketat printohen përmes
-            shfletuesit, i cili hap dialogun e printimit.
+            shfletuesit, i cili hap dialogun e printimit. Instaloje te <a href="/pajisjet">Pajisjet</a>.
         </div>
     }
 
+    @* The print controls do not move and do not scroll away: the copies box, the printer and
+       the button sit in the same place all day, and only the ARTICLE inside them changes. The
+       cashier picks a product, presses Printo, picks the next one — the old page made them
+       rebuild a queue and hunt for a button that had been pushed off-screen by search results. *@
+    <div class="print-bar">
+        <div class="print-bar-item">
+            @if (_selected is null)
+            {
+                <span class="muted">Asnjë artikull i zgjedhur — kërko ose skano më poshtë.</span>
+            }
+            else
+            {
+                <strong>@_selected.Name</strong>
+                <span class="mono">@_selected.Barcode</span>
+                <span class="price-tag">@_selected.SalesPrice.ToString("0.00") €</span>
+            }
+        </div>
+
+        @* Bound on input, not on change: the button says how many labels it is about to print,
+           and a count that only catches up when the box loses focus is a count that lies right
+           up until the moment it is pressed. *@
+        <label class="chk">Kopje
+            <input type="number" min="1" max="200" class="thresh" @bind="_copies" @bind:event="oninput" />
+        </label>
+
+        @if (_printers is not null)
+        {
+            <label class="chk">Printeri
+                <select @bind="_labelPrinter" class="cat-select">
+                    <option value="">— i parazgjedhuri —</option>
+                    @foreach (var p in _printers.Printers)
+                    {
+                        <option value="@p">@p</option>
+                    }
+                </select>
+            </label>
+        }
+
+        <button class="btn-primary" disabled="@(_selected is null || _busy)" @onclick="PrintSelected">
+            @(_busy ? "Duke printuar…" : $"🖨️ Printo ({Math.Max(1, _copies)})")
+        </button>
+    </div>
+
+    @if (_status is not null)
+    {
+        <div class="sale-msg @(_statusOk ? "ok" : "err")">@_status</div>
+    }
+
     <div class="search-row">
-        <input @bind="_search" @bind:event="oninput" placeholder="Kërko emër ose barkod…" class="search-box" />
-        <label class="chk">Kopje <input type="number" min="1" class="thresh" @bind="_copies" /></label>
+        <input @ref="_searchBox" @bind="_search" @bind:event="oninput" @onkeydown="OnSearchKey"
+               placeholder="Kërko emër ose barkod — ose skano artikullin…" class="search-box" />
+        <label class="chk">
+            <input type="checkbox" @bind="_autoPrintOnScan" />
+            Printo vetë pas skanimit
+        </label>
     </div>
 
     <div class="table-wrap">
@@ -48,18 +101,21 @@
             <tbody>
                 @foreach (var a in Matches)
                 {
-                    <tr>
+                    <tr class="clickable @(_selected?.Id == a.Id ? "row-selected" : "")" @onclick="() => Select(a)">
                         <td class="mono">@a.Barcode</td>
                         <td>@a.Name</td>
                         <td class="num">@a.SalesPrice.ToString("0.00")</td>
-                        <td>
+                        <td class="actions">
                             @if (string.IsNullOrWhiteSpace(a.Barcode))
                             {
                                 <span class="muted">Pa barkod</span>
                             }
                             else
                             {
-                                <button class="btn-mini" @onclick="() => Enqueue(a)">Shto në radhë</button>
+                                <button class="btn-mini" @onclick="() => Select(a)"
+                                        @onclick:stopPropagation="true">Zgjidh</button>
+                                <button class="btn-mini" @onclick="() => Enqueue(a)"
+                                        @onclick:stopPropagation="true">+ Radha</button>
                             }
                         </td>
                     </tr>
@@ -67,61 +123,53 @@
                 @if (!Matches.Any())
                 {
                     <tr><td colspan="4" class="muted center">
-                        @(string.IsNullOrWhiteSpace(_search) ? "Shkruaj për të kërkuar." : "Asnjë artikull.")
+                        @(string.IsNullOrWhiteSpace(_search) ? "Shkruaj ose skano për të kërkuar." : "Asnjë artikull.")
                     </td></tr>
                 }
             </tbody>
         </table>
     </div>
 
-    <h2 class="section-title">Radha e printimit (@TotalLabels etiketa)</h2>
-    <div class="table-wrap">
-        <table class="grid-table">
-            <thead>
-                <tr>
-                    <th>Barkodi</th>
-                    <th>Emërtimi</th>
-                    <th class="num">Kopje</th>
-                    <th></th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var item in _queue)
-                {
+    @* Batch mode, for the day the shop re-prices a whole shelf. The one-at-a-time bar above is
+       the everyday path; this exists so 30 labels are not 30 button presses. *@
+    @if (_queue.Count > 0)
+    {
+        <h2 class="section-title">Radha e printimit (@TotalLabels etiketa)</h2>
+        <div class="table-wrap">
+            <table class="grid-table">
+                <thead>
                     <tr>
-                        <td class="mono">@item.Article.Barcode</td>
-                        <td>@item.Article.Name</td>
-                        <td class="num">
-                            <button class="btn-mini" @onclick="() => Bump(item, -1)">−</button>
-                            @item.Copies
-                            <button class="btn-mini" @onclick="() => Bump(item, 1)">+</button>
-                        </td>
-                        <td><button class="btn-mini" @onclick="() => _queue.Remove(item)">Hiq</button></td>
+                        <th>Barkodi</th>
+                        <th>Emërtimi</th>
+                        <th class="num">Kopje</th>
+                        <th></th>
                     </tr>
-                }
-                @if (_queue.Count == 0)
-                {
-                    <tr><td colspan="4" class="muted center">Radha është bosh.</td></tr>
-                }
-            </tbody>
-        </table>
-    </div>
+                </thead>
+                <tbody>
+                    @foreach (var item in _queue)
+                    {
+                        <tr>
+                            <td class="mono">@item.Article.Barcode</td>
+                            <td>@item.Article.Name</td>
+                            <td class="num">
+                                <button class="btn-mini" @onclick="() => Bump(item, -1)">−</button>
+                                @item.Copies
+                                <button class="btn-mini" @onclick="() => Bump(item, 1)">+</button>
+                            </td>
+                            <td><button class="btn-mini" @onclick="() => _queue.Remove(item)">Hiq</button></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
 
-    <div class="modal-actions">
-        <button class="btn-ghost" disabled="@(_queue.Count == 0)" @onclick="() => _queue.Clear()">Pastro radhën</button>
-
-        @* One button, because the choice is not the cashier's to make: with an agent the queue
-           goes straight out as raw TSPL from this page (no dialog, no page change); without
-           one it is handed to /etiketa, which draws the labels for the browser to print. *@
-        <button class="btn-primary" disabled="@(_queue.Count == 0 || _busy)" @onclick="Print">
-            @(_busy ? "Duke printuar…" : $"🖨️ Printo etiketat ({TotalLabels})")
-        </button>
-
-        @if (_status is not null)
-        {
-            <span class="muted print-hint">@_status</span>
-        }
-    </div>
+        <div class="modal-actions">
+            <button class="btn-ghost" disabled="@_busy" @onclick="() => _queue.Clear()">Pastro radhën</button>
+            <button class="btn-primary" disabled="@_busy" @onclick="PrintQueue">
+                @(_busy ? "Duke printuar…" : $"🖨️ Printo radhën ({TotalLabels})")
+            </button>
+        </div>
+    }
 </div>
 
 @code {
@@ -131,56 +179,21 @@
         public int Copies { get; set; } = 1;
     }
 
-    /// <summary>
-    /// With an agent on this PC the labels are printed from right here: raw TSPL, no dialog,
-    /// no page change, the queue still on screen for the next batch. Leaving the till screen
-    /// to reach a printer is a step the cashier never asked for.
-    ///
-    /// Without an agent the labels have to be *drawn* by the browser, and a page can only
-    /// print itself — so that case still hands the queue to /etiketa. The queue travels in the
-    /// URL (<c>id x copies</c>) so a jam can be reprinted by reloading, without rebuilding it.
-    /// </summary>
-    private async Task Print()
-    {
-        if (!_agentOnline)
-        {
-            var q = string.Join(",", _queue.Select(i => $"{i.Article.Id}x{i.Copies}"));
-            Nav.NavigateTo($"/etiketa?q={Uri.EscapeDataString(q)}&auto=1");
-            return;
-        }
-
-        _busy = true;
-        _status = null;
-        try
-        {
-            var sent = 0;
-            var failed = new List<string>();
-
-            // Article by article, so a jam does not discard the rest of the queue.
-            foreach (var item in _queue.ToList())
-            {
-                var result = await Hw.PrintBarcodeAsync(item.Article, item.Copies, _labelPrinter);
-                if (result.Ok) sent += item.Copies;
-                else failed.Add($"{item.Article.Name}: {result.Error}");
-            }
-
-            // What printed is off the queue; what failed stays on it, ready to be retried
-            // without being typed in again.
-            _queue.RemoveAll(i => !failed.Any(f => f.StartsWith(i.Article.Name + ":", StringComparison.Ordinal)));
-
-            _status = failed.Count == 0
-                ? $"✅ {sent} etiketa u printuan."
-                : $"{sent} u printuan · {failed.Count} dështuan: {string.Join(" · ", failed.Take(2))}";
-        }
-        finally { _busy = false; }
-    }
-
     private List<Article> _all = new();
     private readonly List<QueueItem> _queue = new();
     private string _search = "";
     private int _copies = 1;
+    private Article? _selected;
+    private ElementReference _searchBox;
 
-    private bool _agentOnline, _agentReal, _busy;
+    /// <summary>
+    /// A barcode scanner is a keyboard that types fast and ends with Enter. With this on, a
+    /// scan selects the article AND prints its label — which is the whole job when someone is
+    /// re-labelling a shelf, and it means the till never has to be touched.
+    /// </summary>
+    private bool _autoPrintOnScan = true;
+
+    private bool _agentOnline, _agentReal, _busy, _statusOk;
     private string? _status;
     private string _agentTitle = "Agjenti i pajisjeve nuk është kontrolluar ende";
 
@@ -189,6 +202,7 @@
     /// printer — which in a shop is the receipt printer, and 30 labels come out as 30 receipts.
     /// </summary>
     private string? _labelPrinter;
+    private KosovaPOS.Agent.Contracts.PrinterList? _printers;
 
     protected override async Task OnInitializedAsync()
     {
@@ -200,6 +214,9 @@
     {
         if (!firstRender) return;
         await RefreshAgentStatusAsync();
+        // The scanner types into whatever has focus; this page has exactly one thing worth
+        // typing into, so it may as well already be focused when the page opens.
+        try { await _searchBox.FocusAsync(); } catch (Exception) { }
         StateHasChanged();
     }
 
@@ -211,6 +228,8 @@
         _agentTitle = health is null
             ? "Agjenti i pajisjeve nuk po përgjigjet"
             : $"{(health.RealHardware ? "pajisje reale" : "modaliteti test")}";
+
+        _printers = _agentOnline ? await Hw.GetPrintersAsync() : null;
     }
 
     private IEnumerable<Article> Matches
@@ -228,9 +247,101 @@
 
     private int TotalLabels => _queue.Sum(i => i.Copies);
 
+    private void Select(Article a)
+    {
+        if (string.IsNullOrWhiteSpace(a.Barcode)) return;
+        _selected = a;
+        _status = null;
+    }
+
+    /// <summary>
+    /// Enter — from the keyboard or from a scanner's trailing Return. An exact barcode match is
+    /// the scanner; a single search hit is the human. Anything ambiguous is left alone: printing
+    /// the wrong label wastes stock and, worse, ends up on a shelf.
+    /// </summary>
+    private async Task OnSearchKey(KeyboardEventArgs e)
+    {
+        if (e.Key != "Enter") return;
+
+        var s = _search.Trim();
+        if (s.Length == 0) return;
+
+        var hit = _all.FirstOrDefault(a => a.Barcode.Equals(s, StringComparison.OrdinalIgnoreCase))
+                  ?? (Matches.Count() == 1 ? Matches.First() : null);
+        if (hit is null) return;
+
+        Select(hit);
+        if (_autoPrintOnScan) await PrintSelected();
+
+        // Clear for the next scan — a scanner appends, and "12345678901231234567890123" matches
+        // nothing.
+        _search = "";
+        await _searchBox.FocusAsync();
+    }
+
+    private async Task PrintSelected()
+    {
+        if (_selected is null) return;
+        await PrintAll(new[] { (_selected, Math.Clamp(_copies, 1, 200)) });
+    }
+
+    private async Task PrintQueue()
+    {
+        if (_queue.Count == 0) return;
+        await PrintAll(_queue.Select(i => (i.Article, i.Copies)).ToList());
+        // A batch that printed is done with; one that failed stays on the queue, ready to be
+        // retried without being rebuilt article by article.
+        if (_statusOk) _queue.Clear();
+    }
+
+    /// <summary>
+    /// With an agent on this PC the labels go out from right here: raw TSPL, no dialog, no page
+    /// change, the search still on screen for the next article. Without one the labels have to
+    /// be DRAWN by the browser — and a page can only print itself — so they are rendered at
+    /// /etiketa inside a hidden frame. Even then the shop never leaves this page.
+    /// </summary>
+    private async Task PrintAll(IReadOnlyCollection<(Article Article, int Copies)> jobs)
+    {
+        _busy = true;
+        _status = null;
+        try
+        {
+            if (!_agentOnline)
+            {
+                // No &auto=1: the hidden frame prints itself once the labels have rendered.
+                // Asking the page to print as well would raise two dialogs.
+                var q = string.Join(",", jobs.Select(j => $"{j.Article.Id}x{j.Copies}"));
+                var r = await Hw.PrintUrlAsync($"/etiketa?q={Uri.EscapeDataString(q)}");
+                _statusOk = r.Ok;
+                _status = r.Ok
+                    ? "Etiketat u dërguan te shfletuesi për printim."
+                    : $"Printimi dështoi: {r.Error}";
+                return;
+            }
+
+            var sent = 0;
+            var failed = new List<string>();
+
+            // Article by article, so a jam does not discard the rest of the batch.
+            foreach (var (article, copies) in jobs)
+            {
+                var result = await Hw.PrintBarcodeAsync(article, copies, _labelPrinter);
+                if (result.Ok) sent += copies;
+                else failed.Add($"{article.Name}: {result.Error}");
+            }
+
+            _statusOk = failed.Count == 0;
+            _status = _statusOk
+                ? $"✅ {sent} etiketa u printuan."
+                : $"{sent} u printuan · {failed.Count} dështuan: {string.Join(" · ", failed.Take(2))}";
+        }
+        finally { _busy = false; }
+    }
+
     private void Enqueue(Article a)
     {
-        var copies = Math.Max(1, _copies);
+        if (string.IsNullOrWhiteSpace(a.Barcode)) return;
+        var copies = Math.Clamp(_copies, 1, 200);
         var existing = _queue.FirstOrDefault(i => i.Article.Id == a.Id);
         if (existing is not null) existing.Copies += copies;
         else _queue.Add(new QueueItem { Article = a, Copies = copies });
@@ -241,5 +352,4 @@
         item.Copies += by;
         if (item.Copies < 1) _queue.Remove(item);
     }
-
 }

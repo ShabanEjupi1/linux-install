@@ -497,6 +497,26 @@ a.stat:hover { border-color: var(--accent); }
 }
 .fiscal-toggle input { width: 16px; height: 16px; }
 
+/* Barcode print bar. Sticky on purpose: the copies box, the printer and the Printo button
+   are the same three controls all day and must not scroll away behind the search results —
+   only the article inside them changes. */
+.print-bar {
+  position: sticky; top: 0; z-index: 5;
+  display: flex; align-items: center; gap: .75rem; flex-wrap: wrap;
+  padding: .7rem .9rem; margin-bottom: .75rem;
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--r-xl); box-shadow: var(--shadow-1);
+}
+.print-bar-item { flex: 1 1 16rem; display: flex; align-items: baseline; gap: .5rem; flex-wrap: wrap; min-width: 0; }
+.print-bar-item strong { font-size: 1rem; }
+.price-tag { font-weight: 700; color: var(--ok-ink); }
+.grid-table tr.row-selected { background: var(--ok-bg); }
+.grid-table tr.row-selected:hover { background: var(--ok-bg); }
+
+@media (max-width: 700px) {
+  .print-bar { position: static; }
+}
+
 @media (max-width: 900px) {
   .sale { grid-template-columns: 1fr; height: auto; }
   .cart { min-height: 60vh; }

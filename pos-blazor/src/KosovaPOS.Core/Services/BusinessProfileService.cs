@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using KosovaPOS.Core.Data;
+using KosovaPOS.Core.Printing;
 using KosovaPOS.Models;
 
 namespace KosovaPOS.Core.Services;
@@ -67,6 +68,17 @@ public class BusinessProfileService
         row.BarcodePrinter = Clean(input.BarcodePrinter);
         row.Profile        = input.Profile;
         row.IsFirstRun     = false;
+
+        // This method copies a whitelist, not the object: a field missing from the list below is
+        // silently dropped, and the screen that set it still reports "U ruajt". Anything added to
+        // BusinessSettings has to be added here too.
+        row.ReceiptCodePage = string.IsNullOrWhiteSpace(input.ReceiptCodePage)
+            ? ReceiptCodePages.Default
+            : input.ReceiptCodePage.Trim();
+        // Clamped to the range the TSPL layout is willing to lay out; a 0 here (a settings row
+        // written before these columns existed) means "not set", not "a label 0mm wide".
+        row.LabelWidthMm  = input.LabelWidthMm  is > 0 ? Math.Clamp(input.LabelWidthMm, 20, 200) : 55;
+        row.LabelHeightMm = input.LabelHeightMm is > 0 ? Math.Clamp(input.LabelHeightMm, 10, 200) : 25;
 
         await db.SaveChangesAsync();
 

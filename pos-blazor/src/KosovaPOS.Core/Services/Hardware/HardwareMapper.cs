@@ -32,10 +32,14 @@ public static class HardwareMapper
         {
             Text = l.Text,
             Emphasis = (int)l.Emphasis,
+            // Carried through, or the encoding sample prints all seven of its lines under one
+            // page and every one of them looks identical — which is the opposite of its job.
+            CodePage = l.CodePage,
         }).ToList(),
         // Let the shop point its courtesy receipt at any thermal printer; null falls
         // back to the agent's RECEIPT_PRINTER default on the cashier PC.
         PrinterName = string.IsNullOrWhiteSpace(shop?.ReceiptPrinter) ? null : shop!.ReceiptPrinter,
+        CodePage = string.IsNullOrWhiteSpace(shop?.ReceiptCodePage) ? null : shop!.ReceiptCodePage,
     };
 
     public static BarcodePrintRequest ToBarcodeRequest(

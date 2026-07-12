@@ -899,6 +899,61 @@ centred, narrow=3) and for an unfittable CODE128 (falls back to text); ESC/POS b
 a valid archive containing the freshly-built exe, with unknown names and traversal 404ing and
 `/pajisjet` redirecting to `/login`. **Not run on real hardware — that still needs the shop PC.**
 
+## Phase 21 — what the shop found on real paper ✅ (2026-07-12)
+
+Phase 20 was the first build that could print at all. The shop ran it, and the paper said what no
+amount of reading the code could: **`ë` still came out wrong, and the price on the label was too
+small.** Everything here follows from that.
+
+- **The code page is now a per-shop setting, not a rebuild.** The agent already sent `ESC t 16`
+  (WPC1252) — but whether a printer's firmware *honours* a code page is not knowable from here, it
+  is only knowable from paper. So `BusinessSettings.ReceiptCodePage` travels with every job, and
+  `/pajisjet` prints an **encoding sample**: one line per candidate page (1252 / 852 / 858 / 850 /
+  1250 / 437 / ascii), *each line printed under the page it names* (`ReceiptDocumentLine.CodePage`).
+  The shop holds up the slip, finds the line where `Ë ë Ç ç` are right, and picks that number. No
+  reinstall, no rebuild. `ascii` (ë→e, ç→c) always works and is the floor.
+- **The likeliest cause of the shop's `ë` is an agent that is simply out of date.** The agent
+  reports its version; the server knows the version it ships; `/pajisjet` now says so in red when
+  the installed one is older. An agent from before Phase 20 *cannot* print `ë` and does not know it.
+- **The label price is now the biggest thing on the label, and bold.** TSPL's built-in fonts have no
+  bold attribute, so the price is overprinted 2–3× at a 1-dot offset. It is sized *first*, from the
+  largest font/scale the stock can carry (font 5 ×2 on the shop's 55×25), and the layout gives up —
+  in this order — the human-readable digits under the bars, then bar height, and **never** the 5mm
+  scannability floor. 55×25 went from an 8mm price over 7mm bars to a **12mm bold price over 7.75mm
+  bars**. Label stock (`LabelWidthMm`/`LabelHeightMm`) is a setting too, so 40×30 lays out correctly.
+- **Barcode printing is now select → print → next**, not build-a-queue. `/barkod` has a sticky print
+  bar (article, copies, printer) that never scrolls away, the article list no longer hides it, a
+  scan (barcode + Enter) selects *and* prints, and `/articles` grew a 🏷️ button so a re-priced
+  article can be re-labelled without a second search on another screen. The batch queue survives for
+  the day a whole shelf is re-priced.
+- **Nothing opens a new browser tab any more.** Receipts and A4 invoices print from the page you are
+  on: raw ESC/POS via the agent, or — with no agent — the same document drawn into a **hidden iframe**
+  (`printUrl` in `hardware.js`). The till keeps the sale on screen; `/faturat` keeps your search.
+- **"Pastro artikujt e printerit fiskal" is in the app** (`POST /fiscal/clear-articles` →
+  `ClearArticle.inp`, byte-identical to the shop's `Clear Article.bat`). The fiscal device holds its
+  own article table and refuses a sale whose name or tax group disagrees with it, so a price change
+  can stop the till mid-queue. The command is on **`/arka`** (every cashier has it; `/pajisjet` is
+  admin-only), on `/pajisjet`, and — the moment that matters — **inline on the till when a fiscal
+  print fails**, with a one-click retry of the receipt that was refused. It is audited
+  (`FISCAL_CLEAR`), success or failure.
+
+Two bugs were found by *running* it, not by building it:
+
+- `BusinessProfileService.SaveSettingsAsync` copies a **whitelist**, not the object. The three new
+  columns were silently dropped and the screen still said "U ruajt". Anything added to
+  `BusinessSettings` must be added there too.
+- `HardwareMapper` did not carry `ReceiptTextLine.CodePage` onto the wire, so the encoding sample
+  printed all seven lines under one page — every line identical, which is the exact opposite of its
+  job. The feature was inert.
+
+**Verified** by running the app and the agent (mock drivers) and driving Chromium through the real
+UI: printer + code-page dropdowns populated from the live agent; settings persisted and applied
+without reinstalling; the sample reached the agent with each line tagged with its own page; labels
+went out at the saved 40×30 stock; scan-and-print; **zero new browser tabs across the whole session**;
+with the agent killed, printing still worked through the hidden frame; the out-of-date banner fired.
+The clear-articles command wrote `O,1,______,_,__;ALL` — byte-for-byte the shop's .bat. **The ESC/POS
+and TSPL bytes are still only checked at the byte level: no real printer has run this build.**
+
 ## Known follow-ups
 - **Cut-over to pos.spacecode.tech:** only after Sale + core screens reach parity
   with the live React app; needs explicit go-ahead (replaces a live service).

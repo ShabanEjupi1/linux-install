@@ -117,13 +117,27 @@
                 <div class="sale-msg @(_success ? "ok" : "err")">@_message</div>
             }
 
-            @* Reprint of the sale just saved. /kupon prints through the agent when it is
-               installed (no dialog) and falls back to the browser when it is not. *@
+            @* The fiscal printer refused the receipt. Nine times in ten that is its article
+               memory disagreeing with ours after a price change, and clearing it is the fix —
+               so the fix is right here, next to the failure, rather than in a settings screen
+               the cashier has no permission to open. *@
+            @if (_fiscalFailed && _lastNumri is not null)
+            {
+                <ClearFiscalArticles ButtonClass="btn-ghost" OnCleared="RetryFiscal" />
+            }
+
+            @* Reprint of the sale just saved — from right here. Raw ESC/POS through the agent
+               when it is installed (no dialog), a hidden print frame when it is not. Neither
+               opens a tab: the till screen is the one screen the cashier must never lose. *@
             @if (_lastNumri is not null)
             {
                 <div class="print-links">
-                    <a class="btn-ghost" href="@($"/kupon/{_lastNumri}?auto=1")" target="_blank">🧾 Printo kuponin (80mm)</a>
-                    <a class="btn-ghost" href="@($"/fatura/{_lastNumri}")" target="_blank">📄 Faturë A4</a>
+                    <button class="btn-ghost" disabled="@_printing" @onclick="() => Reprint(false)">
+                        🧾 Printo kuponin (80mm)
+                    </button>
+                    <button class="btn-ghost" disabled="@_printing" @onclick="() => Reprint(true)">
+                        📄 Faturë A4
+                    </button>
                 </div>
             }
 
@@ -154,8 +168,56 @@
     private bool _printReceipt;
     /// <summary>The journal number of the sale just saved, so it can be printed from the browser.</summary>
     private long? _lastNumri;
-    private bool _agentOnline, _agentReal;
+    private Receipt? _lastReceipt;
+    private bool _fiscalFailed;
+    private bool _agentOnline, _agentReal, _printing;
     private string _agentTitle = "Agjenti i pajisjeve nuk është kontrolluar ende";
+
+    /// <summary>
+    /// Re-sends the fiscal receipt for the sale that was just refused, after the printer's article
+    /// memory has been cleared. The sale is already in the database and is not touched: this
+    /// prints it, it does not sell it again.
+    /// </summary>
+    private async Task RetryFiscal()
+    {
+        if (_lastReceipt is null) return;
+        _printing = true;
+        try
+        {
+            var fr = await Hw.PrintFiscalAsync(_lastReceipt, timeoutSeconds: 30);
+            _success = fr.Ok;
+            _fiscalFailed = !fr.Ok;
+            _message = fr.Ok
+                ? $"Fatura #{_lastNumri} — fatura fiskale u printua."
+                : $"Fatura fiskale përsëri nuk u printua: {fr.Error}";
+        }
+        finally { _printing = false; }
+    }
+
+    /// <summary>
+    /// Reprints the sale just saved without leaving the till. The 80mm receipt goes out as raw
+    /// ESC/POS when the agent is here and is drawn by the browser when it is not; the A4 invoice
+    /// is always drawn by the browser (the agent has no A4 path) — but in a hidden frame, so the
+    /// cart, the change due and the customer in front of the cashier all stay on screen.
+    /// </summary>
+    private async Task Reprint(bool a4)
+    {
+        if (_lastNumri is null) return;
+        _printing = true;
+        try
+        {
+            var r = a4
+                ? await Hw.PrintUrlAsync($"/fatura/{_lastNumri}")
+                : await Hw.PrintReceiptAnyWayAsync(_lastNumri.Value);
+
+            if (!r.Ok)
+            {
+                _success = false;
+                _message = $"Printimi dështoi: {r.Error}";
+            }
+        }
+        finally { _printing = false; }
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -291,6 +353,9 @@
 
             _success = true;
             _lastNumri = savedNumri;
+            // Held so the fiscal receipt can be re-sent after the printer's memory is cleared,
+            // without ringing the sale up a second time.
+            _lastReceipt = receipt;
             var change = Change;
             _message = $"Fatura #{savedNumri} u ruajt · Kusuri {change:0.00} €";
 
@@ -303,11 +368,20 @@
             {
                 var fr = await Hw.PrintFiscalAsync(receipt, timeoutSeconds: 30);
                 if (fr.Ok)
+                {
                     _message += " · Fatura fiskale u printua";
+                    _fiscalFailed = false;
+                }
                 else
                 {
                     _success = false; // amber-style note: sale ok, print not
                     _message += $" · ⚠ Fatura fiskale nuk u printua: {fr.Error}";
+
+                    // The commonest reason the device refuses a receipt is that it is holding an
+                    // article under a name or tax group that no longer matches ours — and the fix
+                    // is to clear its memory. Offer that here, where the cashier is standing, and
+                    // not on a settings screen they cannot open.
+                    _fiscalFailed = true;
                 }
                 await RefreshAgentStatusAsync();
             }

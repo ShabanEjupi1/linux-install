@@ -11,6 +11,19 @@ public interface IFiscalDriver
     bool Available { get; }
     FiscalConfig Config { get; }
     Task<FiscalPrintResult> PrintAsync(FiscalPrintRequest req, CancellationToken ct = default);
+
+    /// <summary>
+    /// Clears the article (PLU) table out of the fiscal printer's own memory — the F-Link
+    /// <c>O …;ALL</c> command. The device rejects a sale whose article name does not match the
+    /// one it already holds under that PLU, so after a price or name change it starts refusing
+    /// receipts, and the till stops. Clearing the table is what unblocks it: the next sale sends
+    /// its articles inline and the printer accepts them.
+    ///
+    /// It is a separate method, not another payload, because F-Link reads this command from a
+    /// different file (<c>ClearArticle.inp</c>, not <c>Fatura.inp</c>) — which is exactly the
+    /// detail that made the shop keep a .bat file on the desktop to do it.
+    /// </summary>
+    Task<FiscalPrintResult> ClearArticlesAsync(int timeoutSeconds = 30, CancellationToken ct = default);
 }
 
 /// <summary>Prints a non-fiscal (courtesy) receipt on the local receipt printer.</summary>

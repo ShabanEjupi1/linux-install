@@ -1,0 +1,85 @@
+@using KosovaPOS.Core.Services
+@using KosovaPOS.Web.Services
+@inject HardwareBridge Hw
+@inject Audit Audit
+
+@* "Pastro artikujt e printerit fiskal" — the F-Link O;ALL command, which the shop has until now
+   been running by double-clicking Clear Article.bat on the Windows desktop.
+
+   Why it exists at all: the fiscal device keeps its OWN copy of every article it has been sent,
+   and refuses a sale whose name or tax group disagrees with the copy it holds. Change a price or
+   fix a spelling, and the next receipt can be rejected — the till stops, mid-queue. Emptying the
+   printer's article table unblocks it; the next sale sends its articles inline again.
+
+   It is behind a confirmation because it is a command to the tax device, not a screen refresh —
+   but the confirmation is one click, because the moment it is needed there is a customer waiting. *@
+
+<button class="@ButtonClass" disabled="@_busy" @onclick="() => _confirming = true">
+    @(_busy ? "Duke pastruar…" : "🧹 Pastro artikujt e printerit fiskal")
+</button>
+
+@if (_result is not null)
+{
+    <div class="sale-msg @(_ok ? "ok" : "err")">@_result</div>
+}
+
+@if (_confirming)
+{
+    <div class="modal-backdrop" @onclick="() => _confirming = false">
+        <div class="modal small" @onclick:stopPropagation="true">
+            <h2>Pastro artikujt e printerit fiskal?</h2>
+            <p>
+                Kjo fshin listën e artikujve nga <strong>memoria e printerit fiskal</strong> —
+                bëhet kur printeri fillon të refuzojë faturat pasi është ndryshuar një çmim ose një emër.
+            </p>
+            <p class="muted">
+                Artikujt e POS-it nuk preken fare. Shitja e radhës i dërgon përsëri të dhënat e veta
+                te printeri.
+            </p>
+
+            <div class="modal-actions">
+                <button class="btn-ghost" @onclick="() => _confirming = false">Anulo</button>
+                <button class="btn-primary" disabled="@_busy" @onclick="Run">
+                    @(_busy ? "Duke pastruar…" : "Po, pastro")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    /// <summary>Lets the till render it as a quiet recovery link and Pajisjet as a real button.</summary>
+    [Parameter] public string ButtonClass { get; set; } = "btn-ghost";
+
+    /// <summary>Raised after a successful clear, so a caller can retry the receipt that failed.</summary>
+    [Parameter] public EventCallback OnCleared { get; set; }
+
+    private bool _confirming, _busy, _ok;
+    private string? _result;
+
+    private async Task Run()
+    {
+        _busy = true;
+        _result = null;
+        try
+        {
+            var r = await Hw.ClearFiscalArticlesAsync();
+            _ok = r.Ok;
+            _result = r.Ok
+                ? "✅ Memoria e printerit fiskal u pastrua. Provo përsëri faturën."
+                : $"Pastrimi dështoi: {r.Error}";
+
+            // Logged either way: a clear that FAILED is the more interesting of the two, because
+            // it means the till is still blocked and someone is about to try something else.
+            await Audit.LogAsync(AuditAction.FiscalClear, "FiscalPrinter",
+                entityName: "Printeri fiskal",
+                details: r.Ok
+                    ? "Artikujt u pastruan nga memoria e printerit fiskal (O;ALL)."
+                    : $"Pastrimi i artikujve dështoi: {r.Error}");
+
+            _confirming = false;
+            if (r.Ok) await OnCleared.InvokeAsync();
+        }
+        finally { _busy = false; }
+    }
+}

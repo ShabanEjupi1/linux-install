@@ -33,12 +33,13 @@ public sealed class WindowsReceiptDriver : IReceiptDriver
     /// what garbled ë and ç: the printer powers up on PC437 (where 0xEB is δ) no matter what
     /// the sender meant, so the page has to be selected on every job.
     /// </summary>
-    private static readonly Dictionary<string, (byte Page, int CodePage)> CodePages = new(StringComparer.OrdinalIgnoreCase)
+    public static readonly Dictionary<string, (byte Page, int CodePage)> CodePages = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["1252"] = (16, 1252),  // WPC1252 — has ë ç Ë Ç; the one virtually every clone supports
+        ["1252"] = (16, 1252),  // WPC1252 — has ë ç Ë Ç; the one virtually every clone claims
         ["852"]  = (18, 852),   // PC852 Latin-2
         ["858"]  = (19, 858),
         ["850"]  = (2, 850),    // PC850 Multilingual
+        ["1250"] = (45, 1250),  // WPC1250 Central European
         ["437"]  = (0, 437),    // PC437 — no Albanian letters; transliterated below
     };
 
@@ -89,7 +90,10 @@ public sealed class WindowsReceiptDriver : IReceiptDriver
 
         try
         {
-            var bytes = Build(req, _cfg.ReceiptCodePage);
+            // The POS's choice wins over the agent's install-time default, so a shop whose
+            // printer ignores WPC1252 fixes its receipts from the Pajisjet screen instead of
+            // waiting for someone to reinstall the agent with a different env var.
+            var bytes = Build(req, string.IsNullOrWhiteSpace(req.CodePage) ? _cfg.ReceiptCodePage : req.CodePage);
             var ok = RawPrinterHelper.SendBytesToPrinter(printer, bytes);
             _log.LogInformation("Non-fiscal receipt #{No} sent to {Printer}", req.ReceiptNumber, printer);
             return Task.FromResult(ok ? AgentResult.Success() : AgentResult.Fail("Shkrimi te printeri dështoi."));
@@ -100,31 +104,53 @@ public sealed class WindowsReceiptDriver : IReceiptDriver
         }
     }
 
-    internal static byte[] Build(ReceiptPrintRequest r, string codePage)
+    /// <summary>
+    /// Resolves a code page name to the ESC t selector and the .NET encoding that page expects.
+    /// An unknown name — including "ascii" — falls back to PC437 with the accents transliterated,
+    /// which is the one thing every ESC/POS printer ever made can render.
+    /// </summary>
+    private static (byte Page, int Cp, bool Transliterate) Resolve(string? name)
     {
-        // "ascii" = give up on the accents and print e/c. Everything else picks a page the
-        // printer is told about explicitly, a line below.
-        var transliterateAll = codePage.Equals("ascii", StringComparison.OrdinalIgnoreCase);
-        var (page, cp) = transliterateAll || !CodePages.TryGetValue(codePage, out var sel)
-            ? ((byte)0, 437)
-            : sel;
+        if (!string.IsNullOrWhiteSpace(name) && CodePages.TryGetValue(name, out var sel))
+            return (sel.Page, sel.CodePage, sel.CodePage == 437);
 
-        var enc = Encoding.GetEncoding(cp,
-            // Anything the page cannot hold — a supplier's Ć, a stray ™ — becomes '?' rather
-            // than throwing away the sale's receipt. Transliterate() catches the ones we know.
-            EncoderFallback.ReplacementFallback, DecoderFallback.ReplacementFallback);
+        return (0, 437, true);
+    }
+
+    public static byte[] Build(ReceiptPrintRequest r, string codePage)
+    {
+        var job = Resolve(codePage);
 
         using var ms = new MemoryStream();
         void Raw(byte[] b) => ms.Write(b, 0, b.Length);
 
         Raw(Init);
-        Raw(new byte[] { 0x1B, 0x74, page }); // ESC t n — interpret the bytes below as this page
+
+        // The printer powers up on PC437 (where 0xEB is δ, not ë) no matter what the sender
+        // meant, so the page is selected explicitly — and re-selected whenever a line asks for
+        // a different one, which is what lets the encoding sample print every candidate page
+        // on one slip.
+        var current = (byte)(job.Page + 1); // ≠ job.Page, so the first line always emits ESC t
+        void SelectPage(byte page)
+        {
+            if (page == current) return;
+            Raw(new byte[] { 0x1B, 0x74, page }); // ESC t n
+            current = page;
+        }
 
         // Every line is emitted left-aligned and verbatim: ReceiptFormatter already padded it
         // to the column grid, and asking the printer to centre a pre-centred line would centre
         // the padding too. Double-height is height-only (GS ! 0x01), so the grid still holds.
         foreach (var line in r.Lines)
         {
+            var (page, cp, translit) = line.CodePage is { Length: > 0 } ? Resolve(line.CodePage) : job;
+            SelectPage(page);
+
+            var enc = Encoding.GetEncoding(cp,
+                // Anything the page cannot hold — a supplier's Ć, a stray ™ — becomes '?' rather
+                // than throwing away the sale's receipt. Transliterate() catches the ones we know.
+                EncoderFallback.ReplacementFallback, DecoderFallback.ReplacementFallback);
+
             switch (line.Emphasis)
             {
                 case 1: Raw(BoldOn); break;
@@ -132,7 +158,7 @@ public sealed class WindowsReceiptDriver : IReceiptDriver
             }
 
             var body = line.Text.TrimEnd();
-            if (transliterateAll || cp == 437) body = Transliterate(body);
+            if (translit) body = Transliterate(body);
 
             var text = enc.GetBytes(body + "\n");
             ms.Write(text, 0, text.Length);

@@ -39,6 +39,14 @@ public sealed class MockFiscalDriver : IFiscalDriver
             req.ReceiptNumber, path, req.Payload.Length);
         return new FiscalPrintResult { Ok = true, FilePath = path, WaitedSeconds = 0 };
     }
+
+    public async Task<FiscalPrintResult> ClearArticlesAsync(int timeoutSeconds = 30, CancellationToken ct = default)
+    {
+        var path = Path.Combine(_dir, "ClearArticle.inp");
+        await File.WriteAllTextAsync(path, "O,1,______,_,__;ALL\n", ct);
+        _log.LogInformation("MOCK fiscal clear-articles written to {Path}", path);
+        return new FiscalPrintResult { Ok = true, FilePath = path, WaitedSeconds = 0 };
+    }
 }
 
 public sealed class MockReceiptDriver : IReceiptDriver
@@ -49,8 +57,14 @@ public sealed class MockReceiptDriver : IReceiptDriver
 
     public Task<AgentResult> PrintAsync(ReceiptPrintRequest req, CancellationToken ct = default)
     {
-        _log.LogInformation("MOCK non-fiscal receipt #{No}: {Lines} lines\n{Document}",
-            req.ReceiptNumber, req.Lines.Count, string.Join("\n", req.Lines.Select(l => l.Text)));
+        // Printer and code page are logged because they are the two things that are wrong when a
+        // shop says "it prints, but…": the wrong printer looks like a printer that is switched
+        // off, and the wrong code page looks like a broken font. Neither is visible in the text.
+        _log.LogInformation("MOCK non-fiscal receipt #{No} → printer '{Printer}', code page {Page}: {Lines} lines\n{Document}",
+            req.ReceiptNumber, req.PrinterName ?? "(default)", req.CodePage ?? "(agent default)",
+            req.Lines.Count,
+            string.Join("\n", req.Lines.Select(l =>
+                l.CodePage is null ? l.Text : $"{l.Text}   «cp {l.CodePage}»")));
         return Task.FromResult(AgentResult.Success());
     }
 }
@@ -63,8 +77,12 @@ public sealed class MockBarcodeDriver : IBarcodeDriver
 
     public Task<AgentResult> PrintAsync(BarcodePrintRequest req, CancellationToken ct = default)
     {
-        _log.LogInformation("MOCK barcode label x{Copies}: {Barcode} {Name} {Price:0.00}",
-            req.Copies, req.Barcode, req.ArticleName, req.Price);
+        // The TSPL the real driver would emit, so the layout (price size, whether the bars kept
+        // their human-readable digits) can be read off a Linux box instead of a shop's printer.
+        var tspl = Windows.WindowsBarcodeDriver.BuildTspl(req, Math.Clamp(req.Copies, 1, 1000));
+        _log.LogInformation("MOCK barcode label x{Copies} → printer '{Printer}', stock {W}×{H}mm: {Barcode} {Name} {Price:0.00}\n{Tspl}",
+            req.Copies, req.PrinterName ?? "(default)", req.LabelWidthMm, req.LabelHeightMm,
+            req.Barcode, req.ArticleName, req.Price, tspl);
         return Task.FromResult(AgentResult.Success());
     }
 }

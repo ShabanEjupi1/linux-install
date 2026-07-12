@@ -112,6 +112,18 @@
         </div>
     }
 
+    @* The one maintenance command a cashier is allowed to run, and the one they need: when the
+       fiscal printer starts refusing receipts after a price change, this is what unblocks it. It
+       lives here because Arka is on every cashier's menu and Pajisjet is not. *@
+    <h2 class="section-title">Printeri fiskal</h2>
+    <p class="muted setup-p">
+        Nëse printeri fiskal refuzon faturat pasi keni ndryshuar një çmim ose një emërtim, pastro
+        memorien e tij të artikujve. Të dhënat e POS-it nuk preken.
+    </p>
+    <div class="modal-actions">
+        <ClearFiscalArticles ButtonClass="btn-ghost" />
+    </div>
+
     <h2 class="section-title">Ndërrimet e fundit</h2>
     <div class="table-wrap">
         <table class="grid-table">

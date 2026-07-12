@@ -1,6 +1,7 @@
 @page "/pajisjet"
 @attribute [Authorize(Policy = "perm:settings")]
 @rendermode InteractiveServer
+@using KosovaPOS.Core.Printing
 @using KosovaPOS.Core.Services
 @using KosovaPOS.Models
 @using KosovaPOS.Web.Services
@@ -26,6 +27,17 @@
             <span class="dot"></span>@(_agentOnline ? (_agentReal ? "Pajisje" : "Pajisje (test)") : "Pa pajisje")
         </span>
     </header>
+
+    @if (AgentOutdated)
+    {
+        <div class="sale-msg err">
+            Agjenti i instaluar këtu është versioni <strong>@_agentVersion</strong>, ndërsa ky server
+            shpërndan <strong>@Package.Version</strong>. Një agjent i vjetër printon gabimisht
+            <strong>ë</strong> dhe <strong>ç</strong> (dhe nuk lajmëron për këtë) dhe e shtyp çmimin
+            e etiketës të vogël. Ekzekuto përsëri komandën e instalimit më poshtë — e zëvendëson
+            atë të vjetrin, pa e çinstaluar.
+        </div>
+    }
 
     @if (_agentOnline)
     {
@@ -83,6 +95,7 @@
                 @(_saving ? "Duke ruajtur…" : "Ruaj")
             </button>
             <button class="btn-ghost" @onclick="TestPrint" disabled="@_saving">🧾 Provo kuponin</button>
+            <button class="btn-ghost" @onclick="TestLabel" disabled="@_saving">🏷️ Provo etiketën</button>
         </div>
     }
     else
@@ -112,7 +125,55 @@
         <div class="sale-msg @(_saveOk ? "ok" : "err")">@_saveMsg</div>
     }
 
-    <h2 class="section-title">2. Instalo agjentin në këtë kompjuter</h2>
+    <h2 class="section-title">2. Shkronjat shqipe (ë, ç) dhe etiketa</h2>
+
+    @* A thermal printer decides for itself which code pages its firmware honours, and one that
+       ignores the page it was told to use reports no error — it just prints δ where ë belongs.
+       Nothing here can ask it. So the shop prints the sample, reads the paper, and picks the
+       line that came out right. *@
+    <p class="muted setup-p">
+        Nëse kuponi shtyp <code>δ</code> ose <code>?</code> në vend të <strong>ë</strong> dhe
+        <strong>ç</strong>, printeri nuk e njeh kodimin e zgjedhur. Shtyp
+        <em>Provo kodimin</em>: printohet nga një rresht për çdo kodim, secili i shënuar me
+        numrin e vet. Shiko letrën, gjej rreshtin ku <strong>Ë ë Ç ç</strong> duken saktë, dhe
+        zgjidh atë numër këtu.
+    </p>
+
+    <div class="setup-grid">
+        <label>Kodimi i kuponit
+            <select @bind="_codePage">
+                @foreach (var opt in ReceiptCodePages.All)
+                {
+                    <option value="@opt.Value">@opt.Label</option>
+                }
+            </select>
+        </label>
+        <label>Etiketa — gjerësia (mm)
+            <input type="number" min="20" max="200" @bind="_labelW" />
+        </label>
+        <label>Etiketa — lartësia (mm)
+            <input type="number" min="10" max="200" @bind="_labelH" />
+        </label>
+        <button class="btn-primary" @onclick="SavePrinters" disabled="@_saving">
+            @(_saving ? "Duke ruajtur…" : "Ruaj")
+        </button>
+        <button class="btn-ghost" @onclick="TestCodePages" disabled="@(_saving || !_agentOnline)">
+            🔤 Provo kodimin
+        </button>
+    </div>
+
+    <h2 class="section-title">3. Printeri fiskal</h2>
+    <p class="muted setup-p">
+        Printeri fiskal mban një kopje të vetën të artikujve dhe refuzon një shitje kur emri ose
+        grupi i TVSH-së nuk përputhet me atë që ka ai në memorie — prandaj pas ndryshimit të një
+        çmimi mund të bllokohet. Pastrimi i memories e zhbllokon; artikujt e POS-it nuk preken.
+        Arkëtarët e kanë të njëjtin buton te <a href="/arka">Arka</a>.
+    </p>
+    <div class="modal-actions">
+        <ClearFiscalArticles ButtonClass="btn-ghost" />
+    </div>
+
+    <h2 class="section-title">4. Instalo agjentin në këtë kompjuter</h2>
 
     @if (!Package.Available)
     {
@@ -145,7 +206,7 @@
         </p>
     }
 
-    <h2 class="section-title">3. Nëse agjenti nuk mund të instalohet</h2>
+    <h2 class="section-title">5. Nëse agjenti nuk mund të instalohet</h2>
     <p class="muted setup-p">
         Pa agjent, printimi bëhet nga shfletuesi — dhe asnjë faqe interneti nuk mund ta mbyllë
         dialogun e printimit të Chrome-it. Chrome-i vetë mundet: kjo shkurtore e hap POS-in me
@@ -167,6 +228,8 @@
 @code {
     private BusinessSettings? _shop;
     private string? _receiptPrinter, _barcodePrinter;
+    private string _codePage = ReceiptCodePages.Default;
+    private int _labelW = 55, _labelH = 25;
     private KosovaPOS.Agent.Contracts.PrinterList? _printers;
     private bool _saving, _saveOk;
     private string? _saveMsg;
@@ -174,6 +237,16 @@
     private bool _agentOnline, _agentReal;
     private string? _agentVersion;
     private string _agentTitle = "Agjenti i pajisjeve nuk është kontrolluar ende";
+
+    /// <summary>
+    /// The installed agent is older than the package this server hands out. Worth saying out
+    /// loud: an agent from before the code-page fix prints δ for every ë and cannot be told
+    /// otherwise, and nothing in its behaviour reveals that it is out of date — it prints, the
+    /// letters are just wrong.
+    /// </summary>
+    private bool AgentOutdated =>
+        _agentOnline && _agentVersion is { Length: > 0 } installed && Package.Version is { Length: > 0 } shipped &&
+        Version.TryParse(installed, out var i) && Version.TryParse(shipped, out var s) && i < s;
 
     /// <summary>
     /// The command the shop actually pastes. It carries THIS host — a shop on its own
@@ -202,6 +275,9 @@
         _shop = await Profile.GetSettingsAsync();
         _receiptPrinter = _shop?.ReceiptPrinter;
         _barcodePrinter = _shop?.BarcodePrinter;
+        _codePage = string.IsNullOrWhiteSpace(_shop?.ReceiptCodePage) ? ReceiptCodePages.Default : _shop!.ReceiptCodePage;
+        _labelW = _shop?.LabelWidthMm is > 0 ? _shop.LabelWidthMm : 55;
+        _labelH = _shop?.LabelHeightMm is > 0 ? _shop.LabelHeightMm : 25;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -238,6 +314,39 @@
         finally { _saving = false; }
     }
 
+    private async Task TestLabel()
+    {
+        _saving = true;
+        try
+        {
+            var r = await Hw.PrintTestLabelAsync();
+            _saveOk = r.Ok;
+            _saveMsg = r.Ok
+                ? $"U dërgua një etiketë provë ({_labelW}×{_labelH} mm). Skanoje: barkodi duhet të lexohet."
+                : $"Prova dështoi: {r.Error}";
+        }
+        finally { _saving = false; }
+    }
+
+    /// <summary>
+    /// Prints the encoding sample: the same "Ë ë Ç ç" under every code page we can select, each
+    /// line labelled with the page that printed it. The shop reads the paper — this is the only
+    /// place the answer exists, because a printer that ignores a code page does not say so.
+    /// </summary>
+    private async Task TestCodePages()
+    {
+        _saving = true;
+        try
+        {
+            var r = await Hw.PrintCodePageSampleAsync();
+            _saveOk = r.Ok;
+            _saveMsg = r.Ok
+                ? "Prova u printua. Gjej rreshtin ku Ë ë Ç ç duken saktë dhe zgjidh atë kodim më sipër."
+                : $"Prova dështoi: {r.Error}";
+        }
+        finally { _saving = false; }
+    }
+
     /// <summary>
     /// Saves through the settings row we loaded, not a fresh one: SaveSettingsAsync copies
     /// every field it is handed, so a blank object would wipe the shop's name and fiscal
@@ -252,6 +361,9 @@
             var shop = _shop ??= await Profile.GetSettingsAsync();
             shop.ReceiptPrinter = _receiptPrinter;
             shop.BarcodePrinter = _barcodePrinter;
+            shop.ReceiptCodePage = _codePage;
+            shop.LabelWidthMm = Math.Clamp(_labelW, 20, 200);
+            shop.LabelHeightMm = Math.Clamp(_labelH, 10, 200);
 
             await Profile.SaveSettingsAsync(shop);
             _saveOk = true;

@@ -43,30 +43,55 @@ public sealed class WindowsFiscalDriver : IFiscalDriver
     public bool Available => true;
     public FiscalConfig Config { get; }
 
-    public async Task<FiscalPrintResult> PrintAsync(FiscalPrintRequest req, CancellationToken ct = default)
+    /// <summary>F-Link requires the receipt file be named exactly this.</summary>
+    private const string ReceiptFile = "Fatura.inp";
+
+    /// <summary>
+    /// And it reads the clear-articles command from a DIFFERENT file. Writing the O command into
+    /// Fatura.inp does nothing at all — which is why the shop has been double-clicking a .bat on
+    /// the desktop instead.
+    /// </summary>
+    private const string ClearArticleFile = "ClearArticle.inp";
+
+    /// <summary>The whole of the clear-articles command. Same bytes as the shop's Clear Article.bat.</summary>
+    private const string ClearArticlePayload = "O,1,______,_,__;ALL\n";
+
+    public Task<FiscalPrintResult> PrintAsync(FiscalPrintRequest req, CancellationToken ct = default) =>
+        SendAsync(ReceiptFile, req.Payload, $"receipt #{req.ReceiptNumber}", req.TimeoutSeconds, ct);
+
+    public Task<FiscalPrintResult> ClearArticlesAsync(int timeoutSeconds = 30, CancellationToken ct = default) =>
+        SendAsync(ClearArticleFile, ClearArticlePayload, "clear-articles", timeoutSeconds, ct);
+
+    /// <summary>
+    /// Drops an INP file into F-Link's watched folder and waits for it to be consumed. F-Link
+    /// deletes the file on success and writes a <c>.err</c> sidecar on failure; a file that is
+    /// still sitting there when the timeout expires is moved aside, because a leftover INP is
+    /// itself a cause of the next command failing.
+    /// </summary>
+    private async Task<FiscalPrintResult> SendAsync(
+        string fileName, string payload, string label, int timeoutSeconds, CancellationToken ct)
     {
-        // F-Link requires the file be named exactly "Fatura.inp".
-        var filePath = Path.Combine(_tempPath, "Fatura.inp");
+        var filePath = Path.Combine(_tempPath, fileName);
 
         // A COM port must exist for F-Link to reach the device (advisory only).
         var ports = SerialPort.GetPortNames();
         if (ports.Length == 0)
-            return Fail(req, filePath, "Asnjë port COM nuk u gjet në sistem. Lidhni printerin fiskal.");
+            return Fail(label, filePath, "Asnjë port COM nuk u gjet në sistem. Lidhni printerin fiskal.");
 
         try
         {
             if (File.Exists(filePath)) File.Delete(filePath);
-            await File.WriteAllTextAsync(filePath, req.Payload, new UTF8Encoding(false), ct);
-            _log.LogInformation("Fiscal Fatura.inp written for receipt #{No}", req.ReceiptNumber);
+            await File.WriteAllTextAsync(filePath, payload, new UTF8Encoding(false), ct);
+            _log.LogInformation("Fiscal {File} written for {Label}", fileName, label);
         }
         catch (Exception ex)
         {
-            return Fail(req, filePath, $"Nuk u shkrua dot skedari fiskal: {ex.Message}");
+            return Fail(label, filePath, $"Nuk u shkrua dot skedari fiskal: {ex.Message}");
         }
 
         // Poll for F-Link to consume the file, or an error sidecar to appear.
         var sw = Stopwatch.StartNew();
-        var timeout = TimeSpan.FromSeconds(Math.Clamp(req.TimeoutSeconds, 5, 120));
+        var timeout = TimeSpan.FromSeconds(Math.Clamp(timeoutSeconds, 5, 120));
         var errFile = Path.ChangeExtension(filePath, ".err");
         while (sw.Elapsed < timeout)
         {
@@ -76,29 +101,29 @@ public sealed class WindowsFiscalDriver : IFiscalDriver
                 if (File.Exists(errFile))
                 {
                     var err = await SafeRead(errFile);
-                    return Fail(req, filePath, $"F-Link raportoi gabim: {err}");
+                    return Fail(label, filePath, $"F-Link raportoi gabim: {err}");
                 }
-                _log.LogInformation("Fiscal receipt #{No} accepted in {S:0.0}s", req.ReceiptNumber, sw.Elapsed.TotalSeconds);
+                _log.LogInformation("Fiscal {Label} accepted in {S:0.0}s", label, sw.Elapsed.TotalSeconds);
                 return new FiscalPrintResult { Ok = true, FilePath = filePath, WaitedSeconds = sw.Elapsed.TotalSeconds };
             }
             if (File.Exists(errFile))
             {
                 var err = await SafeRead(errFile);
                 TryDelete(filePath);
-                return Fail(req, filePath, $"F-Link raportoi gabim: {err}");
+                return Fail(label, filePath, $"F-Link raportoi gabim: {err}");
             }
             await Task.Delay(250, ct);
         }
 
         MoveToErrorFolder(filePath, "timeout");
-        return Fail(req, filePath,
+        return Fail(label, filePath,
             $"Printeri fiskal nuk u përgjigj për {sw.Elapsed.TotalSeconds:0} sekonda. " +
             "Kontrollo që F-Link është aktiv dhe printeri është i lidhur.");
     }
 
-    private FiscalPrintResult Fail(FiscalPrintRequest req, string filePath, string error)
+    private FiscalPrintResult Fail(string label, string filePath, string error)
     {
-        _log.LogWarning("Fiscal receipt #{No} failed: {Error}", req.ReceiptNumber, error);
+        _log.LogWarning("Fiscal {Label} failed: {Error}", label, error);
         return new FiscalPrintResult { Ok = false, Error = error, FilePath = filePath };
     }
 

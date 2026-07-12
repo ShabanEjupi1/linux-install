@@ -105,6 +105,13 @@ app.MapGet("/health", (IFiscalDriver fiscal, IReceiptDriver receipt, IBarcodeDri
 app.MapPost("/fiscal/print", async (FiscalPrintRequest req, IFiscalDriver fiscal, CancellationToken ct) =>
     Results.Ok(await fiscal.PrintAsync(req, ct)));
 
+// Clears the article table out of the fiscal printer's memory. The device refuses a sale whose
+// article name disagrees with the one it already holds, so after a price change it starts
+// rejecting receipts and the till stops dead — and the only fix the shop had was a .bat file on
+// the Windows desktop. It is a POST with no body: there is exactly one thing this command can do.
+app.MapPost("/fiscal/clear-articles", async (IFiscalDriver fiscal, CancellationToken ct) =>
+    Results.Ok(await fiscal.ClearArticlesAsync(30, ct)));
+
 app.MapPost("/receipt/print", async (ReceiptPrintRequest req, IReceiptDriver receipt, CancellationToken ct) =>
     Results.Ok(await receipt.PrintAsync(req, ct)));
 
