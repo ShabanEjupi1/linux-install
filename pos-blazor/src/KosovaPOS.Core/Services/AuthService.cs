@@ -120,7 +120,7 @@ public class AuthService
     /// </summary>
     public static readonly string[] AllPermissions =
         ["reports", "purchases", "articles", "users", "settings", "manager", "finance", "partners",
-         "sell", "stock"];
+         "sell", "stock", "audit"];
 
     /// <summary>
     /// Builds the claims identity stored in the auth cookie for a signed-in user,
@@ -219,6 +219,13 @@ public class AuthService
             "stock"     => user.CanManageStock,
             "users"     => user.CanManageUsers,
             "manager"   => user.Role == "Manager" || user.CanDeleteReceipts,
+
+            // Who is allowed to read the audit trail. Deliberately narrower than
+            // "users": someone who can create cashiers should not automatically be
+            // able to read what everyone in the shop has been doing, and the log is
+            // the one screen a dishonest manager would most want to see (and, once
+            // it can be seen, to argue about). Manager or Admin only.
+            "audit"     => user.Role == "Manager",
             _           => false
         };
     }

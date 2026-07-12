@@ -4,7 +4,9 @@
 @using System.Security.Claims
 @using KosovaPOS.Core.Services
 @using KosovaPOS.Models
+@using KosovaPOS.Web.Services
 @inject ReturnService ReturnSvc
+@inject Audit Audit
 
 <PageTitle>Kthimet — KosovaPOS</PageTitle>
 
@@ -219,7 +221,14 @@
                 }).ToList()
             };
 
-            await ReturnSvc.SaveReturnAsync(ret, _restock);
+            var returnId = await ReturnSvc.SaveReturnAsync(ret, _restock);
+
+            // A refund is the one till operation that takes money *out* of the drawer
+            // against a receipt that already exists. It gets a row of its own.
+            await Audit.LogAsync(AuditAction.Return, "ReturnReceipt", returnId, ret.ReturnNumber,
+                details: $"{ret.RefundAmount:0.00} € kundrejt faturës {ret.OriginalReceiptNumber}"
+                       + (_restock ? " · u kthye në stok" : " · pa kthim në stok"));
+
             _success = true;
             _message = $"Kthimi {ret.ReturnNumber} u regjistrua ({ret.RefundAmount:0.00} €).";
             _drafting = false;

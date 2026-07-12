@@ -76,7 +76,7 @@
 
             @* Every link under Sistemi is permission-gated, so the heading has to
                go too — a Cashier would otherwise see an empty section. *@
-            @if (_canPartners || _canManageUsers || _canSettings)
+            @if (_canPartners || _canManageUsers || _canSettings || _canAudit)
             {
                 <p class="nav-group">Sistemi</p>
                 @if (_canPartners)
@@ -86,6 +86,10 @@
                 @if (_canManageUsers)
                 {
                     <NavLink class="nav-link" href="/perdoruesit"><span class="nav-ico">👥</span> Përdoruesit</NavLink>
+                }
+                @if (_canAudit)
+                {
+                    <NavLink class="nav-link" href="/auditimi"><span class="nav-ico">🔎</span> Auditimi</NavLink>
                 }
                 @if (_canSettings)
                 {
@@ -97,6 +101,7 @@
             {
                 <p class="nav-group">Platforma</p>
                 <NavLink class="nav-link" href="/admin/bizneset"><span class="nav-ico">🏢</span> Bizneset</NavLink>
+                <NavLink class="nav-link" href="/admin/auditimi"><span class="nav-ico">🔎</span> Auditimi</NavLink>
             }
         </nav>
     </aside>
@@ -154,6 +159,7 @@
     private bool _canSell;
     private bool _canStock;
     private bool _canSettings;
+    private bool _canAudit;
     private bool _isPlatformAdmin;
     private string? _impersonator;
     private string _fullName = "";
@@ -180,6 +186,7 @@
             _canSell        = Can("sell");
             _canStock       = Can("stock");
             _canSettings    = Can("settings");
+            _canAudit       = Can("audit");
         }
 
         // A platform admin has no business, so there is no database to read settings

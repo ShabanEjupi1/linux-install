@@ -3,7 +3,10 @@
 @rendermode InteractiveServer
 @using KosovaPOS.Core.Services
 @using KosovaPOS.Models.BMDData
+@using KosovaPOS.Web.Services
+@using System.Text.Json
 @inject UserService UserSvc
+@inject Audit Audit
 
 <PageTitle>Përdoruesit — KosovaPOS</PageTitle>
 
@@ -232,7 +235,21 @@
                 return;
             }
             _editing.Username = _editing.Username.Trim();
-            await UserSvc.SaveAsync(_editing, string.IsNullOrEmpty(_password) ? null : _password);
+
+            // Before the save: who could do what, before someone changed it. Granting
+            // yourself CanSell or CanManageUsers is the quietest privilege escalation
+            // this app has, and it must not be invisible after the fact.
+            var before = _editing.Id == 0 ? null : _all.FirstOrDefault(u => u.Id == _editing.Id);
+            var passwordChanged = !string.IsNullOrEmpty(_password);
+
+            await UserSvc.SaveAsync(_editing, passwordChanged ? _password : null);
+
+            await Audit.LogAsync(before is null ? AuditAction.Create : AuditAction.Update,
+                "POSUser", _editing.Id, _editing.Username,
+                details: PermissionDelta(before, _editing, passwordChanged),
+                oldValue: before is null ? null : Snapshot(before),
+                newValue: Snapshot(_editing));
+
             _success = true;
             _message = $"Përdoruesi \"{_editing.Username}\" u ruajt.";
             _editing = null;
@@ -257,6 +274,12 @@
         try
         {
             var (ok, error) = await UserSvc.DeactivateAsync(_deactivating.Id);
+            if (ok)
+            {
+                await Audit.LogAsync(AuditAction.Update, "POSUser", _deactivating.Id, _deactivating.Username,
+                    details: "Përdoruesi u çaktivizua.", oldValue: Snapshot(_deactivating));
+            }
+
             _success = ok;
             _message = ok ? "Përdoruesi u çaktivizua." : error;
             _deactivating = null;
@@ -266,6 +289,57 @@
         {
             _busy = false;
         }
+    }
+
+    /// <summary>
+    /// The audited shape of a user. Never the password hash — an audit table is read
+    /// by more people than the users table is, and a leaked log must not be a leaked
+    /// credential store.
+    /// </summary>
+    private static string Snapshot(POSUser u) => JsonSerializer.Serialize(new
+    {
+        u.Username, u.FullName, u.Role, u.IsActive,
+        u.CanSell, u.CanManageStock, u.CanManageArticles, u.CanManagePurchases,
+        u.CanManageUsers, u.CanViewReports, u.CanModifyPrices, u.CanDeleteReceipts,
+        u.CanGiveDiscounts,
+    });
+
+    /// <summary>The human-readable "what changed", so the log lists it without anyone opening the JSON.</summary>
+    private static string PermissionDelta(POSUser? before, POSUser after, bool passwordChanged)
+    {
+        var changes = new List<string>();
+
+        if (before is null)
+            changes.Add($"Përdorues i ri · roli {RoleLabel(after.Role)}");
+        else
+        {
+            if (before.Role != after.Role)
+                changes.Add($"roli {RoleLabel(before.Role)} → {RoleLabel(after.Role)}");
+            if (before.IsActive != after.IsActive)
+                changes.Add(after.IsActive ? "u aktivizua" : "u çaktivizua");
+
+            foreach (var (name, was, now) in new[]
+            {
+                ("shitje", before.CanSell, after.CanSell),
+                ("stoku", before.CanManageStock, after.CanManageStock),
+                ("artikujt", before.CanManageArticles, after.CanManageArticles),
+                ("blerjet", before.CanManagePurchases, after.CanManagePurchases),
+                ("përdoruesit", before.CanManageUsers, after.CanManageUsers),
+                ("raportet", before.CanViewReports, after.CanViewReports),
+                ("çmimet", before.CanModifyPrices, after.CanModifyPrices),
+                ("fshirje faturash", before.CanDeleteReceipts, after.CanDeleteReceipts),
+                ("zbritje", before.CanGiveDiscounts, after.CanGiveDiscounts),
+            })
+            {
+                if (was != now)
+                    changes.Add(now ? $"+{name}" : $"−{name}");
+            }
+        }
+
+        if (passwordChanged)
+            changes.Add("fjalëkalim i ri");
+
+        return changes.Count == 0 ? "Ndryshime të tjera" : string.Join(" · ", changes);
     }
 
     private static string RoleLabel(string role) => role switch

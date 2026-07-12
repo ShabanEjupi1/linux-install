@@ -3,7 +3,10 @@
 @rendermode InteractiveServer
 @using KosovaPOS.Core.Services
 @using KosovaPOS.Models
+@using KosovaPOS.Web.Services
+@using System.Text.Json
 @inject CatalogService Catalog
+@inject Audit Audit
 
 <PageTitle>Artikujt — KosovaPOS</PageTitle>
 
@@ -225,7 +228,25 @@
         {
             // Keep VATRate in sync with the selected VAT type (matches desktop encoding).
             _editing.VATRate = _editing.VATType switch { 3 => 18, 2 => 8, _ => 0 };
-            await Catalog.SaveArticleAsync(_editing);
+
+            // Captured before the save, from the untouched grid row: a price change is
+            // the edit a shop most often needs to reconstruct afterwards ("who marked
+            // this down, and from what?"), and after SaveArticleAsync the old figures
+            // are gone for good.
+            var before = _editing.Id == 0 ? null : _all.FirstOrDefault(a => a.Id == _editing.Id);
+            var isNew = before is null;
+
+            // The id comes back from the save, not from _editing: SaveArticleAsync maps
+            // into an Artikujt row and never assigns _editing.Id, so a new article would
+            // otherwise be audited as entity 0 — a row pointing at nothing.
+            var articleId = await Catalog.SaveArticleAsync(_editing);
+
+            await Audit.LogAsync(isNew ? AuditAction.Create : AuditAction.Update,
+                "Article", articleId, _editing.Name,
+                details: PriceDelta(before, _editing),
+                oldValue: before is null ? null : Snapshot(before),
+                newValue: Snapshot(_editing));
+
             _success = true;
             _message = $"Artikulli \"{_editing.Name}\" u ruajt.";
             _editing = null;
@@ -250,6 +271,12 @@
         try
         {
             var ok = await Catalog.DeleteArticleAsync(_deleting.Id);
+            if (ok)
+            {
+                await Audit.LogAsync(AuditAction.Delete, "Article", _deleting.Id, _deleting.Name,
+                    details: $"Barkodi {_deleting.Barcode}", oldValue: Snapshot(_deleting));
+            }
+
             _success = ok;
             _message = ok ? $"Artikulli u fshi." : "Fshirja dështoi.";
             _deleting = null;
@@ -259,6 +286,36 @@
         {
             _busy = false;
         }
+    }
+
+    /// <summary>
+    /// What the audit row stores as old/new. Only the fields worth reconstructing —
+    /// a full serialization of the entity would bury the price change that matters
+    /// under thirty columns nobody edits.
+    /// </summary>
+    private static string Snapshot(Article a) => JsonSerializer.Serialize(new
+    {
+        a.Barcode, a.Name, a.Unit, a.PurchasePrice, a.SalesPrice,
+        a.WholesalePrice, a.VATRate, a.StockQuantity,
+    });
+
+    /// <summary>The one-line summary the log lists, so a price move is legible without opening the row.</summary>
+    private static string? PriceDelta(Article? before, Article after)
+    {
+        if (before is null)
+            return $"Çmimi i shitjes {after.SalesPrice:0.00} €";
+
+        var changes = new List<string>();
+        if (before.SalesPrice != after.SalesPrice)
+            changes.Add($"çmimi i shitjes {before.SalesPrice:0.00} → {after.SalesPrice:0.00} €");
+        if (before.PurchasePrice != after.PurchasePrice)
+            changes.Add($"çmimi i furnizimit {before.PurchasePrice:0.00} → {after.PurchasePrice:0.00} €");
+        if (before.VATRate != after.VATRate)
+            changes.Add($"TVSH {before.VATRate:0}% → {after.VATRate:0}%");
+        if (before.StockQuantity != after.StockQuantity)
+            changes.Add($"stoku {before.StockQuantity:0.###} → {after.StockQuantity:0.###}");
+
+        return changes.Count == 0 ? "Ndryshime të tjera" : string.Join(" · ", changes);
     }
 
     private static Article Clone(Article a) => new()

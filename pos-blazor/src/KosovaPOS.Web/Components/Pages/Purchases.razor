@@ -4,8 +4,10 @@
 @using System.Security.Claims
 @using KosovaPOS.Core.Services
 @using KosovaPOS.Models
+@using KosovaPOS.Web.Services
 @inject CatalogService Catalog
 @inject PurchaseService PurchaseSvc
+@inject Audit Audit
 
 <PageTitle>Blerjet — KosovaPOS</PageTitle>
 
@@ -376,6 +378,9 @@ else
                     _message = "Ndryshimi dështoi. Provo përsëri.";
                     return;
                 }
+                await Audit.LogAsync(AuditAction.Update, "Purchase", (int)editNumri, draft.DocumentNumber,
+                    details: $"{draft.Items.Count} rreshta · {Total:0.00} € · stoku u rregullua");
+
                 _success = true;
                 _message = $"Blerja #{editNumri} u ndryshua · stoku u rregullua.";
             }
@@ -388,6 +393,10 @@ else
                     _message = "Ruajtja dështoi. Provo përsëri.";
                     return;
                 }
+
+                await Audit.LogAsync(AuditAction.Create, "Purchase", (int)savedNumri, draft.DocumentNumber,
+                    details: $"{draft.Items.Count} rreshta · {Total:0.00} €");
+
                 _success = true;
                 _message = $"Blerja #{savedNumri} u ruajt · stoku u përditësua.";
             }
@@ -455,6 +464,14 @@ else
         try
         {
             var ok = await PurchaseSvc.DeletePurchaseAsync(numri);
+            if (ok)
+            {
+                // Deleting a purchase takes goods back out of stock. Without this row,
+                // the inventory simply shrinks and nothing says who shrank it.
+                await Audit.LogAsync(AuditAction.Delete, "Purchase", (int)numri, $"#{numri}",
+                    details: "Blerja u fshi · stoku u kthye.");
+            }
+
             _success = ok;
             _message = ok
                 ? $"Blerja #{numri} u fshi · stoku u kthye."

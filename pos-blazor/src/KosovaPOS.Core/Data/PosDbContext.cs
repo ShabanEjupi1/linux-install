@@ -52,6 +52,12 @@ public class PosDbContext : DbContext
 
     // ── Core POS models ─────────────────────────────────────────────────
     public DbSet<Article> Articles => Set<Article>();
+    /// <summary>
+    /// ⚠️ Empty, and nothing writes it. A completed sale is persisted as journal rows
+    /// in <see cref="DitariD"/> (see SalesService.SaveReceiptAsync) — <see cref="Receipt"/>
+    /// survives only as the in-memory object the Sale screen builds and the receipt/invoice
+    /// views render. Do not add columns here expecting a sale to fill them in: it won't.
+    /// </summary>
     public DbSet<Receipt> Receipts => Set<Receipt>();
     public DbSet<ReceiptItem> ReceiptItems => Set<ReceiptItem>();
     /// <summary>
@@ -176,6 +182,9 @@ public class PosDbContext : DbContext
         modelBuilder.Entity<PurchaseItem>().ToTable("PurchaseItems");
         modelBuilder.Entity<User>().ToTable("POSUsers_Legacy");
         modelBuilder.Entity<AuditLog>().ToTable("AuditLogs");
+        // /auditimi reads newest-first and filters by day; an append-only table read
+        // in reverse is the one case where the index is not optional.
+        modelBuilder.Entity<AuditLog>().HasIndex(x => x.Timestamp);
         modelBuilder.Entity<ZReport>().ToTable("ZReports");
         modelBuilder.Entity<SalesBookEntry>().ToTable("SalesBookEntries");
 

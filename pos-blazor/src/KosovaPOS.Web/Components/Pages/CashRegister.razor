@@ -4,7 +4,9 @@
 @using System.Security.Claims
 @using KosovaPOS.Core.Services
 @using KosovaPOS.Models
+@using KosovaPOS.Web.Services
 @inject ShiftService Shifts
+@inject Audit Audit
 
 <PageTitle>Arka — KosovaPOS</PageTitle>
 
@@ -218,7 +220,10 @@
         _busy = true;
         try
         {
-            await Shifts.OpenShiftAsync(_openingCash, _userId, _userName);
+            var shift = await Shifts.OpenShiftAsync(_openingCash, _userId, _userName);
+            await Audit.LogAsync(AuditAction.ShiftOpen, "CashShift", shift.Id, _userName,
+                details: $"Fillimi në arkë: {_openingCash:0.00} €");
+
             _success = true;
             _message = "Ndërrimi u hap.";
             _openingCash = 0;
@@ -244,6 +249,13 @@
                            .ToDictionary(kv => kv.Key.ToString("0.00"), kv => kv.Value))
                 : null;
             var closed = await Shifts.CloseShiftAsync(_open.Id, CountedCash, _notes, denomJson);
+
+            // The cash difference is the number a fraud investigation starts from, so
+            // it is recorded here and not left only in the shift row a manager can edit.
+            await Audit.LogAsync(AuditAction.ShiftClose, "CashShift", closed.Id, _userName,
+                details: $"Pritej {_expected:0.00} €, u numërua {CountedCash:0.00} €, "
+                       + $"diferenca {closed.CashDifference:0.00} €");
+
             _success = true;
             _message = $"Ndërrimi u mbyll. Diferenca: {closed.CashDifference:0.00} €.";
             _notes = null;

@@ -9,6 +9,7 @@
 @inject SalesService Sales
 @inject BusinessProfileService Profile
 @inject HardwareBridge Hw
+@inject Audit Audit
 
 <PageTitle>Shitje — KosovaPOS</PageTitle>
 
@@ -295,6 +296,9 @@
             _lastNumri = savedNumri;
             var change = Change;
             _message = $"Fatura #{savedNumri} u ruajt · Kusuri {change:0.00} €";
+
+            await Audit.LogAsync(AuditAction.Sale, "Receipt", (int)savedNumri, receiptNo,
+                details: $"{Total:0.00} € · {_payment} · {_cart.Count} artikuj");
 
             // The sale is already persisted; fiscal printing is best-effort and
             // must never roll it back. Report but don't fail the sale if it can't print.

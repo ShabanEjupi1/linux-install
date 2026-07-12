@@ -5,9 +5,13 @@
 @using KosovaPOS.Core.Data
 @using KosovaPOS.Core.Services
 @using KosovaPOS.Models.Control
+@using Microsoft.AspNetCore.Components.Authorization
+@using KosovaPOS.Web.Services
 @inject BusinessRegistry Registry
 @inject BusinessProvisioner Provisioner
 @inject BusinessHostResolver Hosts
+@inject AuditService AuditLog
+@inject Audit Audit
 
 <PageTitle>Bizneset — Platforma</PageTitle>
 
@@ -120,6 +124,8 @@
 </div>
 
 @code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
     private IReadOnlyList<Business> _businesses = [];
     private CreateForm Form { get; set; } = new();
     private ProvisionResult? _created;
@@ -127,7 +133,16 @@
     private bool _showCreate;
     private bool _busy;
 
-    protected override async Task OnInitializedAsync() => await Reload();
+    /// <summary>The platform operator these acts are recorded against.</summary>
+    private string _operator = "?";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is not null)
+            _operator = (await AuthState).User.Identity?.Name ?? "?";
+
+        await Reload();
+    }
 
     // Uncached: the registry's snapshot deliberately hides deactivated businesses,
     // and this is the one screen that must show them.
@@ -141,6 +156,13 @@
         try
         {
             _created = await Provisioner.CreateBusinessAsync(Form.Code, Form.Name, Form.AdminUsername);
+
+            await AuditLog.WritePlatformAsync(_operator, AuditAction.BusinessCreate, _created.Business,
+                targetUser: Form.AdminUsername, ip: Audit.IpAddress,
+                details: _created.AdoptedExistingDatabase
+                    ? $"Adoptoi bazën ekzistuese {_created.Business.DatabaseName}."
+                    : $"Krijoi bazën {_created.Business.DatabaseName}.");
+
             Form = new CreateForm();
             _showCreate = false;
             await Reload();
@@ -167,7 +189,21 @@
         _busy = true;
         try
         {
-            await Registry.SetActiveAsync(b.Id, !b.IsActive);
+            // Read before the write, not after: b comes from an AsNoTracking list so it
+            // happens to keep the old value today, but a log line whose wording depends
+            // on a field staying stale is one refactor away from saying the opposite of
+            // what happened.
+            var activating = !b.IsActive;
+
+            await Registry.SetActiveAsync(b.Id, activating);
+
+            // Deactivation locks every user of a shop out within the registry's TTL.
+            // It is the most disruptive button on the platform; it does not get to be
+            // the only one that leaves no trace.
+            await AuditLog.WritePlatformAsync(_operator, AuditAction.BusinessUpdate, b,
+                ip: Audit.IpAddress,
+                details: activating ? "Biznesi u aktivizua." : "Biznesi u çaktivizua.");
+
             await Reload();
         }
         finally

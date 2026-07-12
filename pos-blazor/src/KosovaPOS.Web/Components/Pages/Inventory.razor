@@ -4,8 +4,10 @@
 @using System.Security.Claims
 @using KosovaPOS.Core.Services
 @using KosovaPOS.Models
+@using KosovaPOS.Web.Services
 @inject CatalogService Catalog
 @inject StockService Stock
+@inject Audit Audit
 
 <PageTitle>Inventari — KosovaPOS</PageTitle>
 
@@ -250,6 +252,13 @@
                 StockMovementType.Out => await Stock.StockOutAsync(id, _qty, _note, _userName),
                 _ => await Stock.SetCountedAsync(id, _qty, _note, _userName)
             };
+
+            // StockMovements already records the movement; this records the *person*.
+            // A count that writes off shrinkage and a count that hides a theft look
+            // identical in the movements table.
+            await Audit.LogAsync(AuditAction.StockAdjust, "Article", _editing.Id, _editing.Name,
+                details: $"{TypeLabel(_type)}: {move.QuantityBefore:0.##} → {move.QuantityAfter:0.##} {move.Unit}"
+                       + (string.IsNullOrWhiteSpace(_note) ? "" : $" · {_note}"));
 
             _editing.StockQuantity = move.QuantityAfter;
             _success = true;

@@ -74,7 +74,13 @@ builder.Services.AddScoped<ShiftService>();
 builder.Services.AddScoped<StockService>();
 builder.Services.AddScoped<ReturnService>();
 builder.Services.AddScoped<FinanceService>();
+builder.Services.AddScoped<AuditService>();
+builder.Services.AddScoped<KosovaPOS.Web.Services.Audit>();
 builder.Services.AddScoped<KosovaPOS.Web.Services.HardwareBridge>();
+
+// Singleton: the failed-login counters are process-wide state, and a lockout that
+// reset with every circuit would lock nobody out.
+builder.Services.AddSingleton<LoginThrottle>();
 
 // ── Authentication (cookie) ─────────────────────────────────────────────
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
@@ -213,6 +219,10 @@ app.MapRazorComponents<App>()
 // Sign-out endpoint (POST from the shell)
 app.MapPost("/auth/logout", async (HttpContext ctx) =>
 {
+    // Audited before the sign-out: afterwards the principal is gone and there is
+    // nobody left to name in the row.
+    await AuditSession(ctx, AuditAction.Logout);
+
     await ctx.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
     return Results.Redirect("/login");
 });
@@ -249,6 +259,19 @@ app.MapPost("/admin/impersonate", async (HttpContext ctx) =>
         user, business, CookieAuthenticationDefaults.AuthenticationScheme, impersonator: ctx.User);
     await ctx.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal);
 
+    // Written to both logs, deliberately. The control database records that an
+    // operator reached into a shop; the shop's own database records that it was
+    // reached into — so neither the platform nor the shop holds the only copy.
+    var operatorName = ctx.User.Identity?.Name ?? "?";
+    var audit = ctx.RequestServices.GetRequiredService<AuditService>();
+    var ip = ctx.Connection.RemoteIpAddress?.ToString();
+    await audit.WritePlatformAsync(operatorName, AuditAction.ImpersonateStart, business,
+        targetUser: user.Username, ip: ip, details: $"Imitim i {user.FullName} ({user.Role})");
+    await audit.WriteAsync(business,
+        new AuditActor(user.Id.ToString(), user.Username, operatorName, ip),
+        AuditAction.ImpersonateStart, "POSUser", user.Id, user.Username,
+        details: $"Operatori i platformës {operatorName} filloi imitimin.");
+
     var hosts = ctx.RequestServices.GetRequiredService<BusinessHostResolver>();
     return Results.Redirect(hosts.IsUnderBaseHost(ctx.Request.Host.Value)
         ? hosts.UrlForCode(business.Code)
@@ -272,6 +295,10 @@ app.MapPost("/admin/impersonate/exit", async (HttpContext ctx) =>
         return Results.Redirect("/login");
     }
 
+    // Closes the impersonation window in both logs, so the record says how long the
+    // operator was inside the shop and not merely that they went in.
+    await AuditSession(ctx, AuditAction.ImpersonateEnd);
+
     await ctx.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, platform);
 
     // The platform console lives on the POS apex. If exit was hit on a business
@@ -286,3 +313,44 @@ app.MapPost("/admin/impersonate/exit", async (HttpContext ctx) =>
 }).RequireAuthorization();
 
 app.Run();
+
+/// <summary>
+/// Audits an act performed by whoever is currently signed in — a logout, or leaving
+/// an impersonated session — routing it to the log(s) that principal belongs in: a
+/// business user's to their shop, a platform operator's to the control database, and
+/// an impersonating session's to both (it is one act by two identities).
+///
+/// Must be called *before* the sign-in or sign-out it describes, while ctx.User still
+/// names someone.
+/// </summary>
+static async Task AuditSession(HttpContext ctx, string action)
+{
+    var user = ctx.User;
+    if (user.Identity?.IsAuthenticated != true)
+        return;
+
+    var audit = ctx.RequestServices.GetRequiredService<AuditService>();
+    var ip = ctx.Connection.RemoteIpAddress?.ToString();
+
+    if (user.HasClaim(AuthService.PlatformAdminClaim, "true"))
+    {
+        await audit.WritePlatformAsync(user.Identity.Name ?? "?", action, ip: ip);
+        return;
+    }
+
+    if (!int.TryParse(user.FindFirst(AuthService.BusinessIdClaim)?.Value, out var bizId))
+        return;
+
+    var business = await ctx.RequestServices.GetRequiredService<BusinessRegistry>().GetActiveByIdAsync(bizId);
+    if (business is null)
+        return;   // deactivated mid-session: there is no database left to write to
+
+    var actor = KosovaPOS.Web.Services.Audit.ActorFrom(user, ip);
+    await audit.WriteAsync(business, actor, action, "Session", details: $"{user.Identity.Name}");
+
+    if (actor.ImpersonatedBy is not null)
+    {
+        await audit.WritePlatformAsync(actor.ImpersonatedBy, action, business,
+            targetUser: user.Identity.Name, ip: ip);
+    }
+}

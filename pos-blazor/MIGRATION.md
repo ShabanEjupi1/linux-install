@@ -718,6 +718,75 @@ in the console makes its URL work immediately.
   if you'd rather scope tightly, drop the wildcard and create one `pos-<code>` CNAME per
   shop at onboarding instead.
 
+## Phase 18 — the audit trail, and a lock on the front door
+
+The `AuditLogs` table has existed in every business database since `InitialCreate` and
+**nothing had ever written a row to it.** Impersonation, refunds, price changes, shift
+closes, logins: none of it was recorded anywhere. Meanwhile the login form answered an
+unlimited number of guesses per second, on a public URL, for every business at once.
+
+### Two logs, because there are two kinds of actor
+
+Acts inside a shop are written to **that shop's own database** — the evidence lives with
+the data it describes, and a shop can be handed its own history. Acts by a **platform
+operator** go to the control database, because they either touch no business database (a
+platform login) or must outlive one being deleted. **Impersonation writes to both**: the
+control DB records that an operator reached into a shop, the shop's DB records that it
+was reached into. Neither side holds the only copy.
+
+`AuditLog.ImpersonatedBy` is the column that makes an impersonated act legible: `UserName`
+stays the business user (behaving as them is the *point* of impersonation), so without
+this column a sale rung up by a platform operator is indistinguishable from one the
+cashier made. `/auditimi` renders it as a 👁️ badge next to the name.
+
+What is recorded: login, failed login, lockout, logout, sale, return, shift open/close,
+article create/update/delete (with a real before→after price delta, captured from the
+untouched grid row), stock adjustment, purchase create/update/delete, user create/update/
+deactivate (with a permission delta — `+shitje`, `−përdoruesit`), settings save, business
+create/activate/deactivate, impersonation start/end.
+
+**Audit writes are best-effort** (logged and swallowed, never thrown). A Postgres hiccup
+in the audit table must not refuse a customer's cash. That is a deliberate trade: this is
+an investigative record, not a fiscal ledger. If it is ever promoted to evidence the tax
+authority relies on, the sale and its audit row have to share one transaction — today
+they do not.
+
+Reading the log is gated on a new `audit` permission (Manager or Admin), deliberately
+*narrower* than `users`: someone who can create cashiers should not automatically get to
+read what everyone in the shop has been doing.
+
+### Login lockout (`LoginThrottle`)
+
+Per account (business + username): 5 failures in 15 minutes → 5-minute lock, doubling to
+a 60-minute cap. Short on purpose — five bad passwords is usually a cashier at a till, and
+a shop that cannot sell for an hour is worse than the attack it prevents. Per IP: 30
+failures in 15 minutes → 15-minute lock, which is what stops one password being sprayed
+across every username. ⚠️ **A shop's tills share one NAT address**, so that threshold is
+far above honest use on purpose; lowering it can take a whole shop offline. The platform
+console is throttled in its own namespace (`" platform"` — the leading space cannot
+collide with a business code), so guesses at the console can never lock out a till.
+
+State is in-memory: a restart clears every lock. Acceptable — an attacker cannot force a
+restart, and persisting a row per failed guess would hand them a way to fill the disk. It
+also means attempts made *while* locked are not audited (the lock row is), which is what
+stops the log being floodable.
+
+Verified end-to-end in a browser against a throwaway Postgres: the 5th wrong password
+trips the lock and **the correct password is then refused**; a platform operator's
+impersonated sale lands in both logs with `ImpersonatedBy = platform`; a Cashier who types
+`/auditimi` gets `/nuk-keni-leje` and never sees the nav link.
+
+### 🚨 `Receipts` is a dead table — sales live in `DitariD`
+
+The roadmap carried a follow-up to give `Receipt` an `ImpersonatedBy` column. It was built,
+and then reverted, because **nothing in the codebase reads or writes the `Receipts` table**:
+`SalesService.SaveReceiptAsync` persists a sale as journal rows in the legacy `DitariD`,
+and `Receipt` survives only as the in-memory object the Sale screen builds and the receipt
+views render. The column would have been a column on a table nobody writes — worse than
+useless, because it would *look* like receipts recorded the operator. The SALE audit row
+carries `ImpersonatedBy` instead, and that is now the durable record. `PosDbContext` warns
+about this at the `DbSet` so the next person does not rebuild it.
+
 ## Known follow-ups
 - **Cut-over to pos.spacecode.tech:** only after Sale + core screens reach parity
   with the live React app; needs explicit go-ahead (replaces a live service).
@@ -725,17 +794,18 @@ in the console makes its URL work immediately.
 - **Data migration** from the desktop SQL Server (BMDData) into Postgres.
 - **Auth revalidation:** `PosAuthStateProvider` captures the principal at circuit
   start; consider DB revalidation for long-lived sessions / disabled users.
-- **Phase 17 — impersonation (session layer DONE, audit layer TODO).** A platform
-  admin can now "log in as" any user in any business from `/admin/imitim/{id}`: the
+- **Phase 17 — impersonation. DONE, audit layer closed by Phase 18.** A platform
+  admin can "log in as" any user in any business from `/admin/imitim/{id}`: the
   session becomes a full business principal (every gate and tenant query sees exactly
   what that user sees) stamped with `impersonator*` claims, a persistent amber banner
   names who is really driving, and "Kthehu te platforma" restores the operator with
-  no second login. It is impersonation, not a second login. **Still TODO:** receipts
-  carrying both identities (`Receipt.ImpersonatedBy`, a migration across every
-  business DB) and a durable audit row in the control + business databases — until
-  then impersonation is not recorded anywhere except the live cookie.
+  no second login. Every impersonated act is now recorded in both the control and the
+  business database, and `Receipt.ImpersonatedBy` turned out to be unbuildable as
+  specified — see Phase 18.
 - **Startup migration sweep** is serial and blocking; move to a background service
   once the business count grows.
-- **Login is still unthrottled** — now across every business at once.
+- **Audit retention.** The log is append-only and nothing prunes it. A busy shop
+  writes a row per sale, so plan a retention policy (or a partition) before it is the
+  biggest table in the database.
 - **Read-only DB console** inside the POS (decided against a generic row editor;
   CloudBeaver/pgAdmin behind the tunnel covers the operator case).

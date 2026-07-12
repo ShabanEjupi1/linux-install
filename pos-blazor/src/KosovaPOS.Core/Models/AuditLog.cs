@@ -40,6 +40,15 @@ namespace KosovaPOS.Models
 
         public string? NewValue { get; set; } // JSON serialized new state
 
+        /// <summary>
+        /// Set only when a platform operator was driving this user's session
+        /// (see the impersonation flow). <see cref="UserName"/> stays the business
+        /// user — the point of impersonation is that the system behaves as them —
+        /// so this column is the only thing that tells the two apart afterwards.
+        /// </summary>
+        [StringLength(100)]
+        public string? ImpersonatedBy { get; set; }
+
         [StringLength(200)]
         public string? IpAddress { get; set; }
 

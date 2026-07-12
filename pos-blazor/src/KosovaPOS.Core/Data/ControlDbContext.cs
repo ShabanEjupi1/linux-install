@@ -28,6 +28,7 @@ public class ControlDbContext : DbContext
 
     public DbSet<Business> Businesses => Set<Business>();
     public DbSet<PlatformAdmin> PlatformAdmins => Set<PlatformAdmin>();
+    public DbSet<PlatformAuditLog> PlatformAuditLogs => Set<PlatformAuditLog>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -40,5 +41,9 @@ public class ControlDbContext : DbContext
         b.Entity<Business>().HasIndex(x => x.DatabaseName).IsUnique();
 
         b.Entity<PlatformAdmin>().HasIndex(x => x.Username).IsUnique();
+
+        // The audit console reads newest-first, always. Without this the log is a
+        // sequential scan that gets slower every day it does its job.
+        b.Entity<PlatformAuditLog>().HasIndex(x => x.Timestamp);
     }
 }

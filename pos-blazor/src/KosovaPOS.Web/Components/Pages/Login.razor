@@ -8,6 +8,8 @@
 @inject BusinessRegistry Businesses
 @inject BusinessHostResolver Hosts
 @inject NavigationManager Nav
+@inject LoginThrottle Throttle
+@inject AuditService AuditLog
 
 <PageTitle>Kyçu — KosovaPOS</PageTitle>
 
@@ -102,20 +104,57 @@
 
     private async Task TryLogin()
     {
-        var business = await Businesses.GetActiveByCodeAsync(Model.BusinessCode);
+        var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
+        var code = Model.BusinessCode?.Trim() ?? "";
+        var username = Model.Username?.Trim() ?? "";
+
+        // Before the password is verified, not after: the point of a lockout is to
+        // stop doing the work, and a BCrypt verify per guess is exactly the work an
+        // attacker wants us to do.
+        var throttle = Throttle.Check(code, username, ip);
+        if (throttle.IsLocked)
+        {
+            _error = $"Shumë përpjekje të dështuara. Provoni sërish pas {throttle.MinutesRemaining} minutash.";
+            return;
+        }
+
+        var business = await Businesses.GetActiveByCodeAsync(code);
 
         // One message for "no such business", "no such user" and "wrong password".
         // Distinguishing them would turn this form into an oracle for which
         // businesses exist on the platform.
         var user = business is null
             ? null
-            : await Auth.AuthenticateAsync(business, Model.Username, Model.Password);
+            : await Auth.AuthenticateAsync(business, username, Model.Password);
 
         if (business is null || user is null)
         {
-            _error = "Kodi i biznesit, përdoruesi ose fjalëkalimi është gabim.";
+            var state = Throttle.Fail(code, username, ip);
+
+            // A failed attempt against a real business is recorded in that business's
+            // log — it is the shop's own evidence that someone is trying its doors. An
+            // attempt naming a business that does not exist has nowhere to be written
+            // and is dropped rather than being given a home in some other shop's log.
+            if (business is not null)
+            {
+                await AuditLog.WriteAsync(business, AuditActor.Anonymous(username, ip),
+                    state.IsLocked ? AuditAction.Lockout : AuditAction.LoginFailed,
+                    "Session", entityName: username,
+                    details: state.IsLocked
+                        ? $"Llogaria u bllokua deri më {state.LockedUntil?.ToLocalTime():HH:mm}."
+                        : "Fjalëkalim ose përdorues i gabuar.",
+                    success: false);
+            }
+
+            _error = state.IsLocked
+                ? $"Shumë përpjekje të dështuara. Provoni sërish pas {state.MinutesRemaining} minutash."
+                : "Kodi i biznesit, përdoruesi ose fjalëkalimi është gabim.";
             return;
         }
+
+        Throttle.Succeed(code, username);
+        await AuditLog.WriteAsync(business, new AuditActor(user.Id.ToString(), user.Username, null, ip),
+            AuditAction.Login, "Session", user.Id, user.Username);
 
         // Only worth remembering on the apex; on a subdomain the host already carries it.
         if (!_pinnedByHost)

@@ -1,0 +1,135 @@
+@page "/admin/auditimi"
+@attribute [Authorize(Policy = AuthService.PlatformPolicy)]
+@rendermode InteractiveServer
+@using KosovaPOS.Core.Services
+@using KosovaPOS.Models.Control
+@inject AuditService AuditLog
+@inject BusinessRegistry Registry
+
+<PageTitle>Auditimi i platformës — KosovaPOS</PageTitle>
+
+<div class="mgmt">
+    <header class="mgmt-head">
+        <div>
+            <h1>Auditimi i platformës</h1>
+            <span class="muted">Çfarë kanë bërë operatorët e platformës</span>
+        </div>
+        <a class="btn-mini" href="/admin/bizneset">← Bizneset</a>
+    </header>
+
+    <div class="search-row">
+        <input type="date" class="input" value="@_from.ToString("yyyy-MM-dd")"
+               @onchange="@(e => SetFrom(e.Value?.ToString()))" />
+        <input type="date" class="input" value="@_to.ToString("yyyy-MM-dd")"
+               @onchange="@(e => SetTo(e.Value?.ToString()))" />
+
+        <select class="input" value="@_action" @onchange="@(e => SetAction(e.Value?.ToString()))">
+            <option value="">Të gjitha veprimet</option>
+            @foreach (var a in Actions)
+            {
+                <option value="@a">@AuditAction.Label(a)</option>
+            }
+        </select>
+
+        <select class="input" value="@(_businessId?.ToString() ?? "")"
+                @onchange="@(e => SetBusiness(e.Value?.ToString()))">
+            <option value="">Të gjitha bizneset</option>
+            @foreach (var b in _businesses)
+            {
+                <option value="@b.Id">@b.Name (@b.Code)</option>
+            }
+        </select>
+    </div>
+
+    @if (_loading)
+    {
+        <p class="muted">Duke ngarkuar…</p>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table class="grid-table">
+                <thead>
+                    <tr>
+                        <th>Data</th>
+                        <th>Operatori</th>
+                        <th>Veprimi</th>
+                        <th>Biznesi</th>
+                        <th>Përdoruesi</th>
+                        <th>Detajet</th>
+                        <th>Adresa</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in _rows)
+                    {
+                        <tr class="@(row.IsSuccess ? "" : "err-row")">
+                            <td>@row.Timestamp.ToString("dd.MM.yyyy HH:mm:ss")</td>
+                            <td>@row.Actor</td>
+                            <td><span class="badge">@AuditAction.Label(row.Action)</span></td>
+                            <td>@(row.BusinessCode ?? "—")</td>
+                            <td>@(row.TargetUser ?? "—")</td>
+                            <td class="muted">@row.Details</td>
+                            <td class="muted">@row.IpAddress</td>
+                        </tr>
+                    }
+                    @if (_rows.Count == 0)
+                    {
+                        <tr><td colspan="7" class="muted center">Asnjë veprim i regjistruar për këto filtra.</td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    private static readonly string[] Actions =
+    [
+        AuditAction.Login, AuditAction.LoginFailed, AuditAction.Lockout, AuditAction.Logout,
+        AuditAction.ImpersonateStart, AuditAction.ImpersonateEnd,
+        AuditAction.BusinessCreate, AuditAction.BusinessUpdate,
+    ];
+
+    private List<PlatformAuditLog> _rows = [];
+    private IReadOnlyList<Business> _businesses = [];
+    private DateTime _from = DateTime.Today.AddDays(-30);
+    private DateTime _to = DateTime.Today;
+    private string _action = "";
+    private int? _businessId;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Uncached, like the console: a deactivated business is exactly the one whose
+        // audit history someone is most likely to be looking for.
+        _businesses = await Registry.ListAllUncachedAsync();
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        _loading = true;
+        _rows = await AuditLog.ReadPlatformAsync(_from, _to,
+            string.IsNullOrEmpty(_action) ? null : _action, _businessId);
+        _loading = false;
+    }
+
+    private async Task SetFrom(string? v)
+    {
+        if (DateTime.TryParse(v, out var d)) { _from = d; await Load(); }
+    }
+
+    private async Task SetTo(string? v)
+    {
+        if (DateTime.TryParse(v, out var d)) { _to = d; await Load(); }
+    }
+
+    private async Task SetAction(string? v) { _action = v ?? ""; await Load(); }
+
+    private async Task SetBusiness(string? v)
+    {
+        _businessId = int.TryParse(v, out var id) ? id : null;
+        await Load();
+    }
+}

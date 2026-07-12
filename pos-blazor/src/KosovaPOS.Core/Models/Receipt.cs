@@ -58,7 +58,7 @@ namespace KosovaPOS.Models
         
         [StringLength(100)]
         public string CashierName { get; set; } = string.Empty;
-        
+
         public decimal TotalAmount { get; set; }
         
         public decimal PaidAmount { get; set; }

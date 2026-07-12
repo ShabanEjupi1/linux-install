@@ -3,8 +3,10 @@
 @rendermode InteractiveServer
 @using KosovaPOS.Core.Services
 @using KosovaPOS.Models
+@using KosovaPOS.Web.Services
 @inject BusinessProfileService Profile
 @inject NavigationManager Nav
+@inject Audit Audit
 
 <PageTitle>Cilësimet — KosovaPOS</PageTitle>
 
@@ -142,6 +144,11 @@
                             || _settings.Profile != _shellProfile;
 
             await Profile.SaveSettingsAsync(_settings);
+
+            // Audited before the possible reload below — a Nav.Refresh tears the
+            // circuit down, and an await placed after it may never run.
+            await Audit.LogAsync(AuditAction.Update, "BusinessSettings", _settings.Id,
+                _settings.BusinessName, details: "Cilësimet e biznesit u ruajtën.");
 
             if (shellChanged)
             {

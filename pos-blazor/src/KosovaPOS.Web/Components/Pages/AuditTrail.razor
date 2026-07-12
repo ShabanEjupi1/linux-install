@@ -1,0 +1,149 @@
+@page "/auditimi"
+@attribute [Authorize(Policy = "perm:audit")]
+@rendermode InteractiveServer
+@using KosovaPOS.Core.Services
+@using KosovaPOS.Models
+@using KosovaPOS.Web.Services
+@inject Audit Audit
+
+<PageTitle>Auditimi — KosovaPOS</PageTitle>
+
+<div class="mgmt">
+    <header class="mgmt-head">
+        <div>
+            <h1>Gjurma e auditimit</h1>
+            <span class="muted">Kush çfarë bëri, dhe kur</span>
+        </div>
+    </header>
+
+    <div class="search-row">
+        <input type="date" class="input" value="@_from.ToString("yyyy-MM-dd")"
+               @onchange="@(e => SetFrom(e.Value?.ToString()))" />
+        <input type="date" class="input" value="@_to.ToString("yyyy-MM-dd")"
+               @onchange="@(e => SetTo(e.Value?.ToString()))" />
+
+        <select class="input" value="@_action" @onchange="@(e => SetAction(e.Value?.ToString()))">
+            <option value="">Të gjitha veprimet</option>
+            @foreach (var a in Actions)
+            {
+                <option value="@a">@AuditAction.Label(a)</option>
+            }
+        </select>
+
+        <select class="input" value="@_user" @onchange="@(e => SetUser(e.Value?.ToString()))">
+            <option value="">Të gjithë përdoruesit</option>
+            @foreach (var u in _users)
+            {
+                <option value="@u">@u</option>
+            }
+        </select>
+    </div>
+
+    @if (_loading)
+    {
+        <p class="muted">Duke ngarkuar…</p>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table class="grid-table">
+                <thead>
+                    <tr>
+                        <th>Data</th>
+                        <th>Përdoruesi</th>
+                        <th>Veprimi</th>
+                        <th>Objekti</th>
+                        <th>Detajet</th>
+                        <th>Adresa</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in _rows)
+                    {
+                        <tr class="@(row.IsSuccess ? "" : "err-row")">
+                            <td>@row.Timestamp.ToString("dd.MM.yyyy HH:mm:ss")</td>
+                            <td>
+                                @row.UserName
+                                @if (row.ImpersonatedBy is { Length: > 0 } op)
+                                {
+                                    @* The whole point of the column: this act looked like the
+                                       cashier's, and was not. *@
+                                    <span class="badge warn" title="Vepruar nga operatori i platformës">👁️ @op</span>
+                                }
+                            </td>
+                            <td><span class="badge">@AuditAction.Label(row.Action)</span></td>
+                            <td>@EntityLabel(row)</td>
+                            <td class="muted">@row.Details</td>
+                            <td class="muted">@row.IpAddress</td>
+                        </tr>
+                    }
+                    @if (_rows.Count == 0)
+                    {
+                        <tr><td colspan="6" class="muted center">Asnjë veprim i regjistruar për këto filtra.</td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        @if (_rows.Count >= PageSize)
+        {
+            <p class="muted">
+                Shfaqen @PageSize veprimet më të fundit. Ngushtoni filtrat për të parë më shumë.
+            </p>
+        }
+    }
+</div>
+
+@code {
+    /// <summary>Matches AuditService's default take. Named here so the "there may be more" note cannot drift from it.</summary>
+    private const int PageSize = 300;
+
+    /// <summary>The verbs that actually appear in a business log — the platform-only ones would filter to nothing.</summary>
+    private static readonly string[] Actions =
+    [
+        AuditAction.Login, AuditAction.LoginFailed, AuditAction.Lockout, AuditAction.Logout,
+        AuditAction.Sale, AuditAction.Return, AuditAction.ShiftOpen, AuditAction.ShiftClose,
+        AuditAction.Create, AuditAction.Update, AuditAction.Delete, AuditAction.StockAdjust,
+        AuditAction.ImpersonateStart, AuditAction.ImpersonateEnd,
+    ];
+
+    private List<AuditLog> _rows = [];
+    private List<string> _users = [];
+    private DateTime _from = DateTime.Today.AddDays(-7);
+    private DateTime _to = DateTime.Today;
+    private string _action = "";
+    private string _user = "";
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _users = await Audit.ReadUsersAsync();
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        _loading = true;
+        _rows = await Audit.ReadAsync(_from, _to,
+            string.IsNullOrEmpty(_action) ? null : _action,
+            string.IsNullOrEmpty(_user) ? null : _user);
+        _loading = false;
+    }
+
+    private async Task SetFrom(string? v)
+    {
+        if (DateTime.TryParse(v, out var d)) { _from = d; await Load(); }
+    }
+
+    private async Task SetTo(string? v)
+    {
+        if (DateTime.TryParse(v, out var d)) { _to = d; await Load(); }
+    }
+
+    private async Task SetAction(string? v) { _action = v ?? ""; await Load(); }
+    private async Task SetUser(string? v) { _user = v ?? ""; await Load(); }
+
+    private static string EntityLabel(AuditLog row) => string.IsNullOrWhiteSpace(row.EntityName)
+        ? row.EntityType
+        : $"{row.EntityType} · {row.EntityName}";
+}

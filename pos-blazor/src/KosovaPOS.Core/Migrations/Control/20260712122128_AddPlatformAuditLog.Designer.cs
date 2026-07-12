@@ -3,6 +3,7 @@ using System;
 using KosovaPOS.Core.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace KosovaPOS.Core.Migrations.Control
 {
     [DbContext(typeof(ControlDbContext))]
-    partial class ControlDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260712122128_AddPlatformAuditLog")]
+    partial class AddPlatformAuditLog
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
