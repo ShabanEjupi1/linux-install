@@ -787,6 +787,56 @@ useless, because it would *look* like receipts recorded the operator. The SALE a
 carries `ImpersonatedBy` instead, and that is now the durable record. `PosDbContext` warns
 about this at the `DbSet` so the next person does not rebuild it.
 
+## Phase 19 — printing: the receipt was never on 80mm paper
+
+User: *"the printing of receipt is bad — my last app used to print it exactly as it was on the
+Epson TM-T, and barcodes printed fine on the HPRT."* Two separate bugs and one missing feature.
+
+### 🚨 `@page` is a GLOBAL rule, and `size: 80mm auto` is invalid CSS
+
+`app.css` held **two** `@page` rules — `size: A4` (for `/fatura`) and `size: 80mm auto` (for
+`/kupon`). `@page` is not scoped to the selectors around it: it is a document-level rule, so
+those two fought, and a receipt could be laid out for A4. Worse, **`size: 80mm auto` is not
+valid CSS at all** — the paged-media spec allows `auto`, or one or two lengths, but *not* a
+length mixed with `auto` — so Chrome dropped the declaration and fell back to Letter. Proof:
+Chromium rendered `/kupon` to a **612×792pt (Letter)** PDF.
+
+Fix: **no `@page` may live in `app.css`** (there is a loud comment there now). Each printable
+page declares its own inside `<HeadContent>`, which is only in the DOM while that page is. The
+receipt's paper **length is computed from the line count** (font-size × line-height), so the
+page is a real `80mm × Nmm` and the thermal printer feeds no blank paper past the cut. Now
+renders to **227×210pt = 80.1mm × 74.1mm**.
+
+### The layout is now built once, as a monospace grid
+
+The desktop drew receipts with **GDI, Courier New, through the Windows driver**
+(`POS2/Services/ReceiptPrinterService.cs`) — a fixed 40/42-column grid. The web page instead
+used flexbox rows and `font-size: 12px`, so nothing lined up and print scaling moved it around.
+New **`Core/Printing/ReceiptDocument.cs` (`ReceiptFormatter`)** lays a sale out as
+**42-column** lines (80mm roll = 72mm printable = 42 Courier characters), amounts right-aligned
+into the grid; `Receipt80.razor` only renders them. **Sizes are in `mm`, never `px`** — px drifts
+with the print scale factor, mm lands the same at 180dpi and 203dpi.
+⚠️ The agent's ESC/POS driver has **not** been moved onto this formatter yet (different input
+shape, and no shop runs the agent today) — so the two can still drift. Do it when the agent lands.
+
+### Barcode labels, without the agent
+
+The desktop sent raw **TSPL** to the HPRT (`BARCODE x,y,"128",…`) and the printer's firmware drew
+the bars. **A browser cannot send raw bytes to a printer**, so `/barkod`'s print button was dead
+on every PC in the shop (it required the agent). New **`Core/Printing/BarcodeSvg.cs`** encodes
+**EAN-13 / EAN-8 / Code 128** and draws the bars as SVG in **millimetres** (narrow bar 0.33mm ≈
+the 2-dot bar the desktop asked TSPL for); new **`/etiketa`** renders 55×25mm label pages —
+company / name / big price / barcode, mirroring `BarcodePrinterService.GenerateTSPLLabel` — and
+prints them through the HPRT's own Windows driver. This is the same escape hatch the desktop had
+(`GenerateTSPLWithBitmap`): same picture, different transport. A code that cannot be encoded
+(non-ASCII, or 13 digits with a bad check digit) prints as **text with no bars**, and the screen
+says so — printing a barcode a scanner will refuse is worse than printing none.
+
+**Verified by decoding the actual print output, not the screen:** Chromium → PDF (`prefer_css_page_size`)
+→ 300dpi raster → **zxing** decoded `EAN13 = 5901234123457` and `Code128 = NO.35` off the labels,
+and the label pages measured **156×71pt = 55×25mm**. *A barcode that renders is not a barcode that
+scans — decode it.*
+
 ## Known follow-ups
 - **Cut-over to pos.spacecode.tech:** only after Sale + core screens reach parity
   with the live React app; needs explicit go-ahead (replaces a live service).

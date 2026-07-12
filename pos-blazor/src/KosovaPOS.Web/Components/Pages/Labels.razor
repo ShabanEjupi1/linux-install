@@ -1,0 +1,173 @@
+@page "/etiketa"
+@attribute [Authorize(Policy = "perm:stock")]
+@layout EmptyLayout
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using KosovaPOS.Core.Printing
+@using KosovaPOS.Core.Services
+@using KosovaPOS.Models
+@inject CatalogService Catalog
+@inject BusinessProfileService Profile
+@inject IJSRuntime JS
+
+@* Barcode labels printed by the BROWSER, through the HPRT's own Windows driver — no
+   agent, nothing installed on the shop PC.
+
+   The desktop drove this printer with raw TSPL and let its firmware draw the bars. A web
+   page cannot send raw bytes to a printer, so the bars are drawn here as SVG (BarcodeSvg)
+   and go out as graphics — which is what the desktop's own GenerateTSPLWithBitmap fallback
+   did. The layout deliberately mirrors POS2/Services/BarcodePrinterService.GenerateTSPLLabel:
+   company name small at the top, article name under it, the price large in the middle, the
+   barcode across the bottom. *@
+
+<PageTitle>Etiketat — KosovaPOS</PageTitle>
+
+@* The page size IS the label stock, and the stock is a parameter — so this rule cannot
+   live in app.css. Margin 0: the driver owns the label's edges, and a CSS margin here
+   would shrink the barcode until a scanner refuses it. *@
+<HeadContent>
+    <style>
+        @@media print {
+            @@page { size: @(_wMm)mm @(_hMm)mm; margin: 0; }
+        }
+    </style>
+</HeadContent>
+
+<div class="inv-toolbar">
+    <a class="btn-ghost" href="/barkod">← Barkodi</a>
+    <button class="btn-primary" @onclick="Print" disabled="@(_labels.Count == 0)">🖨️ Printo @_labels.Count etiketa</button>
+    <span class="muted print-hint">
+        Në dialogun e printimit: zgjidh printerin e etiketave, madhësia e letrës
+        <strong>@_wMm×@_hMm mm</strong>, Margins → <strong>None</strong>, Scale → <strong>100%</strong>,
+        dhe hiq <strong>Headers and footers</strong>.
+    </span>
+</div>
+
+@if (_labels.Count == 0)
+{
+    <div class="lbl-empty">
+        <p>Asnjë etiketë për të printuar.</p>
+        <p class="muted">Zgjidh artikujt te <a href="/barkod">Barkodi</a> dhe shtyp “Printo nga shfletuesi”.</p>
+    </div>
+}
+else
+{
+    @if (_unencodable.Count > 0)
+    {
+        @* Screen-only: a code that cannot be encoded still prints, but as text, exactly as
+           the desktop did. Saying so beats letting the shop discover it at the scanner. *@
+        <div class="sale-msg err lbl-warn">
+            @_unencodable.Count artikuj nuk kanë barkod të vlefshëm (bosh, me shkronja jo-ASCII,
+            ose 13 shifra me shifër kontrolli të gabuar) — etiketa printohet, por vetëm me tekst,
+            pa vija që lexohen nga skaneri: @string.Join(", ", _unencodable.Take(6))@(_unencodable.Count > 6 ? "…" : "")
+        </div>
+    }
+
+    <div class="lbl-sheet">
+        @foreach (var lbl in _labels)
+        {
+            <div class="lbl" style="width:@(_wMm)mm; height:@(_hMm)mm;">
+                <div class="lbl-shop">@_shopName</div>
+                <div class="lbl-name">@lbl.Name</div>
+                <div class="lbl-price">@lbl.Price.ToString("0.00") EUR</div>
+
+                <div class="lbl-code">
+                    @if (lbl.Svg is not null)
+                    {
+                        @((MarkupString)lbl.Svg)
+                        <div class="lbl-digits">@lbl.Barcode</div>
+                    }
+                    else
+                    {
+                        <div class="lbl-digits lbl-nobar">@(string.IsNullOrWhiteSpace(lbl.Barcode) ? "PA BARKOD" : lbl.Barcode)</div>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    /// <summary>
+    /// The print queue, as <c>id x copies</c> pairs — e.g. <c>?q=12x3,40x1</c>. Passed in the
+    /// URL rather than held in server state so the page can be reloaded, bookmarked and
+    /// reprinted after a paper jam without rebuilding the queue.
+    /// </summary>
+    [SupplyParameterFromQuery(Name = "q")] public string? Q { get; set; }
+
+    /// <summary>Label stock, in mm. Defaults to the 55×25 the desktop assumed for the HPRT.</summary>
+    [SupplyParameterFromQuery(Name = "w")] public int? W { get; set; }
+    [SupplyParameterFromQuery(Name = "h")] public int? H { get; set; }
+
+    /// <summary>?auto=1 opens the print dialog once the labels have rendered.</summary>
+    [SupplyParameterFromQuery(Name = "auto")] public string? Auto { get; set; }
+
+    private sealed record Label(string Name, string Barcode, decimal Price, string? Svg);
+
+    private readonly List<Label> _labels = new();
+    private readonly List<string> _unencodable = new();
+    private string _shopName = "";
+    private int _wMm = 55, _hMm = 25;
+    private bool _printed;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _wMm = W is >= 20 and <= 200 ? W.Value : 55;
+        _hMm = H is >= 10 and <= 200 ? H.Value : 25;
+
+        var shop = await Profile.GetSettingsAsync();
+        _shopName = string.IsNullOrWhiteSpace(shop?.BusinessName) ? "" : shop!.BusinessName!;
+
+        var wanted = ParseQueue(Q);
+        if (wanted.Count == 0) return;
+
+        var articles = (await Catalog.GetAllArticlesAsync())
+            .Where(a => wanted.ContainsKey(a.Id))
+            .ToDictionary(a => a.Id);
+
+        // Bar height scales with the label: a 4.5mm barcode on a 25mm label is what the
+        // desktop asked TSPL for (35 dots at 8 dots/mm), and it stays legible if the shop
+        // switches to taller stock.
+        var barMm = Math.Max(4.0, _hMm * 0.18);
+
+        foreach (var (id, copies) in wanted)
+        {
+            if (!articles.TryGetValue(id, out var a)) continue;
+
+            var svg = BarcodeSvg.Render(a.Barcode, heightMm: barMm);
+            if (svg is null && !_unencodable.Contains(a.Name))
+                _unencodable.Add(a.Name);
+
+            for (int i = 0; i < copies; i++)
+                _labels.Add(new Label(a.Name, a.Barcode, a.SalesPrice, svg));
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_printed || _labels.Count == 0 || Auto != "1") return;
+        _printed = true;
+        await Print();
+    }
+
+    private async Task Print() => await JS.InvokeVoidAsync("print");
+
+    /// <summary>Parses <c>12x3,40x1</c>. Silently drops anything malformed — a bad URL must not 500 the till.</summary>
+    private static Dictionary<int, int> ParseQueue(string? q)
+    {
+        var result = new Dictionary<int, int>();
+        if (string.IsNullOrWhiteSpace(q)) return result;
+
+        foreach (var part in q.Split(',', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var bits = part.Split('x', 2);
+            if (!int.TryParse(bits[0], out var id) || id <= 0) continue;
+
+            var copies = bits.Length > 1 && int.TryParse(bits[1], out var c) ? c : 1;
+            if (copies is < 1 or > 200) copies = Math.Clamp(copies, 1, 200);
+
+            result[id] = result.TryGetValue(id, out var had) ? Math.Min(200, had + copies) : copies;
+        }
+        return result;
+    }
+}

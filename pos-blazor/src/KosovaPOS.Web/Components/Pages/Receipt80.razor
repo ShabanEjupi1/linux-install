@@ -3,27 +3,49 @@
 @layout EmptyLayout
 @rendermode InteractiveServer
 @using Microsoft.AspNetCore.Authorization
+@using KosovaPOS.Core.Printing
 @using KosovaPOS.Core.Services
 @using KosovaPOS.Models
 @inject SalesService Sales
 @inject BusinessProfileService Profile
 @inject IJSRuntime JS
 
-@* An 80mm thermal receipt rendered as a web page and printed by the BROWSER.
-   Deliberately not routed through the hardware agent: the browser already talks to
-   every printer Windows knows about, so this prints on the shop's thermal printer
-   with nothing installed on the PC. The FISCAL receipt still needs the agent —
-   F-Link is driven by dropping a file in a watched folder, which a browser cannot
-   do — so this is the courtesy/customer copy, not the ATK-fiscal one. *@
+@* An 80mm thermal receipt printed by the BROWSER — nothing installed on the shop PC.
+   The layout is NOT built here: ReceiptFormatter lays it out as fixed-width monospace
+   lines (the same grid the desktop drew with Courier New through GDI, which is why its
+   receipts came out right on the Epson). This page only renders those lines. The agent's
+   ESC/POS path can emit the identical document, so the two can no longer drift apart.
+
+   The FISCAL receipt still needs the agent — F-Link is driven by dropping a file in a
+   watched folder, which a browser cannot do — so this is the customer copy, not the
+   ATK-fiscal one. *@
 
 <PageTitle>Kupon @Numri — KosovaPOS</PageTitle>
+
+@* The paper this document prints on. Two traps, both of which were live:
+
+   1. It MUST live here, not in app.css: @@page is a GLOBAL rule, so the A4 invoice's @@page
+      and this one fight in a shared stylesheet and one document prints on the wrong paper.
+
+   2. `size: 80mm auto` is INVALID CSS — the spec allows `auto`, or one or two lengths, but
+      not a length mixed with `auto`. Chrome drops the whole declaration and silently falls
+      back to Letter/A4. So the height has to be a real number: we know the line count and
+      the line height, so we compute the exact length of the receipt. That also means the
+      thermal printer feeds no blank paper past the cut. *@
+<HeadContent>
+    <style>
+        @@media print {
+            @@page { size: 80mm @(HeightMm)mm; margin: 0; }
+        }
+    </style>
+</HeadContent>
 
 @if (_notFound)
 {
     <div class="inv-toolbar"><a class="btn-ghost" href="/faturat">← Faturat</a></div>
     <div class="r80"><p>Fatura #@Numri nuk u gjet.</p></div>
 }
-else if (_invoice is null)
+else if (_lines is null)
 {
     <div class="r80"><p>Duke ngarkuar…</p></div>
 }
@@ -32,42 +54,17 @@ else
     <div class="inv-toolbar">
         <a class="btn-ghost" href="/faturat">← Faturat</a>
         <button class="btn-primary" @onclick="Print">🖨️ Printo kuponin</button>
+        <span class="muted print-hint">
+            Në dialogun e printimit: zgjidh printerin termik, Margins → <strong>None</strong>,
+            dhe hiq <strong>Headers and footers</strong> (Chrome e mban mend).
+        </span>
     </div>
 
-    <div class="r80">
-        <div class="r80-c r80-big">@SellerName</div>
-        @if (!string.IsNullOrWhiteSpace(_shop?.Address)) { <div class="r80-c">@_shop!.Address</div> }
-        @if (!string.IsNullOrWhiteSpace(_shop?.FiscalNumber)) { <div class="r80-c">Nr. fiskal: @_shop!.FiscalNumber</div> }
-        @if (!string.IsNullOrWhiteSpace(_shop?.VatNumber)) { <div class="r80-c">Nr. TVSH: @_shop!.VatNumber</div> }
-
-        <div class="r80-sep"></div>
-        <div class="r80-row"><span>Kuponi</span><span>#@_invoice.Number</span></div>
-        <div class="r80-row"><span>Data</span><span>@_invoice.Date.ToString("dd.MM.yyyy") @_invoice.Time</span></div>
-        <div class="r80-row"><span>Arkëtari</span><span>@_invoice.CashierName</span></div>
-        <div class="r80-sep"></div>
-
-        @foreach (var l in _invoice.Lines)
-        {
-            <div class="r80-item">@l.Name</div>
-            <div class="r80-row">
-                <span>@l.Quantity.ToString("0.###") × @l.UnitPriceGross.ToString("0.00")</span>
-                <span>@l.GrossValue.ToString("0.00")</span>
-            </div>
-        }
-
-        <div class="r80-sep"></div>
-        <div class="r80-row"><span>Pa TVSH</span><span>@_invoice.TotalNet.ToString("0.00") €</span></div>
-        @foreach (var v in _invoice.VatSummary)
-        {
-            <div class="r80-row"><span>TVSH @v.Rate.ToString("0.##")%</span><span>@v.Vat.ToString("0.00") €</span></div>
-        }
-        <div class="r80-row r80-total"><span>TOTALI</span><span>@_invoice.TotalGross.ToString("0.00") €</span></div>
-        <div class="r80-row"><span>Pagesa</span><span>@_invoice.PaymentMethod</span></div>
-        <div class="r80-sep"></div>
-
-        <div class="r80-c">Faleminderit!</div>
-        <div class="r80-c r80-small">Ky kupon nuk është faturë fiskale.</div>
-    </div>
+    @* One <pre>: the formatter has already padded every line to the column grid, so the
+       browser must not re-wrap or re-space anything. Emphasis rides on a class per line, and
+       the newline is emitted explicitly — Razor swallows the literal one between elements. *@
+    <pre class="r80">@foreach (var line in _lines)
+      {<span class="@Css(line.Emphasis)">@line.Text</span>@("\n")}</pre>
 }
 
 @code {
@@ -76,28 +73,57 @@ else
     /// <summary>?auto=1 opens the print dialog as soon as the receipt has rendered.</summary>
     [SupplyParameterFromQuery(Name = "auto")] public string? Auto { get; set; }
 
-    private KosovaPOS.Core.Services.Invoice? _invoice;
-    private BusinessSettings? _shop;
+    private List<ReceiptTextLine>? _lines;
     private bool _notFound;
     private bool _printed;
 
-    private string SellerName => string.IsNullOrWhiteSpace(_shop?.BusinessName) ? "KosovaPOS" : _shop!.BusinessName!;
+    /// <summary>
+    /// The paper length, derived from what is actually on it. Must agree with app.css:
+    /// font-size 2.85mm × line-height 1.25 = 3.5625mm per line, plus the extra height of
+    /// the 1.35em title line, plus a tail so the last line clears the cutter.
+    /// </summary>
+    private int HeightMm
+    {
+        get
+        {
+            const double LineMm = 2.85 * 1.25;
+            const double TitleExtraMm = 2.85 * 0.35 * 1.25;
+            const double TailMm = 8;
+
+            var count = _lines?.Count ?? 0;
+            return (int)Math.Ceiling(count * LineMm + TitleExtraMm + TailMm);
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
-        _invoice = await Sales.GetInvoiceAsync(Numri);
-        if (_invoice is null) { _notFound = true; return; }
-        _shop = await Profile.GetSettingsAsync();
+        var invoice = await Sales.GetInvoiceAsync(Numri);
+        if (invoice is null) { _notFound = true; return; }
+
+        var shop = await Profile.GetSettingsAsync();
+        _lines = ReceiptFormatter.Format(invoice, new ReceiptHeader(
+            Name: string.IsNullOrWhiteSpace(shop?.BusinessName) ? "KosovaPOS" : shop!.BusinessName!,
+            Address: shop?.Address,
+            Phone: shop?.Phone,
+            FiscalNumber: shop?.FiscalNumber,
+            VatNumber: shop?.VatNumber));
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        // Print once, after the receipt is actually on screen — printing during
-        // prerender would produce a blank page.
-        if (_printed || _invoice is null || Auto != "1") return;
+        // Print once, after the receipt is actually on screen — printing during prerender
+        // would produce a blank page.
+        if (_printed || _lines is null || Auto != "1") return;
         _printed = true;
         await Print();
     }
 
     private async Task Print() => await JS.InvokeVoidAsync("print");
+
+    private static string Css(ReceiptEmphasis e) => e switch
+    {
+        ReceiptEmphasis.Title => "r80-title",
+        ReceiptEmphasis.Bold  => "r80-bold",
+        _                     => "",
+    };
 }

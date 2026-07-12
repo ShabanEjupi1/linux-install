@@ -12,6 +12,17 @@
 
 <PageTitle>Faturë @Numri — KosovaPOS</PageTitle>
 
+@* Moved out of app.css: @@page is a global rule, so this A4 size used to apply to the 80mm
+   thermal receipt too, and the receipt printed laid out for A4. Declared here, it only
+   exists while the invoice is on screen. *@
+<HeadContent>
+    <style>
+        @@media print {
+            @@page { size: A4; margin: 12mm; }
+        }
+    </style>
+</HeadContent>
+
 @if (_notFound)
 {
     <div class="inv-toolbar"><a class="btn-ghost" href="/faturat">← Faturat</a></div>

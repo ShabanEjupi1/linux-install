@@ -634,8 +634,16 @@ a.stat:hover { border-color: var(--accent); }
   .inv-toolbar { display: none !important; }
   .a4 { margin: 0; box-shadow: none; width: auto; padding: 0; }
   .inv-in { border: none; padding: 0; }
-  @page { size: A4; margin: 12mm; }
 }
+
+/* 🚨 NO @page RULE MAY LIVE IN THIS FILE.
+   @page is a GLOBAL, document-level rule — it is not scoped to the selectors around it.
+   An `@page { size: A4 }` here (for /fatura) and an `@page { size: 80mm auto }` there (for
+   /kupon) do not coexist: they fight, and one of the two documents prints on the wrong
+   paper. That is exactly what happened — the 80mm thermal receipt was being laid out for
+   A4, which is why it came off the Epson looking nothing like the desktop's.
+   Each printable page now declares its own @page in its own <HeadContent>, which is only
+   in the DOM while that page is on screen. See Receipt80.razor / InvoiceA4.razor / Labels.razor. */
 
 /* "editing an existing document" badge on the purchase entry form */
 .edit-badge {
@@ -644,25 +652,73 @@ a.stat:hover { border-color: var(--accent); }
 }
 .btn-mini.danger { color: var(--danger, #dc2626); }
 
-/* ── 80mm thermal receipt, printed by the browser (no agent) ──────────────── */
+/* ── 80mm thermal receipt, printed by the browser (no agent) ──────────────────
+   Sized in MILLIMETRES, not pixels. The receipt is a 42-column monospace grid
+   (ReceiptFormatter pads every line to it), and the paper is 72mm of printable
+   width on an 80mm roll — so one character must occupy 72/42 = 1.714mm. Courier's
+   advance width is ~0.6em, hence 1.714 / 0.6 ≈ 2.85mm of font size. Express that
+   in px and it drifts with the print scaling; in mm the columns land on the paper
+   the same way at 180dpi as at 203dpi.
+   Do NOT put padding on .r80: the 4mm of dead paper on each edge is what the 80mm
+   page minus the 72mm content already gives us. */
 .r80 {
-  background: #fff; color: #000; margin: 1rem auto; padding: 4mm;
-  width: 80mm; max-width: 100%; box-sizing: border-box;
+  background: #fff; color: #000;
+  margin: 1rem auto; padding: 0;
+  width: 72mm; box-sizing: content-box;
   box-shadow: 0 2px 14px rgba(0,0,0,.25);
-  font-family: "Consolas", "Courier New", monospace; font-size: 12px; line-height: 1.35;
+  font-family: "Courier New", Courier, monospace;
+  font-size: 2.85mm; line-height: 1.25;
+  white-space: pre;              /* the grid is already padded — never re-wrap it */
+  overflow-x: auto;
 }
-.r80-c { text-align: center; }
-.r80-big { font-size: 15px; font-weight: 700; }
-.r80-small { font-size: 10px; }
-.r80-sep { border-top: 1px dashed #000; margin: 4px 0; }
-.r80-row { display: flex; justify-content: space-between; gap: 6px; }
-.r80-item { font-weight: 600; }
-.r80-total { font-size: 15px; font-weight: 800; border-top: 1px solid #000; margin-top: 3px; padding-top: 3px; }
+.r80-bold  { font-weight: 700; }
+.r80-title { font-weight: 700; font-size: 1.35em; }
+
+.print-hint { font-size: .78rem; max-width: 34ch; line-height: 1.3; }
 
 @media print {
-  /* The roll is continuous: height auto, no margins, or the printer feeds a blank page. */
-  .r80 { margin: 0; padding: 0; box-shadow: none; width: auto; }
-  @page { size: 80mm auto; margin: 2mm; }
+  /* The @page rule for this document lives in Receipt80.razor's <HeadContent> — see the
+     warning above. */
+  body { background: #fff; }
+  .r80 { margin: 0 auto; box-shadow: none; overflow: visible; }
+
+  /* Screen-only chrome must not eat a line of paper. */
+  .inv-toolbar { display: none !important; }
+}
+
+/* ── Barcode labels, printed by the browser through the label printer's driver ──
+   Every dimension is in mm: a label is a physical object, and a scanner rejects bars
+   that the print scaling shrank. The sheet is one label per page — label rolls feed
+   one at a time, so a page break between labels IS the gap. */
+.lbl-sheet { display: flex; flex-direction: column; align-items: center; gap: 6mm; padding: 6mm 0; }
+.lbl {
+  background: #fff; color: #000; box-sizing: border-box;
+  padding: 1.2mm 1.5mm;
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+  font-family: Arial, Helvetica, sans-serif;
+  box-shadow: 0 2px 10px rgba(0,0,0,.25);
+  overflow: hidden;                      /* a label that overflows its stock prints onto the next one */
+}
+.lbl-shop   { font-size: 2.1mm; line-height: 1.1; text-align: center; }
+.lbl-name   { font-size: 2.6mm; line-height: 1.15; text-align: center; font-weight: 600;
+              max-height: 6mm; overflow: hidden; }
+.lbl-price  { font-size: 5.2mm; line-height: 1.2; font-weight: 800; margin: .4mm 0; }
+.lbl-code   { margin-top: auto; display: flex; flex-direction: column; align-items: center; }
+.lbl-code svg { display: block; }
+.lbl-digits { font-family: "Courier New", monospace; font-size: 2.3mm; letter-spacing: .3mm; margin-top: .3mm; }
+.lbl-nobar  { font-weight: 700; }
+.lbl-empty  { padding: 2rem; text-align: center; }
+.lbl-warn   { max-width: 70ch; margin: 1rem auto; }
+
+@media print {
+  .lbl-sheet { display: block; padding: 0; gap: 0; }
+  .lbl {
+    box-shadow: none; margin: 0;
+    page-break-after: always;            /* one label per page = one label per feed */
+    break-after: page;
+  }
+  .lbl:last-child { page-break-after: auto; break-after: auto; }
+  .lbl-warn, .lbl-empty { display: none !important; }
 }
 
 /* Post-sale print shortcuts (browser printing, no agent required) */

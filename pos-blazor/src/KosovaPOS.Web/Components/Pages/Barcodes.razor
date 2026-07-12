@@ -7,6 +7,7 @@
 @inject CatalogService Catalog
 @inject HardwareBridge Hw
 @inject BusinessProfileService Profile
+@inject NavigationManager Nav
 
 <PageTitle>Barkodi — KosovaPOS</PageTitle>
 
@@ -113,8 +114,17 @@
 
     <div class="modal-actions">
         <button class="btn-ghost" disabled="@(_queue.Count == 0 || _busy)" @onclick="() => _queue.Clear()">Pastro radhën</button>
-        <button class="btn-primary" disabled="@(_queue.Count == 0 || _busy || !_agentOnline)" @onclick="PrintAll">
-            @(_busy ? "Duke printuar…" : $"Printo {TotalLabels} etiketa")
+
+        @* The browser path needs nothing installed, so it is the primary button. The agent
+           path prints the same labels as raw TSPL (crisper, and it feeds one at a time
+           without a print dialog) — but it is greyed out on a PC with no agent, which is
+           every PC in the shop today. *@
+        <button class="btn-primary" disabled="@(_queue.Count == 0 || _busy)" @onclick="PrintInBrowser">
+            🖨️ Printo nga shfletuesi (@TotalLabels)
+        </button>
+        <button class="btn-ghost" disabled="@(_queue.Count == 0 || _busy || !_agentOnline)" @onclick="PrintAll"
+                title="@(_agentOnline ? "Printim i drejtpërdrejtë përmes agjentit" : "Agjenti i pajisjeve nuk është i instaluar në këtë PC")">
+            @(_busy ? "Duke printuar…" : "Printo me agjent")
         </button>
     </div>
 </div>
@@ -124,6 +134,17 @@
     {
         public required Article Article { get; init; }
         public int Copies { get; set; } = 1;
+    }
+
+    /// <summary>
+    /// Hands the queue to /etiketa, which renders it as real label-sized pages and opens the
+    /// print dialog. The queue travels in the URL (<c>id x copies</c>) so a jam can be
+    /// reprinted by reloading, without rebuilding it.
+    /// </summary>
+    private void PrintInBrowser()
+    {
+        var q = string.Join(",", _queue.Select(i => $"{i.Article.Id}x{i.Copies}"));
+        Nav.NavigateTo($"/etiketa?q={Uri.EscapeDataString(q)}&auto=1");
     }
 
     private List<Article> _all = new();
