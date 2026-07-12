@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Text;
 using KosovaPOS.Agent;
 using KosovaPOS.Agent.Contracts;
 using KosovaPOS.Agent.Drivers;
@@ -16,6 +17,12 @@ using Microsoft.Extensions.Hosting.WindowsServices;
 // the real drivers; elsewhere (or with AGENT_MOCK=true) it uses mocks so the whole
 // pipeline is testable off a Windows box.
 // ---------------------------------------------------------------------------
+
+// Both raw-print drivers encode their bytes as code page 1252 — the one the thermal and
+// label printers expect, and the only one that carries ë and ç. .NET Core ships ONLY
+// UTF-8/ASCII/Latin1: without this line Encoding.GetEncoding(1252) throws
+// NotSupportedException, and every receipt and every label fails to print.
+Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
 var cfg = AgentConfig.FromEnvironment();
 var useReal = OperatingSystem.IsWindows() && !cfg.ForceMock;

@@ -837,6 +837,68 @@ says so — printing a barcode a scanner will refuse is worse than printing none
 and the label pages measured **156×71pt = 55×25mm**. *A barcode that renders is not a barcode that
 scans — decode it.*
 
+## Phase 20 — printing with no print dialog, and the agent ships from the POS ✅ (2026-07-12)
+
+User: *"I don't want these instructions — print it without the print dialog."* The instructions
+("Margins → None, untick Headers and footers") were a symptom. **No web page can suppress Chrome's
+print dialog.** Only two things can, and both are now in place.
+
+**1. The agent is the default path.** `/kupon/{n}` and `/etiketa` try the agent FIRST — raw ESC/POS
+to the receipt printer, raw TSPL to the label printer, no dialog — and fall back to `window.print()`
+only on a PC without it. `/barkod` lost its browser-vs-agent button pair; the page decides. Labels
+fall back all-or-nothing: if the *first* label fails nothing has printed yet, so the queue is safe to
+re-send; a failure *after* one printed is reported instead, or the shop gets duplicates.
+
+**2. `tools/kiosk-shortcut.ps1`** (fallback for a PC that cannot run the agent): a Desktop shortcut
+launching Chrome `--kiosk-printing` in its own profile, so `window.print()` prints instantly.
+⚠️ Kiosk printing always goes to the Windows **default printer** — a page cannot choose one — so it
+cannot route receipts vs labels on a 2-printer PC, and the A4 invoice would come out of the thermal
+as a ribbon. Stopgap only.
+
+### 🐛 The agent would have failed on its very first print
+Nothing ever called `Encoding.RegisterProvider(CodePagesEncodingProvider.Instance)`, and .NET Core
+ships only UTF-8/ASCII/Latin1 — so `Encoding.GetEncoding(1252)`, used by **both** the ESC/POS and the
+TSPL encoder, throws `NotSupportedException`. **Every receipt and every label would have failed** with
+*"No data is available for encoding 1252"*. It had never been caught because the agent had never been
+installed anywhere. Fixed in `Agent/Program.cs` + a `System.Text.Encoding.CodePages` PackageReference.
+
+Also: the agent's TSPL hardcoded **SIZE 40mm × 30mm** while the browser prints **55×25** — labels
+would have come out cropped. The stock now travels in `BarcodePrintRequest`, and the module width
+shrinks to fit (falling back to text when even the thinnest bar won't, exactly as the browser does).
+
+### The receipt had two layouts; now it has one
+`ReceiptPrintRequest` no longer carries the sale (items, totals, header) — it carries the **already
+formatted lines** from `ReceiptFormatter`, and the agent only stresses and emits them. The agent used
+to lay the receipt out a *second* time, so the paper and `/kupon/{n}` could drift apart silently. One
+`HardwareBridge.PrintReceiptAsync(long receiptNumber)` now serves both the till and the reprint page,
+laid out from what was persisted — so a reprint months later is the same document.
+
+### The shop PC installs everything from the POS itself
+Nothing is carried to the cashier PC by hand any more.
+
+- **`/pajisjet`** (Cilësimet → Pajisjet): shows whether this PC has the agent, takes the two printer
+  names, and hands over a one-line command with **this shop's own host and printer names already in
+  it**. The host matters: the agent's CORS policy trusts exactly the origin it was installed with, so
+  a shop on `pos-<code>.spacecode.tech` must not install an agent that only trusts the apex.
+- **`/shkarko/{agjenti.zip,instalo.ps1,kiosk.ps1}`** — anonymous by design (PowerShell carries no auth
+  cookie, and a login there would break the one-command install). The served names are a fixed
+  whitelist mapped to fixed files, so no crafted name can walk out of the package directory.
+- **`tools/build-release.sh`** is now the deploy build: it publishes the web app *and* stages the agent
+  package into `publish/agent-package/`. A plain `dotnet publish` ships **no package**, and `/pajisjet`
+  says so rather than offering a download that 404s.
+
+```bash
+./tools/build-release.sh
+rsync -az --delete publish Dockerfile docker-compose.yml deploy ampere:~/apps/pos-blazor/
+ssh ampere 'cd ~/apps/pos-blazor && sudo docker compose up -d --build'
+```
+
+**Verified:** agent runs and accepts both new payloads; TSPL rendered for the real 55×25 stock (EAN-13
+centred, narrow=3) and for an unfittable CODE128 (falls back to text); ESC/POS bytes dumped (`ESC @`,
+`GS ! 01` title, `ESC E 01` total, `ë` = 0xEB, `GS V B` cut); the published app served the 43MB zip as
+a valid archive containing the freshly-built exe, with unknown names and traversal 404ing and
+`/pajisjet` redirecting to `/login`. **Not run on real hardware — that still needs the shop PC.**
+
 ## Known follow-ups
 - **Cut-over to pos.spacecode.tech:** only after Sale + core screens reach parity
   with the live React app; needs explicit go-ahead (replaces a live service).

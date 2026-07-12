@@ -23,6 +23,9 @@
     <PackageReference Include="System.IO.Ports" Version="10.0.0" />
     <!-- Windows SCM integration; no-op when not started as a service. -->
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.0" />
+    <!-- Code page 1252, which the printers speak. .NET Core does not ship it; without this
+         the raw ESC/POS and TSPL encoders throw and nothing prints. See Program.cs. -->
+    <PackageReference Include="System.Text.Encoding.CodePages" Version="10.0.0" />
   </ItemGroup>
 
   <ItemGroup>

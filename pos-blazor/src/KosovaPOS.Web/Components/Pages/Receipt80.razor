@@ -6,15 +6,21 @@
 @using KosovaPOS.Core.Printing
 @using KosovaPOS.Core.Services
 @using KosovaPOS.Models
+@using KosovaPOS.Web.Services
 @inject SalesService Sales
 @inject BusinessProfileService Profile
+@inject HardwareBridge Hw
 @inject IJSRuntime JS
 
-@* An 80mm thermal receipt printed by the BROWSER — nothing installed on the shop PC.
-   The layout is NOT built here: ReceiptFormatter lays it out as fixed-width monospace
-   lines (the same grid the desktop drew with Courier New through GDI, which is why its
-   receipts came out right on the Epson). This page only renders those lines. The agent's
-   ESC/POS path can emit the identical document, so the two can no longer drift apart.
+@* An 80mm thermal receipt. The layout is NOT built here: ReceiptFormatter lays it out as
+   fixed-width monospace lines (the same grid the desktop drew with Courier New through GDI,
+   which is why its receipts came out right on the Epson). This page only renders them, and
+   the agent emits the identical lines as ESC/POS — one document, two outputs.
+
+   Printing prefers the agent, because raw ESC/POS goes straight to the thermal printer with
+   NO print dialog. The browser's window.print() is the fallback for a PC with no agent, and
+   it cannot suppress that dialog — no web page can. Launch Chrome with --kiosk-printing
+   (tools/kiosk-shortcut.ps1) and even the fallback prints silently.
 
    The FISCAL receipt still needs the agent — F-Link is driven by dropping a file in a
    watched folder, which a browser cannot do — so this is the customer copy, not the
@@ -53,11 +59,13 @@ else
 {
     <div class="inv-toolbar">
         <a class="btn-ghost" href="/faturat">← Faturat</a>
-        <button class="btn-primary" @onclick="Print">🖨️ Printo kuponin</button>
-        <span class="muted print-hint">
-            Në dialogun e printimit: zgjidh printerin termik, Margins → <strong>None</strong>,
-            dhe hiq <strong>Headers and footers</strong> (Chrome e mban mend).
-        </span>
+        <button class="btn-primary" @onclick="Print" disabled="@_busy">
+            @(_busy ? "Duke printuar…" : "🖨️ Printo kuponin")
+        </button>
+        @if (_status is not null)
+        {
+            <span class="muted print-hint">@_status</span>
+        }
     </div>
 
     @* One <pre>: the formatter has already padded every line to the column grid, so the
@@ -76,6 +84,8 @@ else
     private List<ReceiptTextLine>? _lines;
     private bool _notFound;
     private bool _printed;
+    private bool _busy;
+    private string? _status;
 
     /// <summary>
     /// The paper length, derived from what is actually on it. Must agree with app.css:
@@ -101,24 +111,40 @@ else
         if (invoice is null) { _notFound = true; return; }
 
         var shop = await Profile.GetSettingsAsync();
-        _lines = ReceiptFormatter.Format(invoice, new ReceiptHeader(
-            Name: string.IsNullOrWhiteSpace(shop?.BusinessName) ? "KosovaPOS" : shop!.BusinessName!,
-            Address: shop?.Address,
-            Phone: shop?.Phone,
-            FiscalNumber: shop?.FiscalNumber,
-            VatNumber: shop?.VatNumber));
+        _lines = ReceiptFormatter.Format(invoice, HardwareBridge.ReceiptHeaderFor(shop));
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        // Print once, after the receipt is actually on screen — printing during prerender
-        // would produce a blank page.
+        // Print once, after the receipt is actually on screen — the browser fallback prints
+        // the DOM, and printing during prerender would produce a blank page.
         if (_printed || _lines is null || Auto != "1") return;
         _printed = true;
         await Print();
+        StateHasChanged();
     }
 
-    private async Task Print() => await JS.InvokeVoidAsync("print");
+    /// <summary>
+    /// Agent first: it prints the same document as raw ESC/POS, with no dialog to click
+    /// through. Only a PC without the agent falls back to the browser.
+    /// </summary>
+    private async Task Print()
+    {
+        _busy = true;
+        _status = null;
+        try
+        {
+            var sent = await Hw.PrintReceiptAsync(Numri);
+            if (sent.Ok)
+            {
+                _status = "Kuponi u dërgua te printeri termik.";
+                return;
+            }
+
+            await JS.InvokeVoidAsync("print");
+        }
+        finally { _busy = false; }
+    }
 
     private static string Css(ReceiptEmphasis e) => e switch
     {

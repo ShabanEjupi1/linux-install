@@ -1,0 +1,204 @@
+@page "/pajisjet"
+@attribute [Authorize(Policy = "perm:settings")]
+@rendermode InteractiveServer
+@using KosovaPOS.Core.Services
+@using KosovaPOS.Models
+@using KosovaPOS.Web.Services
+@inject BusinessProfileService Profile
+@inject HardwareBridge Hw
+@inject AgentPackage Package
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+@* Everything a shop PC needs to print without a print dialog, served from the POS itself.
+   Nothing is copied to the cashier PC by hand: this page hands out the agent and the exact
+   command to install it, with THIS shop's address and printer names already in it. *@
+
+<PageTitle>Pajisjet — KosovaPOS</PageTitle>
+
+<div class="mgmt">
+    <header class="mgmt-head">
+        <div>
+            <h1>Pajisjet e këtij kompjuteri</h1>
+            <span class="muted">Instalo agjentin që printon pa dialog printimi.</span>
+        </div>
+        <span class="agent-badge @(_agentOnline ? (_agentReal ? "on" : "mock") : "off")" title="@_agentTitle">
+            <span class="dot"></span>@(_agentOnline ? (_agentReal ? "Pajisje" : "Pajisje (test)") : "Pa pajisje")
+        </span>
+    </header>
+
+    @if (_agentOnline)
+    {
+        <div class="sale-msg ok">
+            Agjenti është i instaluar në këtë kompjuter@(_agentVersion is null ? "" : $" (versioni {_agentVersion})").
+            Kuponat dhe etiketat printohen drejtpërdrejt te printerët, <strong>pa dialog printimi</strong>.
+            @if (!_agentReal)
+            {
+                <text>
+                    Por është në <strong>modalitet testi</strong> — asgjë nuk shkon te pajisjet reale.
+                    Ekzekuto komandën më poshtë edhe një herë, pa <code>-Mock</code>.
+                </text>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="sale-msg err">
+            Agjenti nuk po përgjigjet në këtë kompjuter, prandaj printimi kalon nëpër shfletuesin,
+            i cili hap dialogun e printimit në çdo shitje. Ndiq hapat më poshtë.
+        </div>
+    }
+
+    <h2 class="section-title">1. Emrat e printerëve</h2>
+    <p class="muted setup-p">
+        Shkruaj emrat ashtu si duken te <em>Windows → Printers &amp; scanners</em>. Ruhen për
+        gjithë biznesin, prandaj mjafton një herë — çdo kompjuter i dyqanit i merr nga këtu.
+    </p>
+    <div class="setup-grid">
+        <label>Printeri i kuponave (80mm)
+            <input @bind="_receiptPrinter" placeholder="p.sh. POS-80" />
+        </label>
+        <label>Printeri i etiketave
+            <input @bind="_barcodePrinter" placeholder="p.sh. HPRT HT300" />
+        </label>
+        <button class="btn-primary" @onclick="SavePrinters" disabled="@_saving">
+            @(_saving ? "Duke ruajtur…" : "Ruaj emrat")
+        </button>
+    </div>
+    @if (_saved)
+    {
+        <div class="sale-msg ok">Emrat u ruajtën. Ekzekuto komandën më poshtë që agjenti t'i marrë.</div>
+    }
+
+    <h2 class="section-title">2. Instalo agjentin në këtë kompjuter</h2>
+
+    @if (!Package.Available)
+    {
+        <div class="sale-msg err">
+            Paketa e agjentit nuk është e ngarkuar në këtë server. Ndërtoje me
+            <code>tools/build-release.sh</code> dhe ridepoloje.
+        </div>
+    }
+    else
+    {
+        <p class="muted setup-p">
+            Hap <strong>PowerShell si Administrator</strong> në kompjuterin e arkës (jo këtu, nëse je
+            larg tij), dhe ngjit këtë komandë. E shkarkon agjentin nga ky server, e instalon si shërbim
+            të Windows-it dhe e nis vetë.
+        </p>
+
+        <pre class="setup-cmd">@InstallCommand</pre>
+
+        <div class="modal-actions">
+            <button class="btn-primary" @onclick="CopyCommand">📋 Kopjo komandën</button>
+            <a class="btn-ghost" href="/shkarko/agjenti.zip">
+                ⬇️ Shkarko paketën (@Package.SizeMb.ToString("0") MB@(Package.Version is null ? "" : $", v{Package.Version}"))
+            </a>
+            <button class="btn-ghost" @onclick="RefreshAgentStatusAsync">Kontrollo agjentin</button>
+        </div>
+
+        <p class="muted setup-p">
+            Pas instalimit, rifresko këtë faqe: shenja lart duhet të kthehet në <strong>Pajisje</strong>.
+            Për një provë pa prekur pajisjet reale, shto <code>-Mock</code> në fund të komandës.
+        </p>
+    }
+
+    <h2 class="section-title">3. Nëse agjenti nuk mund të instalohet</h2>
+    <p class="muted setup-p">
+        Pa agjent, printimi bëhet nga shfletuesi — dhe asnjë faqe interneti nuk mund ta mbyllë
+        dialogun e printimit të Chrome-it. Chrome-i vetë mundet: kjo shkurtore e hap POS-in me
+        <code>--kiosk-printing</code>, dhe printimi bëhet menjëherë, pa dialog.
+    </p>
+    <div class="sale-msg err">
+        Kujdes: kiosk-printing printon <strong>gjithmonë te printeri i parazgjedhur i Windows-it</strong> —
+        faqja nuk e zgjedh dot. Me dy printerë (kupona + etiketa) vetëm njëri merr letrën e duhur,
+        dhe fatura A4 do të dalë në rrotullën termike. Përdore vetëm si zgjidhje kalimtare.
+    </div>
+    @if (Package.Available)
+    {
+        <div class="modal-actions">
+            <a class="btn-ghost" href="/shkarko/kiosk.ps1">⬇️ kiosk-shortcut.ps1</a>
+        </div>
+    }
+</div>
+
+@code {
+    private BusinessSettings? _shop;
+    private string? _receiptPrinter, _barcodePrinter;
+    private bool _saving, _saved;
+
+    private bool _agentOnline, _agentReal;
+    private string? _agentVersion;
+    private string _agentTitle = "Agjenti i pajisjeve nuk është kontrolluar ende";
+
+    /// <summary>
+    /// The command the shop actually pastes. It carries THIS host — a shop on its own
+    /// subdomain must not install an agent that only trusts the apex, or the browser's call
+    /// to 127.0.0.1 is refused by the agent's CORS policy.
+    /// </summary>
+    private string InstallCommand
+    {
+        get
+        {
+            var origin = new Uri(Nav.BaseUri).GetLeftPart(UriPartial.Authority);
+            var cmd = $"irm {origin}/shkarko/instalo.ps1 -OutFile \"$env:TEMP\\instalo.ps1\"; " +
+                      $"& \"$env:TEMP\\instalo.ps1\" -PosUrl \"{origin}\"";
+
+            if (!string.IsNullOrWhiteSpace(_receiptPrinter))
+                cmd += $" -ReceiptPrinter \"{_receiptPrinter}\"";
+            if (!string.IsNullOrWhiteSpace(_barcodePrinter))
+                cmd += $" -BarcodePrinter \"{_barcodePrinter}\"";
+
+            return cmd;
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _shop = await Profile.GetSettingsAsync();
+        _receiptPrinter = _shop?.ReceiptPrinter;
+        _barcodePrinter = _shop?.BarcodePrinter;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await RefreshAgentStatusAsync();
+        StateHasChanged();
+    }
+
+    private async Task RefreshAgentStatusAsync()
+    {
+        var health = await Hw.GetHealthAsync();
+        _agentOnline = health is not null;
+        _agentReal = health?.RealHardware ?? false;
+        _agentVersion = health?.Version;
+        _agentTitle = health is null
+            ? "Agjenti i pajisjeve nuk po përgjigjet"
+            : $"{(health.RealHardware ? "pajisje reale" : "modaliteti test")}";
+    }
+
+    /// <summary>
+    /// Saves through the settings row we loaded, not a fresh one: SaveSettingsAsync copies
+    /// every field it is handed, so a blank object would wipe the shop's name and fiscal
+    /// numbers on its way to changing two printer names.
+    /// </summary>
+    private async Task SavePrinters()
+    {
+        _saving = true;
+        _saved = false;
+        try
+        {
+            var shop = _shop ??= await Profile.GetSettingsAsync();
+            shop.ReceiptPrinter = _receiptPrinter;
+            shop.BarcodePrinter = _barcodePrinter;
+
+            await Profile.SaveSettingsAsync(shop);
+            _saved = true;
+        }
+        finally { _saving = false; }
+    }
+
+    private async Task CopyCommand() =>
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", InstallCommand);
+}

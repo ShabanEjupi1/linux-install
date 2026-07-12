@@ -1,4 +1,5 @@
 using KosovaPOS.Agent.Contracts;
+using KosovaPOS.Core.Printing;
 using KosovaPOS.Models;
 
 namespace KosovaPOS.Core.Services.Hardware;
@@ -18,40 +19,35 @@ public static class HardwareMapper
         TimeoutSeconds = timeoutSeconds,
     };
 
-    /// <summary>Builds the non-fiscal receipt print request the agent renders locally.</summary>
-    public static ReceiptPrintRequest ToReceiptRequest(Receipt receipt, BusinessSettings? shop = null) => new()
+    /// <summary>
+    /// Wraps an already-laid-out receipt for the agent. The layout arrives from
+    /// <see cref="ReceiptFormatter"/> — the same lines the browser renders at
+    /// <c>/kupon/{n}</c> — so the paper and the screen cannot show different documents.
+    /// </summary>
+    public static ReceiptPrintRequest ToReceiptRequest(
+        string receiptNumber, IEnumerable<ReceiptTextLine> lines, BusinessSettings? shop = null) => new()
     {
-        BusinessName = shop?.BusinessName ?? "",
-        Address = shop?.Address,
-        FiscalNumber = shop?.FiscalNumber,
-        ReceiptNumber = receipt.ReceiptNumber,
-        Date = new DateTimeOffset(receipt.Date),
-        CashierName = receipt.CashierName,
-        PaymentMethod = receipt.PaymentMethod,
-        Lines = receipt.Items.Select(i => new ReceiptLineDto
+        ReceiptNumber = receiptNumber,
+        Lines = lines.Select(l => new ReceiptDocumentLine
         {
-            Name = i.ArticleName,
-            Quantity = i.Quantity,
-            UnitPrice = i.Price,
-            LineTotal = i.TotalValue,
-            VatRate = i.VATRate,
+            Text = l.Text,
+            Emphasis = (int)l.Emphasis,
         }).ToList(),
-        Subtotal = receipt.Items.Sum(i => i.TotalValue - i.VATValue),
-        Vat = receipt.Items.Sum(i => i.VATValue),
-        Total = receipt.TotalAmount,
-        Paid = receipt.PaidAmount,
-        Change = receipt.PaidAmount - receipt.TotalAmount < 0 ? 0 : receipt.PaidAmount - receipt.TotalAmount,
         // Let the shop point its courtesy receipt at any thermal printer; null falls
         // back to the agent's RECEIPT_PRINTER default on the cashier PC.
         PrinterName = string.IsNullOrWhiteSpace(shop?.ReceiptPrinter) ? null : shop!.ReceiptPrinter,
     };
 
-    public static BarcodePrintRequest ToBarcodeRequest(Article article, int copies = 1, string? printerName = null) => new()
+    public static BarcodePrintRequest ToBarcodeRequest(
+        Article article, int copies = 1, string? printerName = null,
+        int labelWidthMm = 55, int labelHeightMm = 25) => new()
     {
         Barcode = article.Barcode,
         ArticleName = article.Name,
         Price = article.SalesPrice,
         Copies = copies,
         PrinterName = printerName,
+        LabelWidthMm = labelWidthMm,
+        LabelHeightMm = labelHeightMm,
     };
 }

@@ -6,19 +6,24 @@
 @using KosovaPOS.Core.Printing
 @using KosovaPOS.Core.Services
 @using KosovaPOS.Models
+@using KosovaPOS.Web.Services
 @inject CatalogService Catalog
 @inject BusinessProfileService Profile
+@inject HardwareBridge Hw
 @inject IJSRuntime JS
 
-@* Barcode labels printed by the BROWSER, through the HPRT's own Windows driver — no
-   agent, nothing installed on the shop PC.
+@* Barcode labels.
 
-   The desktop drove this printer with raw TSPL and let its firmware draw the bars. A web
-   page cannot send raw bytes to a printer, so the bars are drawn here as SVG (BarcodeSvg)
-   and go out as graphics — which is what the desktop's own GenerateTSPLWithBitmap fallback
-   did. The layout deliberately mirrors POS2/Services/BarcodePrinterService.GenerateTSPLLabel:
-   company name small at the top, article name under it, the price large in the middle, the
-   barcode across the bottom. *@
+   Printing prefers the AGENT: it sends raw TSPL to the HPRT, the printer's own firmware
+   draws the bars, and no print dialog opens. This page's SVG rendering is the fallback for
+   a PC with no agent — a web page cannot send raw bytes to a printer, so the bars are drawn
+   as graphics (which is what the desktop's own GenerateTSPLWithBitmap fallback did) and go
+   out through the HPRT's Windows driver. Either way the layout is the same, and mirrors
+   POS2/Services/BarcodePrinterService.GenerateTSPLLabel: company name small at the top,
+   article name under it, the price large in the middle, the barcode across the bottom.
+
+   The browser fallback cannot suppress the print dialog — no web page can. Launch Chrome
+   with --kiosk-printing (tools/kiosk-shortcut.ps1) and even the fallback prints silently. *@
 
 <PageTitle>Etiketat — KosovaPOS</PageTitle>
 
@@ -35,12 +40,13 @@
 
 <div class="inv-toolbar">
     <a class="btn-ghost" href="/barkod">← Barkodi</a>
-    <button class="btn-primary" @onclick="Print" disabled="@(_labels.Count == 0)">🖨️ Printo @_labels.Count etiketa</button>
-    <span class="muted print-hint">
-        Në dialogun e printimit: zgjidh printerin e etiketave, madhësia e letrës
-        <strong>@_wMm×@_hMm mm</strong>, Margins → <strong>None</strong>, Scale → <strong>100%</strong>,
-        dhe hiq <strong>Headers and footers</strong>.
-    </span>
+    <button class="btn-primary" @onclick="Print" disabled="@(_labels.Count == 0 || _busy)">
+        @(_busy ? "Duke printuar…" : $"🖨️ Printo {_labels.Count} etiketa")
+    </button>
+    @if (_status is not null)
+    {
+        <span class="muted print-hint">@_status</span>
+    }
 </div>
 
 @if (_labels.Count == 0)
@@ -106,10 +112,16 @@ else
     private sealed record Label(string Name, string Barcode, decimal Price, string? Svg);
 
     private readonly List<Label> _labels = new();
+
+    /// <summary>The queue as the agent wants it — one entry per article, with its copy count.</summary>
+    private readonly List<(Article Article, int Copies)> _queue = new();
+
     private readonly List<string> _unencodable = new();
     private string _shopName = "";
+    private string? _labelPrinter;
     private int _wMm = 55, _hMm = 25;
-    private bool _printed;
+    private bool _printed, _busy;
+    private string? _status;
 
     protected override async Task OnInitializedAsync()
     {
@@ -118,6 +130,7 @@ else
 
         var shop = await Profile.GetSettingsAsync();
         _shopName = string.IsNullOrWhiteSpace(shop?.BusinessName) ? "" : shop!.BusinessName!;
+        _labelPrinter = shop?.BarcodePrinter;
 
         var wanted = ParseQueue(Q);
         if (wanted.Count == 0) return;
@@ -147,6 +160,7 @@ else
             if (svg is null && !_unencodable.Contains(a.Name))
                 _unencodable.Add(a.Name);
 
+            _queue.Add((a, copies));
             for (int i = 0; i < copies; i++)
                 _labels.Add(new Label(a.Name, a.Barcode, a.SalesPrice, svg));
         }
@@ -157,9 +171,39 @@ else
         if (_printed || _labels.Count == 0 || Auto != "1") return;
         _printed = true;
         await Print();
+        StateHasChanged();
     }
 
-    private async Task Print() => await JS.InvokeVoidAsync("print");
+    /// <summary>
+    /// Agent first: raw TSPL to the HPRT, no print dialog. It goes article by article so a
+    /// jam does not discard the rest of the queue. If the very first label cannot be sent
+    /// (no agent on this PC), nothing has printed yet, so the whole queue safely falls back
+    /// to the browser; a failure *after* something printed must not, or the shop gets
+    /// duplicates.
+    /// </summary>
+    private async Task Print()
+    {
+        _busy = true;
+        _status = null;
+        try
+        {
+            var sent = 0;
+            var failed = new List<string>();
+
+            foreach (var (article, copies) in _queue)
+            {
+                var result = await Hw.PrintBarcodeAsync(article, copies, _labelPrinter, _wMm, _hMm);
+                if (result.Ok) sent += copies;
+                else if (sent == 0) { await JS.InvokeVoidAsync("print"); return; }
+                else failed.Add($"{article.Name}: {result.Error}");
+            }
+
+            _status = failed.Count == 0
+                ? $"{sent} etiketa u dërguan te printeri i etiketave."
+                : $"{sent} etiketa u printuan · {failed.Count} dështuan: {string.Join(" · ", failed.Take(3))}";
+        }
+        finally { _busy = false; }
+    }
 
     /// <summary>Parses <c>12x3,40x1</c>. Silently drops anything malformed — a bad URL must not 500 the till.</summary>
     private static Dictionary<int, int> ParseQueue(string? q)

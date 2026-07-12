@@ -78,6 +78,9 @@ builder.Services.AddScoped<AuditService>();
 builder.Services.AddScoped<KosovaPOS.Web.Services.Audit>();
 builder.Services.AddScoped<KosovaPOS.Web.Services.HardwareBridge>();
 
+// Singleton: the package on disk does not change while the process runs.
+builder.Services.AddSingleton<KosovaPOS.Web.Services.AgentPackage>();
+
 // Singleton: the failed-login counters are process-wide state, and a lockout that
 // reset with every circuit would lock nobody out.
 builder.Services.AddSingleton<LoginThrottle>();
@@ -215,6 +218,37 @@ app.UseAntiforgery();
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
+
+// ── Shop-PC setup downloads ─────────────────────────────────────────────
+// The hardware agent ships FROM the POS: a cashier PC needs no file copied to it by hand,
+// it just browses to /pajisjet and runs one command. The package is staged into
+// agent-package/ by tools/build-release.sh — it is a build artifact, never in git.
+//
+// Anonymous by design: PowerShell downloading the installer carries no auth cookie, so a
+// login here would break the one-command install. Nothing in the package is a secret — it
+// is the same generic agent for every shop, and its configuration (printer names, F-Link
+// paths) is passed in by whoever runs it, not baked in.
+var agentPackageDir = Environment.GetEnvironmentVariable("POS_AGENT_PACKAGE_DIR")
+                      ?? Path.Combine(app.Environment.ContentRootPath, "agent-package");
+
+// Only these names are servable, and each maps to a fixed file: the path never comes from
+// the request, so no crafted name can walk out of the package directory.
+var downloads = new Dictionary<string, (string File, string ContentType)>(StringComparer.OrdinalIgnoreCase)
+{
+    ["agjenti.zip"] = ("agjenti.zip", "application/zip"),
+    ["instalo.ps1"] = ("instalo.ps1", "text/plain; charset=utf-8"),
+    ["kiosk.ps1"]   = ("kiosk.ps1",   "text/plain; charset=utf-8"),
+};
+
+app.MapGet("/shkarko/{name}", (string name) =>
+{
+    if (!downloads.TryGetValue(name, out var d)) return Results.NotFound();
+
+    var path = Path.Combine(agentPackageDir, d.File);
+    return File.Exists(path)
+        ? Results.File(path, d.ContentType, fileDownloadName: d.File)
+        : Results.NotFound();
+}).AllowAnonymous();
 
 // Sign-out endpoint (POST from the shell)
 app.MapPost("/auth/logout", async (HttpContext ctx) =>

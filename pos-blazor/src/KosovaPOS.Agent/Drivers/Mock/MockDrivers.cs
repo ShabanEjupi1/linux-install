@@ -49,8 +49,8 @@ public sealed class MockReceiptDriver : IReceiptDriver
 
     public Task<AgentResult> PrintAsync(ReceiptPrintRequest req, CancellationToken ct = default)
     {
-        _log.LogInformation("MOCK non-fiscal receipt #{No}: {Lines} lines, total {Total:0.00}",
-            req.ReceiptNumber, req.Lines.Count, req.Total);
+        _log.LogInformation("MOCK non-fiscal receipt #{No}: {Lines} lines\n{Document}",
+            req.ReceiptNumber, req.Lines.Count, string.Join("\n", req.Lines.Select(l => l.Text)));
         return Task.FromResult(AgentResult.Success());
     }
 }

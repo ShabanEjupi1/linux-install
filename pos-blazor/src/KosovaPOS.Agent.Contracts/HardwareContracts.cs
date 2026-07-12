@@ -68,33 +68,28 @@ public sealed class FiscalPrintResult
 
 // --- Non-fiscal receipt -----------------------------------------------------
 
-/// <summary>Structured receipt the agent renders to the local receipt printer.</summary>
+/// <summary>
+/// A receipt that has ALREADY been laid out, by <c>ReceiptFormatter</c>, into fixed-width
+/// lines on the 42-column grid of an 80mm roll. The agent only stresses and emits them.
+///
+/// It deliberately does NOT carry the sale (items, totals, shop header): when it did, the
+/// agent laid the receipt out a second time and the two layouts drifted — the paper the
+/// cashier hands over and the page at <c>/kupon/{n}</c> were not the same document. Send
+/// the document, not the data.
+/// </summary>
 public sealed class ReceiptPrintRequest
 {
-    public string BusinessName { get; set; } = "";
-    public string? Address { get; set; }
-    public string? FiscalNumber { get; set; }
+    /// <summary>For the agent's log only — the layout is already fixed in <see cref="Lines"/>.</summary>
     public string ReceiptNumber { get; set; } = "";
-    public DateTimeOffset Date { get; set; } = DateTimeOffset.Now;
-    public string CashierName { get; set; } = "";
-    public string PaymentMethod { get; set; } = "";
-    public List<ReceiptLineDto> Lines { get; set; } = new();
-    public decimal Subtotal { get; set; }
-    public decimal Vat { get; set; }
-    public decimal Total { get; set; }
-    public decimal Paid { get; set; }
-    public decimal Change { get; set; }
-    public string? Footer { get; set; }
+    public List<ReceiptDocumentLine> Lines { get; set; } = new();
     public string? PrinterName { get; set; }
 }
 
-public sealed class ReceiptLineDto
+/// <param name="Emphasis">0 normal · 1 bold · 2 double-height. Matches <c>ReceiptEmphasis</c>.</param>
+public sealed class ReceiptDocumentLine
 {
-    public string Name { get; set; } = "";
-    public decimal Quantity { get; set; }
-    public decimal UnitPrice { get; set; }
-    public decimal LineTotal { get; set; }
-    public decimal VatRate { get; set; }
+    public string Text { get; set; } = "";
+    public int Emphasis { get; set; }
 }
 
 // --- Barcode label ----------------------------------------------------------
@@ -106,6 +101,14 @@ public sealed class BarcodePrintRequest
     public decimal Price { get; set; }
     public int Copies { get; set; } = 1;
     public string? PrinterName { get; set; }
+
+    /// <summary>
+    /// The label stock, in mm. The TSPL document is laid out against these — a label
+    /// built for 40×30 stock and printed on the shop's 55×25 comes out cropped, so the
+    /// size travels with the request rather than being assumed by the driver.
+    /// </summary>
+    public int LabelWidthMm { get; set; } = 55;
+    public int LabelHeightMm { get; set; } = 25;
 }
 
 // --- Scale ------------------------------------------------------------------

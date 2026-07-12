@@ -6,7 +6,6 @@
 @using KosovaPOS.Web.Services
 @inject CatalogService Catalog
 @inject HardwareBridge Hw
-@inject BusinessProfileService Profile
 @inject NavigationManager Nav
 
 <PageTitle>Barkodi — KosovaPOS</PageTitle>
@@ -22,16 +21,11 @@
         </span>
     </header>
 
-    @if (!string.IsNullOrEmpty(_message))
-    {
-        <div class="sale-msg @(_success ? "ok" : "err")">@_message</div>
-    }
-
     @if (!_agentOnline)
     {
         <div class="sale-msg err">
-            Agjenti i pajisjeve nuk po përgjigjet në këtë kompjuter, prandaj printimi nuk është i mundur.
-            Radha ruhet derisa agjenti të kthehet.
+            Agjenti i pajisjeve nuk po përgjigjet në këtë kompjuter. Etiketat printohen përmes
+            shfletuesit, i cili hap dialogun e printimit.
         </div>
     }
 
@@ -113,18 +107,13 @@
     </div>
 
     <div class="modal-actions">
-        <button class="btn-ghost" disabled="@(_queue.Count == 0 || _busy)" @onclick="() => _queue.Clear()">Pastro radhën</button>
+        <button class="btn-ghost" disabled="@(_queue.Count == 0)" @onclick="() => _queue.Clear()">Pastro radhën</button>
 
-        @* The browser path needs nothing installed, so it is the primary button. The agent
-           path prints the same labels as raw TSPL (crisper, and it feeds one at a time
-           without a print dialog) — but it is greyed out on a PC with no agent, which is
-           every PC in the shop today. *@
-        <button class="btn-primary" disabled="@(_queue.Count == 0 || _busy)" @onclick="PrintInBrowser">
-            🖨️ Printo nga shfletuesi (@TotalLabels)
-        </button>
-        <button class="btn-ghost" disabled="@(_queue.Count == 0 || _busy || !_agentOnline)" @onclick="PrintAll"
-                title="@(_agentOnline ? "Printim i drejtpërdrejtë përmes agjentit" : "Agjenti i pajisjeve nuk është i instaluar në këtë PC")">
-            @(_busy ? "Duke printuar…" : "Printo me agjent")
+        @* One button, because the choice is not the cashier's to make: /etiketa sends the
+           queue to the agent as raw TSPL when the agent is there (no dialog), and renders it
+           for the browser when it is not. *@
+        <button class="btn-primary" disabled="@(_queue.Count == 0)" @onclick="Print">
+            🖨️ Printo etiketat (@TotalLabels)
         </button>
     </div>
 </div>
@@ -137,11 +126,11 @@
     }
 
     /// <summary>
-    /// Hands the queue to /etiketa, which renders it as real label-sized pages and opens the
-    /// print dialog. The queue travels in the URL (<c>id x copies</c>) so a jam can be
-    /// reprinted by reloading, without rebuilding it.
+    /// Hands the queue to /etiketa, which prints it — through the agent if this PC has one,
+    /// otherwise through the browser. The queue travels in the URL (<c>id x copies</c>) so a
+    /// jam can be reprinted by reloading, without rebuilding it.
     /// </summary>
-    private void PrintInBrowser()
+    private void Print()
     {
         var q = string.Join(",", _queue.Select(i => $"{i.Article.Id}x{i.Copies}"));
         Nav.NavigateTo($"/etiketa?q={Uri.EscapeDataString(q)}&auto=1");
@@ -151,8 +140,6 @@
     private readonly List<QueueItem> _queue = new();
     private string _search = "";
     private int _copies = 1;
-    private bool _busy, _success;
-    private string? _message;
 
     private bool _agentOnline, _agentReal;
     private string _agentTitle = "Agjenti i pajisjeve nuk është kontrolluar ende";
@@ -197,7 +184,6 @@
         var existing = _queue.FirstOrDefault(i => i.Article.Id == a.Id);
         if (existing is not null) existing.Copies += copies;
         else _queue.Add(new QueueItem { Article = a, Copies = copies });
-        _message = null;
     }
 
     private void Bump(QueueItem item, int by)
@@ -206,27 +192,4 @@
         if (item.Copies < 1) _queue.Remove(item);
     }
 
-    private async Task PrintAll()
-    {
-        _busy = true;
-        _message = null;
-        var failures = new List<string>();
-        // The shop's configured label printer (the HPRT); null → agent's BARCODE_PRINTER default.
-        var barcodePrinter = (await Profile.GetSettingsAsync())?.BarcodePrinter;
-        // Print item-by-item: a jammed label shouldn't discard the rest of the queue.
-        foreach (var item in _queue.ToList())
-        {
-            var result = await Hw.PrintBarcodeAsync(item.Article, item.Copies, barcodePrinter);
-            if (result.Ok) _queue.Remove(item);
-            else failures.Add($"{item.Article.Name}: {result.Error}");
-        }
-
-        _success = failures.Count == 0;
-        _message = _success
-            ? "Të gjitha etiketat u dërguan te printeri."
-            : $"{failures.Count} artikuj nuk u printuan dhe mbetën në radhë. {string.Join(" · ", failures.Take(3))}";
-
-        await RefreshAgentStatusAsync();
-        _busy = false;
-    }
 }

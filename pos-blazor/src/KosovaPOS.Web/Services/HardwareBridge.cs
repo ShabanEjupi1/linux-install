@@ -1,4 +1,6 @@
 using KosovaPOS.Agent.Contracts;
+using KosovaPOS.Core.Printing;
+using KosovaPOS.Core.Services;
 using KosovaPOS.Core.Services.Hardware;
 using KosovaPOS.Models;
 using Microsoft.JSInterop;
@@ -19,9 +21,16 @@ namespace KosovaPOS.Web.Services;
 public sealed class HardwareBridge : IAsyncDisposable
 {
     private readonly IJSRuntime _js;
+    private readonly SalesService _sales;
+    private readonly BusinessProfileService _profile;
     private IJSObjectReference? _module;
 
-    public HardwareBridge(IJSRuntime js) => _js = js;
+    public HardwareBridge(IJSRuntime js, SalesService sales, BusinessProfileService profile)
+    {
+        _js = js;
+        _sales = sales;
+        _profile = profile;
+    }
 
     private async Task<IJSObjectReference> ModuleAsync() =>
         _module ??= await _js.InvokeAsync<IJSObjectReference>("import", "./js/hardware.js");
@@ -55,10 +64,21 @@ public sealed class HardwareBridge : IAsyncDisposable
         }
     }
 
-    /// <summary>Prints a non-fiscal courtesy receipt.</summary>
-    public async Task<AgentResult> PrintReceiptAsync(Receipt receipt, BusinessSettings? shop = null)
+    /// <summary>
+    /// Prints the non-fiscal courtesy receipt for a saved sale, straight to the thermal
+    /// printer as ESC/POS — no Windows print dialog. The document is laid out here, from
+    /// what was actually persisted, so the paper matches the <c>/kupon/{n}</c> page and a
+    /// reprint months later matches the original.
+    /// </summary>
+    public async Task<AgentResult> PrintReceiptAsync(long receiptNumber)
     {
-        var req = HardwareMapper.ToReceiptRequest(receipt, shop);
+        var invoice = await _sales.GetInvoiceAsync(receiptNumber);
+        if (invoice is null) return AgentResult.Fail($"Fatura #{receiptNumber} nuk u gjet.");
+
+        var shop = await _profile.GetSettingsAsync();
+        var lines = ReceiptFormatter.Format(invoice, ReceiptHeaderFor(shop));
+        var req = HardwareMapper.ToReceiptRequest(invoice.Number, lines, shop);
+
         try
         {
             var m = await ModuleAsync();
@@ -67,11 +87,22 @@ public sealed class HardwareBridge : IAsyncDisposable
         catch (Exception ex) { return AgentResult.Fail(ex.Message); }
     }
 
+    /// <summary>The shop header both the browser page and the agent print. One definition, one receipt.</summary>
+    public static ReceiptHeader ReceiptHeaderFor(BusinessSettings? shop) => new(
+        Name: string.IsNullOrWhiteSpace(shop?.BusinessName) ? "KosovaPOS" : shop!.BusinessName!,
+        Address: shop?.Address,
+        Phone: shop?.Phone,
+        FiscalNumber: shop?.FiscalNumber,
+        VatNumber: shop?.VatNumber);
+
     /// <summary>Prints barcode labels for an article, optionally on a named printer (the HPRT).</summary>
-    public async Task<AgentResult> PrintBarcodeAsync(Article article, int copies = 1, string? printerName = null)
+    public async Task<AgentResult> PrintBarcodeAsync(
+        Article article, int copies = 1, string? printerName = null,
+        int labelWidthMm = 55, int labelHeightMm = 25)
     {
         var req = HardwareMapper.ToBarcodeRequest(article, copies,
-            string.IsNullOrWhiteSpace(printerName) ? null : printerName);
+            string.IsNullOrWhiteSpace(printerName) ? null : printerName,
+            labelWidthMm, labelHeightMm);
         try
         {
             var m = await ModuleAsync();

@@ -10,16 +10,21 @@ namespace KosovaPOS.Agent.Drivers.Windows;
 /// runtime and awkward for a headless agent. We instead emit ESC/POS raw text and
 /// send it through the same winspool raw path used for barcodes — the standard,
 /// driver-independent way to drive an 80mm thermal receipt printer.
+///
+/// The layout is NOT decided here: the server sends the receipt already laid out on
+/// the 42-column grid by <c>ReceiptFormatter</c>, and this driver only stresses the
+/// lines and emits them. That is what makes the paper and the <c>/kupon/{n}</c> page
+/// the same document — printing raw ESC/POS means no Windows print dialog, so nothing
+/// visible tells the cashier if the two have drifted apart.
 /// </summary>
 [SupportedOSPlatform("windows")]
 public sealed class WindowsReceiptDriver : IReceiptDriver
 {
-    private const int Width = 42; // chars on an 80mm roll at font A
     private static readonly byte[] Init = { 0x1B, 0x40 };           // ESC @
-    private static readonly byte[] AlignCenter = { 0x1B, 0x61, 0x01 };
-    private static readonly byte[] AlignLeft = { 0x1B, 0x61, 0x00 };
     private static readonly byte[] BoldOn = { 0x1B, 0x45, 0x01 };
     private static readonly byte[] BoldOff = { 0x1B, 0x45, 0x00 };
+    private static readonly byte[] DoubleHeightOn = { 0x1D, 0x21, 0x01 };  // GS ! — height x2, width x1
+    private static readonly byte[] DoubleHeightOff = { 0x1D, 0x21, 0x00 };
     private static readonly byte[] Cut = { 0x1D, 0x56, 0x42, 0x00 }; // GS V B 0
 
     private readonly AgentConfig _cfg;
@@ -39,6 +44,9 @@ public sealed class WindowsReceiptDriver : IReceiptDriver
         if (string.IsNullOrWhiteSpace(printer))
             return Task.FromResult(AgentResult.Fail("Asnjë printer faturash nuk është konfiguruar (RECEIPT_PRINTER)."));
 
+        if (req.Lines.Count == 0)
+            return Task.FromResult(AgentResult.Fail("Kuponi erdhi bosh — asnjë rresht për të printuar."));
+
         try
         {
             var bytes = Build(req);
@@ -54,56 +62,40 @@ public sealed class WindowsReceiptDriver : IReceiptDriver
 
     private static byte[] Build(ReceiptPrintRequest r)
     {
+        // 1252 covers the Albanian letters the shop actually prints (ë 0xEB, ç 0xE7), which
+        // the printer's default code page maps back to the right glyphs.
         var enc = Encoding.GetEncoding(1252);
         using var ms = new MemoryStream();
         void Raw(byte[] b) => ms.Write(b, 0, b.Length);
-        void Line(string s = "") { var t = enc.GetBytes(s + "\n"); ms.Write(t, 0, t.Length); }
 
         Raw(Init);
-        Raw(AlignCenter);
-        Raw(BoldOn);
-        if (!string.IsNullOrWhiteSpace(r.BusinessName)) Line(r.BusinessName);
-        Raw(BoldOff);
-        if (!string.IsNullOrWhiteSpace(r.Address)) Line(r.Address);
-        if (!string.IsNullOrWhiteSpace(r.FiscalNumber)) Line($"NF: {r.FiscalNumber}");
-        Line("FATURË JOFISKALE");
-        Raw(AlignLeft);
-        Line(new string('-', Width));
-        Line($"Nr: {r.ReceiptNumber}");
-        Line($"Data: {r.Date:dd.MM.yyyy HH:mm}");
-        if (!string.IsNullOrWhiteSpace(r.CashierName)) Line($"Arkatari: {r.CashierName}");
-        Line(new string('-', Width));
 
-        foreach (var l in r.Lines)
+        // Every line is emitted left-aligned and verbatim: ReceiptFormatter already padded it
+        // to the column grid, and asking the printer to centre a pre-centred line would centre
+        // the padding too. Double-height is height-only (GS ! 0x01), so the grid still holds.
+        foreach (var line in r.Lines)
         {
-            Line(Trunc(l.Name, Width));
-            Line(Row($"  {l.Quantity:0.##} x {l.UnitPrice:0.00}", $"{l.LineTotal:0.00}"));
+            switch (line.Emphasis)
+            {
+                case 1: Raw(BoldOn); break;
+                case 2: Raw(DoubleHeightOn); break;
+            }
+
+            var text = enc.GetBytes(line.Text.TrimEnd() + "\n");
+            ms.Write(text, 0, text.Length);
+
+            switch (line.Emphasis)
+            {
+                case 1: Raw(BoldOff); break;
+                case 2: Raw(DoubleHeightOff); break;
+            }
         }
 
-        Line(new string('-', Width));
-        Line(Row("Nën-total", $"{r.Subtotal:0.00}"));
-        Line(Row("TVSH", $"{r.Vat:0.00}"));
-        Raw(BoldOn);
-        Line(Row("TOTALI", $"{r.Total:0.00} EUR"));
-        Raw(BoldOff);
-        Line(Row("Pagoi", $"{r.Paid:0.00}"));
-        Line(Row("Kusur", $"{r.Change:0.00}"));
-        if (!string.IsNullOrWhiteSpace(r.PaymentMethod)) Line($"Mënyra: {r.PaymentMethod}");
-        Line();
-        Raw(AlignCenter);
-        Line(string.IsNullOrWhiteSpace(r.Footer) ? "Faleminderit!" : r.Footer);
-        Line();
-        Line();
+        // Feed the last line clear of the cutter, then cut.
+        ms.WriteByte((byte)'\n');
+        ms.WriteByte((byte)'\n');
+        ms.WriteByte((byte)'\n');
         Raw(Cut);
         return ms.ToArray();
     }
-
-    private static string Row(string left, string right)
-    {
-        var space = Width - left.Length - right.Length;
-        return space > 0 ? left + new string(' ', space) + right : (left + " " + right);
-    }
-
-    private static string Trunc(string s, int max) =>
-        string.IsNullOrEmpty(s) ? "" : (s.Length <= max ? s : s.Substring(0, max));
 }

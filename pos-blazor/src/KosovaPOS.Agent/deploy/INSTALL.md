@@ -102,3 +102,22 @@ Reinstall the printer for all users, or install the agent under the cashier acco
 .\uninstall-agent.ps1           # remove the service, keep logs
 .\uninstall-agent.ps1 -Purge    # also delete the binary and logs
 ```
+
+## If you cannot install the agent
+
+The POS still prints — the browser renders the receipt and the labels itself and calls
+`window.print()`. But a web page cannot suppress Chrome's print dialog, so the cashier has
+to click through it (and get *Margins → None* right) on every sale.
+
+`tools/kiosk-shortcut.ps1` creates a Desktop shortcut that launches Chrome with
+`--kiosk-printing`, which prints immediately with no dialog. Two things to know before you
+rely on it:
+
+- It always prints to the **Windows default printer** — a page cannot choose. With both a
+  thermal and a label printer on the PC, only the default one gets the right paper.
+- The A4 invoice (`/fatura/{n}`) would then also come out of the thermal printer, as a very
+  long ribbon.
+
+So the shortcut is a stopgap for a single-printer PC. This shop has two printers, which is
+exactly what the agent is for: it routes receipts to `RECEIPT_PRINTER` and labels to
+`BARCODE_PRINTER`, as raw ESC/POS and TSPL, with no dialog to suppress in the first place.

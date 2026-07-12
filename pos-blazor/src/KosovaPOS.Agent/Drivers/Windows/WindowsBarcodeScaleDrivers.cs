@@ -45,23 +45,57 @@ public sealed class WindowsBarcodeDriver : IBarcodeDriver
         }
     }
 
+    /// <summary>Printhead resolution of the HPRT (and every 203dpi label printer): 8 dots/mm.</summary>
+    private const int DotsPerMm = 8;
+
+    /// <summary>Glyph width of TSPL's built-in font "2", in dots — used to fit the article name.</summary>
+    private const int NameCharDots = 12;
+
     private static string BuildTspl(BarcodePrintRequest req, int copies)
     {
-        var name = Escape(req.ArticleName);
-        var barcode = req.Barcode;
-        var type = BarcodeType(barcode);
-        var price = req.Price.ToString("0.00") + " €";
+        var wMm = Math.Clamp(req.LabelWidthMm, 20, 200);
+        var hMm = Math.Clamp(req.LabelHeightMm, 10, 200);
+        var wDots = wMm * DotsPerMm;
+        var hDots = hMm * DotsPerMm;
+        const int Margin = 8; // 1mm — the printhead cannot reach the very edge of the stock
+
+        var usable = wDots - 2 * Margin;
+        var price = Escape(req.Price.ToString("0.00") + " €");
+        var name = Escape(Trunc(req.ArticleName, usable / NameCharDots));
+
         var sb = new StringBuilder();
-        sb.AppendLine("SIZE 40 mm, 30 mm");
+        sb.AppendLine($"SIZE {wMm} mm, {hMm} mm");
         sb.AppendLine("GAP 2 mm, 0 mm");
         sb.AppendLine("DIRECTION 1,0");
         sb.AppendLine("REFERENCE 0,0");
         sb.AppendLine("DENSITY 8");
         sb.AppendLine("SPEED 4");
         sb.AppendLine("CLS");
-        sb.AppendLine($"TEXT 10,10,\"2\",0,1,1,\"{name}\"");
-        sb.AppendLine($"TEXT 10,45,\"4\",0,1,1,\"{Escape(price)}\"");
-        sb.AppendLine($"BARCODE 10,90,\"{type}\",70,1,0,2,2,\"{barcode}\"");
+        sb.AppendLine($"TEXT {Margin},4,\"2\",0,1,1,\"{name}\"");   // font 2 is 20 dots tall
+        sb.AppendLine($"TEXT {Margin},28,\"4\",0,1,1,\"{price}\""); // font 4 is 32 dots tall
+
+        // The bars start below the price and reach for the bottom of the label, leaving room
+        // for the human-readable digits TSPL prints underneath them.
+        const int BarTop = 68;
+        const int DigitDots = 24;
+        var barHeight = hDots - BarTop - DigitDots - Margin;
+
+        // A barcode wider than the label is not a wide barcode — it is a clipped one, and a
+        // clipped barcode still looks right while scanning nowhere. Shrink the module until
+        // the symbol fits; if even the thinnest bar won't fit (or the label is too short for
+        // bars at all), print the number as text, exactly as the browser path does.
+        var narrow = FitNarrowDots(req.Barcode, usable);
+        if (narrow is null || barHeight < 30)
+        {
+            sb.AppendLine($"TEXT {Margin},{Math.Min(BarTop, hDots - 24)},\"3\",0,1,1,\"{Escape(req.Barcode)}\"");
+        }
+        else
+        {
+            var type = BarcodeType(req.Barcode);
+            var x = Margin + Math.Max(0, (usable - Modules(req.Barcode) * narrow.Value) / 2);
+            sb.AppendLine($"BARCODE {x},{BarTop},\"{type}\",{barHeight},1,0,{narrow},{narrow * 2},\"{req.Barcode}\"");
+        }
+
         sb.AppendLine($"PRINT 1,{copies}");
         sb.AppendLine("EOP");
         return sb.ToString();
@@ -74,6 +108,34 @@ public sealed class WindowsBarcodeDriver : IBarcodeDriver
         if (content.Length == 12 && content.All(char.IsDigit)) return "UPCA";
         return "128";
     }
+
+    /// <summary>Width of the symbol in modules (narrowest-bar units), for the type we'd pick.</summary>
+    private static int Modules(string content) => BarcodeType(content) switch
+    {
+        "EAN13" or "UPCA" => 95,
+        "EAN8"            => 67,
+        // Code 128: start + one symbol per char + check + stop(13 modules), 11 modules each.
+        _                 => 11 * (content.Length + 2) + 13,
+    };
+
+    /// <summary>
+    /// The widest module (in dots) at which the symbol still fits <paramref name="usableDots"/>,
+    /// capped at 3 — beyond that a scanner gains nothing. Null if it cannot fit at all, or the
+    /// content is empty.
+    /// </summary>
+    private static int? FitNarrowDots(string content, int usableDots)
+    {
+        if (string.IsNullOrWhiteSpace(content)) return null;
+
+        var modules = Modules(content);
+        for (var narrow = 3; narrow >= 1; narrow--)
+            if (modules * narrow <= usableDots) return narrow;
+
+        return null;
+    }
+
+    private static string Trunc(string s, int max) =>
+        string.IsNullOrEmpty(s) || max <= 0 ? "" : (s.Length <= max ? s : s[..max]);
 
     private static string Escape(string text) => text
         .Replace("\\", "\\\\").Replace("\"", "\\\"")

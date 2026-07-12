@@ -7,7 +7,6 @@
 @using KosovaPOS.Web.Services
 @inject CatalogService Catalog
 @inject SalesService Sales
-@inject BusinessProfileService Profile
 @inject HardwareBridge Hw
 @inject Audit Audit
 
@@ -118,8 +117,8 @@
                 <div class="sale-msg @(_success ? "ok" : "err")">@_message</div>
             }
 
-            @* Printing that needs no agent: the browser prints straight to the shop's
-               thermal (80mm) or A4 printer. Shown after a sale is saved. *@
+            @* Reprint of the sale just saved. /kupon prints through the agent when it is
+               installed (no dialog) and falls back to the browser when it is not. *@
             @if (_lastNumri is not null)
             {
                 <div class="print-links">
@@ -155,7 +154,6 @@
     private bool _printReceipt;
     /// <summary>The journal number of the sale just saved, so it can be printed from the browser.</summary>
     private long? _lastNumri;
-    private KosovaPOS.Models.BusinessSettings? _shop;
     private bool _agentOnline, _agentReal;
     private string _agentTitle = "Agjenti i pajisjeve nuk është kontrolluar ende";
 
@@ -168,7 +166,6 @@
         }
         _articles = await Catalog.GetAllArticlesAsync();
         _categories = await Catalog.GetCategoriesAsync();
-        _shop = await Profile.GetSettingsAsync();
         _loading = false;
     }
 
@@ -316,10 +313,11 @@
             }
 
             // Courtesy thermal receipt on the configured (any) thermal printer. Also
-            // best-effort — the sale stands whether or not it prints.
+            // best-effort — the sale stands whether or not it prints. Laid out from what
+            // was just persisted, so the paper is the sale, not the cart it came from.
             if (_printReceipt)
             {
-                var rr = await Hw.PrintReceiptAsync(receipt, _shop);
+                var rr = await Hw.PrintReceiptAsync(savedNumri.Value);
                 _message += rr.Ok ? " · Kuponi u printua" : $" · ⚠ Kuponi nuk u printua: {rr.Error}";
                 if (!rr.Ok) _success = false;
                 await RefreshAgentStatusAsync();
