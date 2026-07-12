@@ -6,6 +6,8 @@
 @using KosovaPOS.Models
 @using KosovaPOS.Web.Services
 @inject ShiftService Shifts
+@inject UserService Users
+@inject HardwareBridge Hw
 @inject Audit Audit
 
 <PageTitle>Arka — KosovaPOS</PageTitle>
@@ -108,6 +110,10 @@
                 <button class="btn-danger" disabled="@_busy" @onclick="CloseShift">
                     @(_busy ? "Duke mbyllur…" : "Mbyll ndërrimin")
                 </button>
+                @* The X-report: the day so far, on paper, without closing anything. *@
+                <button class="btn-ghost" disabled="@_busy" @onclick="() => PrintShift(_open)">
+                    🖨️ Printo gjendjen
+                </button>
             </div>
         </div>
     }
@@ -137,6 +143,7 @@
                     <th class="num">Numëruar</th>
                     <th class="num">Diferenca</th>
                     <th>Statusi</th>
+                    <th></th>
                 </tr>
             </thead>
             <tbody>
@@ -153,11 +160,16 @@
                             @(s.Status == ShiftStatus.Open ? "—" : s.CashDifference.ToString("0.00"))
                         </td>
                         <td><span class="badge">@StatusLabel(s.Status)</span></td>
+                        <td class="actions">
+                            <button class="btn-mini" title="Printo raportin" disabled="@_busy"
+                                    @onclick="() => PrintShift(s)">🖨️</button>
+                            <a class="btn-mini" title="Shiko raportin" href="/nderrimi/@s.Id">👁️</a>
+                        </td>
                     </tr>
                 }
                 @if (_recent.Count == 0)
                 {
-                    <tr><td colspan="8" class="muted center">Asnjë ndërrim.</td></tr>
+                    <tr><td colspan="9" class="muted center">Asnjë ndërrim.</td></tr>
                 }
             </tbody>
         </table>
@@ -205,7 +217,9 @@
         if (AuthState is not null)
         {
             var user = (await AuthState).User;
-            _userName = user.FindFirst(AuthService.FullNameClaim)?.Value ?? user.Identity?.Name ?? "";
+            // The shift is signed with the cashier's CURRENT name, read from the database — the
+            // cookie's copy is whatever they were called when they signed in.
+            _userName = await Users.CurrentFullNameAsync(user);
             if (int.TryParse(user.FindFirst(AuthService.UserIdClaim)?.Value, out var uid))
                 _userId = uid;
         }
@@ -271,12 +285,56 @@
             _success = true;
             _message = $"Ndërrimi u mbyll. Diferenca: {closed.CashDifference:0.00} €.";
             _notes = null;
+
+            // The slip comes off the roll as part of closing, not as a thing to remember to do
+            // afterwards: it is what the cashier signs and hands over with the cash bag. If it
+            // cannot be printed the shift is still closed — the report is on /arka to reprint.
+            var printed = await Hw.PrintShiftReportAsync(closed);
+            if (!printed.Ok)
+                _message += " Raporti nuk u printua — printoje nga lista më poshtë.";
+
             await Reload();
         }
         catch (Exception ex)
         {
             _success = false;
             _message = ex.Message;
+        }
+        finally { _busy = false; }
+    }
+
+    /// <summary>
+    /// Prints a shift on the thermal roll. An OPEN shift is printed from the totals shown on
+    /// this screen — the numbers the manager is looking at — because the row itself holds
+    /// nothing until the shift is closed, and a slip of zeros would be worse than none.
+    /// </summary>
+    private async Task PrintShift(CashShift? shift)
+    {
+        if (shift is null) return;
+        _busy = true;
+        try
+        {
+            if (shift.Status == ShiftStatus.Open)
+            {
+                var (cash, card, total, count) = await Shifts.GetShiftSalesAsync(shift.OpenedAt);
+                shift = new CashShift
+                {
+                    Id = shift.Id,
+                    OpenedAt = shift.OpenedAt,
+                    OpeningCash = shift.OpeningCash,
+                    CashierName = shift.CashierName,
+                    Status = ShiftStatus.Open,
+                    TotalCashSales = cash,
+                    TotalCardSales = card,
+                    TotalSales = total,
+                    TransactionCount = count,
+                    ExpectedCash = shift.OpeningCash + cash,
+                };
+            }
+
+            var r = await Hw.PrintShiftReportAsync(shift);
+            _success = r.Ok;
+            _message = r.Ok ? "Raporti i ndërrimit u printua." : $"Printimi dështoi: {r.Error}";
         }
         finally { _busy = false; }
     }

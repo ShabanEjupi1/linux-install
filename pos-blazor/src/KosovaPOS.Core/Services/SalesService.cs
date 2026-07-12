@@ -227,6 +227,9 @@ public class SalesService
             TotalNet = lines.Sum(l => l.NetValue),
             TotalVat = lines.Sum(l => l.VatValue),
             TotalGross = lines.Sum(l => l.GrossValue),
+            // Written identically onto every line of the sale, so the head carries them.
+            PaidAmount = (decimal)(head.Pagoi ?? 0),
+            ChangeAmount = (decimal)(head.Mbeti ?? 0),
         };
     }
 
@@ -289,6 +292,12 @@ public class Invoice
     public decimal TotalNet { get; set; }
     public decimal TotalVat { get; set; }
     public decimal TotalGross { get; set; }
+
+    /// <summary>Cash the customer handed over. Equal to the total on a card sale.</summary>
+    public decimal PaidAmount { get; set; }
+
+    /// <summary>Change handed back. On DitariD this is what <c>Mbeti</c> holds — NOT an amount still owed.</summary>
+    public decimal ChangeAmount { get; set; }
 }
 
 public class InvoiceLine

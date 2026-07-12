@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
 using KosovaPOS.Core.Data;
 using KosovaPOS.Models.BMDData;
@@ -32,6 +33,31 @@ public class UserService
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
         return await db.POSUsers.AsNoTracking().FirstOrDefaultAsync(u => u.Id == id);
+    }
+
+    /// <summary>
+    /// The signed-in user's name <b>as it is now</b> — read from the database, not from the
+    /// login cookie.
+    ///
+    /// The cookie's <c>full_name</c> claim is a photograph taken at sign-in: rename a user and
+    /// every receipt they print keeps their old name on it until they happen to log out, and
+    /// rename someone ELSE and their till keeps the old name for as long as their session lasts.
+    /// Anything that puts a person's name on paper or in the journal must ask the database,
+    /// which costs one indexed row read next to a sale that writes several.
+    ///
+    /// Falls back to the claim if the row is gone — a receipt with a stale name still beats a
+    /// receipt with no cashier at all.
+    /// </summary>
+    public async Task<string> CurrentFullNameAsync(ClaimsPrincipal? principal)
+    {
+        var claimed = principal?.FindFirst(AuthService.FullNameClaim)?.Value
+                      ?? principal?.Identity?.Name ?? "";
+
+        if (!int.TryParse(principal?.FindFirst(AuthService.UserIdClaim)?.Value, out var id) || id <= 0)
+            return claimed;
+
+        var user = await FindByIdAsync(id);
+        return string.IsNullOrWhiteSpace(user?.FullName) ? claimed : user!.FullName!;
     }
 
     /// <summary>True if the username is taken by a *different* user.</summary>

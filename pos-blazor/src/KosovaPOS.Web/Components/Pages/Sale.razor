@@ -7,6 +7,7 @@
 @using KosovaPOS.Web.Services
 @inject CatalogService Catalog
 @inject SalesService Sales
+@inject UserService Users
 @inject HardwareBridge Hw
 @inject LocalState Local
 @inject Audit Audit
@@ -21,7 +22,8 @@
                    placeholder="Kërko emër ose skano barkod…" class="search-box" autofocus />
             @if (_categories.Count > 0)
             {
-                <select @bind="_activeCategory" class="cat-select">
+                <select value="@_activeCategory" class="cat-select"
+                        @onchange="e => SetCategory(e.Value?.ToString())">
                     <option value="">Të gjitha</option>
                     @foreach (var c in _categories)
                     {
@@ -96,20 +98,12 @@
                     <button class="pm @(_payment == m ? "active" : "")" @onclick="() => SetPayment(m)">@m</button>
                 }
             </div>
-            <div class="pay-row">
-                <label>Paguar</label>
-                <input type="number" step="0.01" @bind="_paid" @bind:after="SaveDraft" class="paid-box" />
-            </div>
-            <div class="pay-row change">
-                <span>Kusuri</span>
-                <span>@Change.ToString("0.00") €</span>
-            </div>
             <label class="fiscal-toggle">
-                <input type="checkbox" @bind="_printFiscal" @bind:after="SaveDraft" />
+                <input type="checkbox" @bind="_printFiscal" @bind:after="SavePrefs" />
                 Printo faturën fiskale
             </label>
             <label class="fiscal-toggle">
-                <input type="checkbox" @bind="_printReceipt" @bind:after="SaveDraft" />
+                <input type="checkbox" @bind="_printReceipt" @bind:after="SavePrefs" />
                 Printo kuponin termik
             </label>
 
@@ -153,12 +147,74 @@
                 </div>
             }
 
-            <button class="complete" disabled="@(_cart.Count == 0 || _busy)" @onclick="Complete">
+            <button class="complete" disabled="@(_cart.Count == 0 || _busy)" @onclick="StartCheckout">
                 @(_busy ? "Duke ruajtur…" : "PËRFUNDO (F12)")
             </button>
         </div>
     </section>
 </div>
+
+@* ── The money in the customer's hand ───────────────────────────────────────────────────
+   A cash sale ends with a subtraction the cashier used to do in their head while the
+   customer waited. So the till asks for the note it was handed, and shows the change in
+   figures big enough to read across the counter. Card and transfer skip this entirely:
+   there is nothing tendered and nothing to give back. *@
+@if (_tender)
+{
+    <div class="modal-backdrop">
+        <div class="modal tender" @onclick:stopPropagation="true">
+            <h2>Sa para dha klienti?</h2>
+
+            <div class="tender-total">
+                <span>Për pagesë</span>
+                <strong>@Total.ToString("0.00") €</strong>
+            </div>
+
+            <input type="number" step="0.01" min="0" class="tender-box" id="tender-box"
+                   @bind="_paid" @bind:event="oninput" @onkeydown="TenderKey" />
+
+            <div class="tender-quick">
+                @foreach (var amount in CashSuggestions)
+                {
+                    <button class="btn-ghost" @onclick="() => _paid = amount">@amount.ToString("0.00") €</button>
+                }
+            </div>
+
+            @* Negative means the note does not cover the sale — say so instead of showing a
+               change of 0.00 €, which reads as "nothing to give back" and is a way to be short. *@
+            <div class="tender-change @(_paid < Total ? "short" : "")">
+                <span>@(_paid < Total ? "Mungon" : "Kusuri")</span>
+                <strong>@Math.Abs(Total - _paid).ToString("0.00") €</strong>
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn-primary" disabled="@(_busy || _paid < Total)" @onclick="Complete">
+                    @(_busy ? "Duke ruajtur…" : "Përfundo shitjen")
+                </button>
+                <button class="btn-ghost" disabled="@_busy" @onclick="() => _tender = false">Anulo</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* The change owed, after the sale is safely in the database — held on screen until the
+   cashier dismisses it, because they are counting coins out of a drawer while it is up. *@
+@if (_changeDue is { } due)
+{
+    <div class="modal-backdrop" @onclick="() => _changeDue = null">
+        <div class="modal tender" @onclick:stopPropagation="true">
+            <h2>Fatura #@_lastNumri u ruajt</h2>
+            <div class="tender-change big">
+                <span>KUSURI</span>
+                <strong>@due.ToString("0.00") €</strong>
+            </div>
+            <p class="muted">Paguar @_lastPaid.ToString("0.00") € · Totali @_lastTotal.ToString("0.00") €</p>
+            <div class="modal-actions">
+                <button class="btn-primary" @onclick="() => _changeDue = null">Në rregull</button>
+            </div>
+        </div>
+    </div>
+}
 
 @code {
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
@@ -174,7 +230,13 @@
     private decimal _paid;
     private bool _loading = true, _busy, _success;
     private string? _message;
-    private string _cashierName = "";
+
+    /// <summary>The tender prompt is open, waiting to be told what the customer handed over.</summary>
+    private bool _tender;
+
+    /// <summary>Change owed on the sale just saved. Non-null while the change panel is up.</summary>
+    private decimal? _changeDue;
+    private decimal _lastPaid, _lastTotal;
 
     private bool _printFiscal = true;
     private bool _printReceipt;
@@ -192,18 +254,25 @@
     /// <summary>Which paper the cashier asked for. All three come off the same saved sale.</summary>
     private enum Doc { Receipt80, InvoiceA4, WaybillA4 }
 
-    // ---- The unfinished sale ---------------------------------------------------------------
+    // ---- What the till remembers ------------------------------------------------------------
     //
-    // Blazor destroys this component the moment the cashier opens another screen, and it used
-    // to take the cart with it: a customer's basket, already scanned, gone because someone
-    // checked a price on /stoku. The cart therefore lives in the browser as well as in the
-    // circuit, and is written on every change — scanning is the expensive part, not storing.
+    // Blazor destroys this component the moment the cashier opens another screen, and it used to
+    // take everything with it: a customer's basket, already scanned, gone because someone checked
+    // a price on /stoku. So the till's state lives in the browser as well as in the circuit.
+    //
+    // But the basket and the till's SETTINGS have opposite lifetimes, and storing them together
+    // was the bug: finishing a sale correctly clears the basket, and it was clearing the printer,
+    // the payment method and the print toggles along with it — so every sale reset the till to
+    // factory settings and the cashier re-picked their printer all day long. They are two records
+    // under two keys now: the cart dies with the sale, the preferences outlive it.
 
     private sealed record DraftLine(int ArticleId, string Barcode, string Name,
                                     decimal Price, decimal Quantity, decimal VatRate);
 
-    private sealed record SaleDraftState(List<DraftLine> Lines, string Payment, decimal Paid,
-                                         bool PrintFiscal, bool PrintReceipt);
+    private sealed record SaleDraftState(List<DraftLine> Lines);
+
+    /// <summary>Settings of THIS till, kept across sales, navigations and logins.</summary>
+    private sealed record TillPrefs(string Payment, bool PrintFiscal, bool PrintReceipt, string? Category);
 
     private bool _restored;
 
@@ -219,8 +288,14 @@
 
         await Local.SaveAsync(LocalKeys.SaleDraft, new SaleDraftState(
             _cart.Select(l => new DraftLine(l.ArticleId, l.Barcode, l.ArticleName,
-                                            l.Price, l.Quantity, l.VATRate)).ToList(),
-            _payment, _paid, _printFiscal, _printReceipt));
+                                            l.Price, l.Quantity, l.VATRate)).ToList()));
+    }
+
+    private async Task SavePrefs()
+    {
+        if (!_restored) return;
+        await Local.SaveAsync(LocalKeys.TillPrefs,
+            new TillPrefs(_payment, _printFiscal, _printReceipt, _activeCategory));
     }
 
     /// <summary>
@@ -228,10 +303,24 @@
     /// the DRAFT, not from the catalogue: what was quoted to the customer standing there is what
     /// was scanned, and silently re-pricing a basket behind their back is worse than losing it.
     /// </summary>
-    private async Task RestoreDraftAsync()
+    private async Task RestoreAsync()
     {
+        var prefs = await Local.LoadAsync<TillPrefs>(LocalKeys.TillPrefs);
         var draft = await Local.LoadAsync<SaleDraftState>(LocalKeys.SaleDraft);
+        _receiptPrinter = await Local.LoadAsync<string>(LocalKeys.ReceiptPrinter);
         _restored = true;
+
+        if (prefs is not null)
+        {
+            if (!string.IsNullOrWhiteSpace(prefs.Payment)) _payment = prefs.Payment;
+            _printFiscal = prefs.PrintFiscal;
+            _printReceipt = prefs.PrintReceipt;
+            // Only restore a category that still exists — a shelf can be renamed, and a filter
+            // pinned to a category that is gone shows an empty catalogue that looks like a crash.
+            if (!string.IsNullOrWhiteSpace(prefs.Category) && _categories.Contains(prefs.Category!))
+                _activeCategory = prefs.Category!;
+        }
+
         if (draft is null || draft.Lines.Count == 0) return;
 
         _cart.Clear();
@@ -248,12 +337,6 @@
             });
         }
 
-        if (!string.IsNullOrWhiteSpace(draft.Payment)) _payment = draft.Payment;
-        _printFiscal = draft.PrintFiscal;
-        _printReceipt = draft.PrintReceipt;
-        // Whatever was typed into "Paguar" is kept, but a zero is re-defaulted to the total —
-        // the same thing SyncPaid does for a fresh scan.
-        _paid = draft.Paid > 0 ? draft.Paid : Total;
         _message = "Shporta e papërfunduar u rikthye.";
         _success = true;
     }
@@ -261,7 +344,13 @@
     private async Task SetPayment(string method)
     {
         _payment = method;
-        await SaveDraft();
+        await SavePrefs();
+    }
+
+    private async Task SetCategory(string? category)
+    {
+        _activeCategory = category ?? "";
+        await SavePrefs();
     }
 
     private async Task SetReceiptPrinter(string? printer)
@@ -321,11 +410,6 @@
 
     protected override async Task OnInitializedAsync()
     {
-        if (AuthState is not null)
-        {
-            var u = (await AuthState).User;
-            _cashierName = u.FindFirst(AuthService.FullNameClaim)?.Value ?? u.Identity?.Name ?? "";
-        }
         _articles = await Catalog.GetAllArticlesAsync();
         _categories = await Catalog.GetCategoriesAsync();
         _loading = false;
@@ -336,8 +420,7 @@
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender) return;
-        await RestoreDraftAsync();
-        _receiptPrinter = await Local.LoadAsync<string>(LocalKeys.ReceiptPrinter);
+        await RestoreAsync();
         await RefreshAgentStatusAsync();
     }
 
@@ -349,7 +432,13 @@
         _agentTitle = health is null
             ? "Agjenti i pajisjeve nuk u gjet — faturat fiskale nuk do të printohen."
             : $"{health.Fiscal.Model} · {health.Fiscal.ComPort} · {(health.RealHardware ? "pajisje reale" : "modaliteti test")}";
-        _printers = _agentOnline ? await Hw.GetPrintersAsync() : null;
+
+        // The list is REPLACED only when a new one actually arrives. This runs after every sale,
+        // and a momentarily unreachable agent used to blank it — which took the printer dropdown
+        // off the screen mid-shift and made the cashier's choice look like it had been forgotten.
+        var printers = _agentOnline ? await Hw.GetPrintersAsync() : null;
+        if (printers is { Printers.Count: > 0 }) _printers = printers;
+
         StateHasChanged();
     }
 
@@ -386,6 +475,53 @@
         {
             await AddToCart(hit);
             _search = "";
+        }
+    }
+
+    /// <summary>
+    /// Cash ends at the tender prompt; card and transfer go straight through — there is no note
+    /// to hand over and no change to give, so asking for one would be a keystroke per sale for
+    /// nothing.
+    /// </summary>
+    private async Task StartCheckout()
+    {
+        if (_cart.Count == 0 || _busy) return;
+
+        if (!IsCash)
+        {
+            _paid = Total;
+            await Complete();
+            return;
+        }
+
+        _paid = Total;              // exact money is the common case; the buttons cover the rest
+        _tender = true;
+        _message = null;
+    }
+
+    private async Task TenderKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && _paid >= Total && !_busy) await Complete();
+        else if (e.Key == "Escape") _tender = false;
+    }
+
+    /// <summary>
+    /// The notes a customer plausibly hands over for this total: the exact amount, then the
+    /// round figures above it. Anything at or below the total is not an offer of payment.
+    /// </summary>
+    private IEnumerable<decimal> CashSuggestions
+    {
+        get
+        {
+            var total = Total;
+            var candidates = new List<decimal> { total, Math.Ceiling(total) };
+            candidates.AddRange(new[] { 5m, 10m, 20m, 50m, 100m });
+
+            return candidates
+                .Where(c => c >= total && c > 0)
+                .Distinct()
+                .OrderBy(c => c)
+                .Take(5);
         }
     }
 
@@ -428,13 +564,15 @@
         await SaveDraft();
     }
 
-    // Keep "paid" defaulted to the total for quick cash sales until the user overrides.
+    // The cart carries the tender until the prompt sets it; nothing is defaulted behind it.
     private void SyncPaid() => _paid = Total;
 
     private decimal Subtotal => _cart.Sum(l => l.TotalValue - l.VATValue);
     private decimal VatTotal => _cart.Sum(l => l.VATValue);
     private decimal Total => _cart.Sum(l => l.TotalValue);
     private decimal Change => Math.Max(0, _paid - Total);
+
+    private bool IsCash => _payment == _methods[0];
 
     private async Task Complete()
     {
@@ -443,16 +581,26 @@
         _message = null;
         try
         {
+            // Read the cashier's name from the DATABASE, not from the login cookie: the cookie's
+            // copy was taken at sign-in, so a user who has since been renamed keeps printing their
+            // old name on every receipt until they happen to log out again.
+            var cashierName = AuthState is null
+                ? ""
+                : await Users.CurrentFullNameAsync((await AuthState).User);
+
+            var total = Total;
+            var paid = _paid < total ? total : _paid;
+
             var receiptNo = await Sales.GetNextReceiptNumberAsync();
             var receipt = new Receipt
             {
                 ReceiptNumber = receiptNo,
                 Date = DateTime.Now,
-                CashierName = _cashierName,
+                CashierName = cashierName,
                 PaymentMethod = _payment,
-                TotalAmount = Total,
-                PaidAmount = _paid < Total ? Total : _paid,
-                LeftAmount = Change,
+                TotalAmount = total,
+                PaidAmount = paid,
+                LeftAmount = paid - total,
                 Items = _cart.ToList()
             };
 
@@ -469,11 +617,19 @@
             // Held so the fiscal receipt can be re-sent after the printer's memory is cleared,
             // without ringing the sale up a second time.
             _lastReceipt = receipt;
-            var change = Change;
+
+            var change = paid - total;
             _message = $"Fatura #{savedNumri} u ruajt · Kusuri {change:0.00} €";
 
+            // The sale is in the database, so the prompt has done its job. The change panel takes
+            // its place — and only for cash, since a card sale has no coins to count back.
+            _tender = false;
+            _lastPaid = paid;
+            _lastTotal = total;
+            _changeDue = IsCash ? change : null;
+
             await Audit.LogAsync(AuditAction.Sale, "Receipt", (int)savedNumri, receiptNo,
-                details: $"{Total:0.00} € · {_payment} · {_cart.Count} artikuj");
+                details: $"{total:0.00} € · {_payment} · {receipt.Items.Count} artikuj");
 
             // The sale is already persisted; fiscal printing is best-effort and
             // must never roll it back. Report but don't fail the sale if it can't print.

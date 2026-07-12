@@ -373,7 +373,41 @@ a.stat:hover { border-color: var(--accent); }
   box-shadow: var(--shadow-pop);
 }
 .modal.small { width: 380px; }
+/* The account card carries a six-column table and a payment form; 640px crushes both. */
+.modal.wide { width: 900px; }
 .modal h2 { margin: 0 0 1rem; font-size: 1.2rem; }
+.ledger-wrap { max-height: 40vh; overflow-y: auto; }
+/* A payment stands out from the invoices it settles — it is the row that moved the balance down. */
+.pay-row-ledger { background: var(--ok-bg, rgba(16,185,129,.08)); }
+
+/* The tender prompt. Sized to be read across a counter, not by the person typing into
+   it: the cashier is looking down at a drawer of coins while the customer reads the
+   change off the screen, so the amount is the largest thing on the page. */
+.modal.tender { width: 430px; text-align: center; }
+.tender-total {
+  display: flex; justify-content: space-between; align-items: baseline;
+  padding: .5rem .1rem; color: var(--muted); font-size: .9rem;
+}
+.tender-total strong { font-size: 1.4rem; color: var(--ink); }
+.tender-box {
+  width: 100%; padding: .7rem; margin: .4rem 0 .8rem;
+  font-size: 2.2rem; font-weight: 700; text-align: center;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  border: 2px solid var(--brand); border-radius: var(--r-md);
+  background: var(--surface); color: var(--ink);
+}
+.tender-quick { display: flex; flex-wrap: wrap; gap: .4rem; justify-content: center; }
+.tender-quick .btn-ghost { flex: 1 1 5.5rem; font-variant-numeric: tabular-nums; }
+.tender-change {
+  display: flex; justify-content: space-between; align-items: baseline;
+  margin-top: 1rem; padding: .7rem .9rem; border-radius: var(--r-md);
+  background: var(--ok-bg, rgba(16,185,129,.10)); color: var(--ok);
+  font-weight: 700;
+}
+.tender-change strong { font-size: 1.8rem; font-variant-numeric: tabular-nums; }
+.tender-change.big strong { font-size: 3rem; }
+/* Short-paid: the note does not cover the sale. Never dressed up as a change of zero. */
+.tender-change.short { background: var(--err-bg, rgba(239,68,68,.10)); color: var(--err, #dc2626); }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .8rem; }
 .form-grid .span2 { grid-column: span 2; }
 .modal-actions { display: flex; justify-content: flex-end; gap: .6rem; margin-top: 1.2rem; }
@@ -403,6 +437,19 @@ a.stat:hover { border-color: var(--accent); }
 }
 .catalogue { display: flex; flex-direction: column; min-height: 0; }
 .search-row { display: flex; gap: .5rem; margin-bottom: .75rem; }
+
+/* A list's filters. Wraps rather than scrolls: on a till screen a filter you cannot see
+   is a filter you forget is applied, and then the totals below it lie to you. */
+.filter-bar {
+  display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin-bottom: .75rem;
+}
+.filter-bar .search-box { flex: 1 1 16rem; min-width: 12rem; }
+.date-field {
+  display: flex; align-items: center; gap: .35rem;
+  font-size: .82rem; color: var(--muted); white-space: nowrap;
+}
+.date-field .input { padding: .4rem .5rem; }
+.head-actions { display: flex; gap: .5rem; align-items: center; }
 .search-box {
   flex: 1; padding: .7rem .9rem; border: 1px solid #cbd5e1; border-radius: var(--r-md);
   font-size: 1.05rem; font-family: inherit; background: var(--surface); color: var(--ink);
@@ -595,6 +642,21 @@ a.stat:hover { border-color: var(--accent); }
 }
 .hint .mono { font-size: .75rem; }
 
+/* Receipt designer: the switches on the left, the paper they produce on the right.
+   The preview is a real .r80 document, so it keeps the printer's own column grid —
+   it is allowed to shrink but never to re-wrap, or it would stop telling the truth. */
+.receipt-config { display: flex; gap: 1.25rem; align-items: flex-start; flex-wrap: wrap; }
+.receipt-toggles {
+  flex: 1 1 20rem; display: grid; grid-template-columns: 1fr 1fr; gap: .55rem 1rem;
+}
+.receipt-toggles .field { margin-top: .3rem; }
+.receipt-toggles .span2 { grid-column: 1 / -1; }
+.receipt-preview { flex: 0 1 auto; display: flex; flex-direction: column; gap: .4rem; }
+.receipt-preview .r80 { margin: 0; transform-origin: top left; max-width: 100%; overflow-x: auto; }
+@media (max-width: 900px) {
+  .receipt-toggles { grid-template-columns: 1fr; }
+}
+
 /* Impersonation banner — a platform admin driving a shop user's session. Amber,
    sticky at the top of the main pane so it is never lost while scrolling. */
 .impersonation-bar {
@@ -720,7 +782,36 @@ a.stat:hover { border-color: var(--accent); }
 
   /* Screen-only chrome must not eat a line of paper. */
   .inv-toolbar { display: none !important; }
+
+  /* ── Any management list, printed ──────────────────────────────────────────
+     Every list screen is built out of .mgmt + .grid-table, so ONE set of rules makes
+     all of them printable — Ctrl+P on /blerjet, /partneret, /stoku, /faturat gives a
+     clean table on paper with none of the app around it. The table that prints is the
+     table on screen, filters and all: what you narrowed it to IS the report, which is
+     why there is no separate "report designer" to keep in step with the screen. */
+  .sidenav, .appbar, .nav-toggle, .nav-scrim,
+  .impersonation-bar, .filter-bar, .search-row, .head-actions,
+  .grid-table .actions, .grid-table th:last-child:empty,
+  .more-row, .modal-backdrop, .sale-msg, .btn-primary, .btn-ghost, .btn-mini {
+    display: none !important;
+  }
+
+  .shell, .mgmt { display: block; margin: 0; padding: 0; height: auto; overflow: visible; }
+  .mgmt-head { border: none; padding: 0 0 .5rem; }
+
+  .table-wrap { overflow: visible !important; max-height: none !important; border: none; }
+  .grid-table { width: 100%; border-collapse: collapse; font-size: 10pt; }
+  .grid-table th, .grid-table td { border-bottom: 1px solid #999; padding: 3pt 4pt; color: #000; }
+  .grid-table thead { display: table-header-group; }   /* repeat the header on every page */
+  .grid-table tr { break-inside: avoid; }
+
+  /* The applied filters, printed at the top so a sheet handed to someone else says what
+     it is a list OF. Hidden on screen, where the filter bar already says it. */
+  .print-only { display: block !important; }
 }
+
+/* The filter summary exists only on paper. */
+.print-only { display: none; }
 
 /* ── Barcode labels, printed by the browser through the label printer's driver ──
    Every dimension is in mm: a label is a physical object, and a scanner rejects bars

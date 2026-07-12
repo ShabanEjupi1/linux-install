@@ -64,8 +64,15 @@ public sealed class LocalState : IAsyncDisposable
 /// <summary>The localStorage keys, in one place so a rename cannot orphan a shop's saved cart.</summary>
 public static class LocalKeys
 {
-    /// <summary>The unfinished sale on this till.</summary>
+    /// <summary>The unfinished sale on this till. Cleared the moment the sale is saved.</summary>
     public const string SaleDraft = "pos.sale.draft.v1";
+
+    /// <summary>
+    /// How this till is set up — payment method, print toggles, the shelf it is filtered to.
+    /// Deliberately NOT part of the sale draft: the draft is thrown away when a sale completes,
+    /// and keeping these in it meant every sale reset the till to factory settings.
+    /// </summary>
+    public const string TillPrefs = "pos.till.prefs.v1";
 
     /// <summary>The thermal/receipt printer this PC prints on, overriding the shop default.</summary>
     public const string ReceiptPrinter = "pos.printer.receipt.v1";

@@ -26,6 +26,13 @@ public class ShiftService
             .FirstOrDefaultAsync();
     }
 
+    /// <summary>One shift, for the printable close-of-shift report.</summary>
+    public async Task<CashShift?> GetByIdAsync(int id)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.CashShifts.AsNoTracking().FirstOrDefaultAsync(s => s.Id == id);
+    }
+
     public async Task<List<CashShift>> GetRecentAsync(int count = 30)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();

@@ -7,7 +7,9 @@
 @using KosovaPOS.Web.Services
 @inject CatalogService Catalog
 @inject PurchaseService PurchaseSvc
+@inject UserService Users
 @inject Audit Audit
+@inject IJSRuntime JS
 
 <PageTitle>Blerjet — KosovaPOS</PageTitle>
 
@@ -145,12 +147,54 @@ else
                     }
                 </span>
             </div>
-            <button class="btn-primary" @onclick="ShowEntry">+ Blerje e re</button>
+            <div class="head-actions">
+                <button class="btn-ghost" @onclick="PrintList" disabled="@(!FilteredRecent.Any())">🖨️ Printo listën</button>
+                <button class="btn-primary" @onclick="ShowEntry">+ Blerje e re</button>
+            </div>
         </header>
 
-        <div class="search-row">
-            <input @bind="_recentSearch" @bind:event="oninput" @bind:after="() => _shown = PageSize"
-                   placeholder="Kërko nr. dokumenti, nr. fature, lloj ose datë…" class="search-box" />
+        @* Everything the list can be cut by, in one bar. The supplier dropdown is the one that
+           was missing: a purchase's supplier was only ever an id on the journal line, so the
+           search box could not see it and "show me what NESA MEDI delivered" was unanswerable. *@
+        <div class="filter-bar">
+            <input @bind="_recentSearch" @bind:event="oninput" @bind:after="ResetPaging"
+                   placeholder="Kërko nr. dokumenti, nr. fature, furnizues…" class="search-box" />
+
+            <select @bind="_supplierFilter" @bind:after="ResetPaging" class="cat-select">
+                <option value="0">Të gjithë furnizuesit</option>
+                @foreach (var s in _suppliers)
+                {
+                    <option value="@s.Id">@s.Name</option>
+                }
+            </select>
+
+            <select @bind="_typeFilter" @bind:after="ResetPaging" class="cat-select">
+                <option value="">Çdo lloj</option>
+                <option value="Vendore">Vendore</option>
+                <option value="Import">Import</option>
+                <option value="Shpenzime">Shpenzime</option>
+            </select>
+
+            <select @bind="_paidFilter" @bind:after="ResetPaging" class="cat-select">
+                <option value="">Paguar ose jo</option>
+                <option value="unpaid">Vetëm të papaguara</option>
+                <option value="paid">Vetëm të paguara</option>
+            </select>
+
+            <label class="date-field">Nga <input type="date" class="input" @bind="_from" @bind:after="ResetPaging" /></label>
+            <label class="date-field">Deri <input type="date" class="input" @bind="_to" @bind:after="ResetPaging" /></label>
+
+            @if (HasFilters)
+            {
+                <button class="btn-ghost" @onclick="ClearFilters">Pastro filtrat</button>
+            }
+        </div>
+
+        @* On paper only: what this sheet is a list of. Without it, a printed table of 40 rows is
+           40 rows of something, and nobody downstream can tell what was filtered out. *@
+        <div class="print-only">
+            <h2>Blerjet — @FilterSummary</h2>
+            <p>Printuar më @DateTime.Now.ToString("dd.MM.yyyy HH:mm")</p>
         </div>
 
         <div class="table-wrap">
@@ -163,8 +207,9 @@ else
                 <table class="grid-table">
                     <thead>
                         <tr>
-                            <th>Nr.</th><th>Fatura</th><th>Data</th><th>Ora</th>
-                            <th>Lloji</th><th class="num">Artikuj</th><th class="num">Totali</th><th></th>
+                            <th>Nr.</th><th>Fatura</th><th>Furnizuesi</th><th>Data</th>
+                            <th>Lloji</th><th class="num">Artikuj</th><th class="num">Totali</th>
+                            <th class="num">Mbetur</th><th></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -173,11 +218,14 @@ else
                             <tr class="clickable" @onclick="() => OpenDetail(p.DocumentNumber)">
                                 <td class="mono">#@p.DocumentNumber</td>
                                 <td>@p.InvoiceNumber</td>
+                                <td>@(string.IsNullOrWhiteSpace(p.SupplierName) ? "—" : p.SupplierName)</td>
                                 <td>@p.Date.ToString("dd.MM.yyyy")</td>
-                                <td>@p.Time</td>
                                 <td>@p.PurchaseType</td>
                                 <td class="num">@p.ItemCount</td>
                                 <td class="num strong">@p.TotalAmount.ToString("0.00") €</td>
+                                <td class="num @(p.IsPaid ? "" : "out")">
+                                    @(p.IsPaid ? "paguar" : p.Outstanding.ToString("0.00") + " €")
+                                </td>
                                 <td class="actions" @onclick:stopPropagation="true">
                                     <button class="btn-mini" title="Shiko" @onclick="() => OpenDetail(p.DocumentNumber)">👁️</button>
                                     <button class="btn-mini" title="Ndrysho" @onclick="() => EditPurchase(p.DocumentNumber)">✏️</button>
@@ -188,11 +236,22 @@ else
                         }
                         @if (!FilteredRecent.Any())
                         {
-                            <tr><td colspan="8" class="muted center">
-                                @(_recent.Count == 0 ? "Asnjë blerje ende." : "Asnjë blerje nuk përputhet me kërkimin.")
+                            <tr><td colspan="9" class="muted center">
+                                @(_recent.Count == 0 ? "Asnjë blerje ende." : "Asnjë blerje nuk përputhet me filtrat.")
                             </td></tr>
                         }
                     </tbody>
+                    @if (FilteredRecent.Any())
+                    {
+                        <tfoot>
+                            <tr>
+                                <th colspan="6" class="num">TOTALI (@FilteredRecent.Count() blerje)</th>
+                                <th class="num">@FilteredRecent.Sum(p => p.TotalAmount).ToString("0.00") €</th>
+                                <th class="num">@FilteredRecent.Sum(p => Math.Max(0, p.Outstanding)).ToString("0.00") €</th>
+                                <th></th>
+                            </tr>
+                        </tfoot>
+                    }
                 </table>
 
                 @if (FilteredRecent.Count() > _shown)
@@ -300,11 +359,32 @@ else
     private bool _detailLoading;
 
     private string _recentSearch = "";
+    private int _supplierFilter;
+    private string _typeFilter = "";
+    private string _paidFilter = "";
+    private DateTime? _from, _to;
     private int _shown = PageSize;
     private const int PageSize = 100;
 
+    private bool HasFilters =>
+        !string.IsNullOrWhiteSpace(_recentSearch) || _supplierFilter > 0
+        || !string.IsNullOrWhiteSpace(_typeFilter) || !string.IsNullOrWhiteSpace(_paidFilter)
+        || _from is not null || _to is not null;
+
+    private void ResetPaging() => _shown = PageSize;
+
+    private void ClearFilters()
+    {
+        _recentSearch = "";
+        _supplierFilter = 0;
+        _typeFilter = "";
+        _paidFilter = "";
+        _from = _to = null;
+        ResetPaging();
+    }
+
     /// <summary>
-    /// Every purchase the shop has ever entered, narrowed by whatever was typed. The list used to
+    /// Every purchase the shop has ever entered, narrowed by the filter bar. The list used to
     /// stop at the newest 100 documents with nothing to say the rest existed — a shop with 361 of
     /// them could not find last spring's delivery at all.
     /// </summary>
@@ -312,14 +392,69 @@ else
     {
         get
         {
-            if (string.IsNullOrWhiteSpace(_recentSearch)) return _recent;
-            var s = _recentSearch.Trim();
-            return _recent.Where(p =>
-                p.DocumentNumber.Contains(s, StringComparison.OrdinalIgnoreCase)
-                || p.InvoiceNumber.Contains(s, StringComparison.OrdinalIgnoreCase)
-                || p.PurchaseType.Contains(s, StringComparison.OrdinalIgnoreCase)
-                || p.Date.ToString("dd.MM.yyyy").Contains(s, StringComparison.OrdinalIgnoreCase));
+            IEnumerable<PurchaseSummary> q = _recent;
+
+            if (_supplierFilter > 0) q = q.Where(p => p.SupplierId == _supplierFilter);
+            if (!string.IsNullOrWhiteSpace(_typeFilter)) q = q.Where(p => p.PurchaseType == _typeFilter);
+
+            q = _paidFilter switch
+            {
+                "paid"   => q.Where(p => p.IsPaid),
+                "unpaid" => q.Where(p => !p.IsPaid),
+                _        => q,
+            };
+
+            // Inclusive on both ends: a shop asking for 1–31 March means the whole of the 31st.
+            if (_from is { } from) q = q.Where(p => p.Date.Date >= from.Date);
+            if (_to is { } to)     q = q.Where(p => p.Date.Date <= to.Date);
+
+            if (!string.IsNullOrWhiteSpace(_recentSearch))
+            {
+                var s = _recentSearch.Trim();
+                q = q.Where(p =>
+                    p.DocumentNumber.Contains(s, StringComparison.OrdinalIgnoreCase)
+                    || p.InvoiceNumber.Contains(s, StringComparison.OrdinalIgnoreCase)
+                    || p.SupplierName.Contains(s, StringComparison.OrdinalIgnoreCase)
+                    || p.PurchaseType.Contains(s, StringComparison.OrdinalIgnoreCase)
+                    || p.Date.ToString("dd.MM.yyyy").Contains(s, StringComparison.OrdinalIgnoreCase));
+            }
+
+            return q;
         }
+    }
+
+    /// <summary>What the printed sheet says it is a list of.</summary>
+    private string FilterSummary
+    {
+        get
+        {
+            if (!HasFilters) return "të gjitha";
+
+            var parts = new List<string>();
+            if (_supplierFilter > 0)
+                parts.Add(_suppliers.FirstOrDefault(s => s.Id == _supplierFilter)?.Name ?? "furnizues");
+            if (!string.IsNullOrWhiteSpace(_typeFilter)) parts.Add(_typeFilter);
+            if (_paidFilter == "paid") parts.Add("të paguara");
+            if (_paidFilter == "unpaid") parts.Add("të papaguara");
+            if (_from is { } f) parts.Add($"nga {f:dd.MM.yyyy}");
+            if (_to is { } t) parts.Add($"deri {t:dd.MM.yyyy}");
+            if (!string.IsNullOrWhiteSpace(_recentSearch)) parts.Add($"\"{_recentSearch.Trim()}\"");
+
+            return string.Join(" · ", parts);
+        }
+    }
+
+    /// <summary>
+    /// Prints what is on screen. Paging is lifted first: the browser prints the DOM, and a
+    /// "Shfaq më shumë" button the paper cannot click would silently cut the report off at 100
+    /// rows while the totals underneath it counted all of them.
+    /// </summary>
+    private async Task PrintList()
+    {
+        _shown = FilteredRecent.Count();
+        StateHasChanged();
+        await Task.Yield();          // let the rest of the rows reach the DOM before printing
+        await JS.InvokeVoidAsync("print");
     }
 
     // Drawn a page at a time: the whole history is IN the list, but handing the browser 361 rows
@@ -328,11 +463,11 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        // From the database, not the login cookie: a renamed user must not keep signing the
+        // journal with the name they had when they last signed in.
         if (AuthState is not null)
-        {
-            var u = (await AuthState).User;
-            _worker = u.FindFirst(AuthService.FullNameClaim)?.Value ?? u.Identity?.Name ?? "";
-        }
+            _worker = await Users.CurrentFullNameAsync((await AuthState).User);
+
         _articles = await Catalog.GetAllArticlesAsync();
         _suppliers = await PurchaseSvc.GetSuppliersAsync();
         _docNumber = await PurchaseSvc.GetNextDocumentNumberAsync();

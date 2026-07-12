@@ -136,20 +136,37 @@ public class PurchaseService
 
         var rows = await db.DitariH.AsNoTracking()
             .Where(d => recentNumbers.Contains(d.Numri))
-            .Select(d => new { d.Numri, d.Data, d.Ora, d.NrFatures, d.Tipi, d.VleraMeTvsh })
+            .Select(d => new { d.Numri, d.Data, d.Ora, d.NrFatures, d.Tipi, d.VleraMeTvsh,
+                               d.Subjekti, d.Mbeti })
             .ToListAsync();
+
+        // The supplier is stored as an id on every journal line and was never resolved to a name,
+        // which is why the purchase list could not be searched by the one thing a shop actually
+        // looks a delivery up by: who delivered it.
+        var suppliers = await db.FurnitoriNew.AsNoTracking()
+            .Select(f => new { Id = (int)f.Id, f.Emri })
+            .ToDictionaryAsync(f => f.Id, f => f.Emri ?? "");
 
         return rows
             .GroupBy(d => d.Numri)
-            .Select(g => new PurchaseSummary
+            .Select(g =>
             {
-                DocumentNumber = g.Key?.ToString() ?? "",
-                InvoiceNumber = g.Select(d => d.NrFatures).FirstOrDefault(n => !string.IsNullOrEmpty(n)) ?? "",
-                Date = g.Max(d => d.Data) ?? DateTime.MinValue,
-                Time = g.Select(d => d.Ora).FirstOrDefault(o => !string.IsNullOrEmpty(o)) ?? "",
-                PurchaseType = g.Select(d => d.Tipi).FirstOrDefault(t => !string.IsNullOrEmpty(t)) ?? "",
-                ItemCount = g.Count(),
-                TotalAmount = (decimal)g.Sum(d => d.VleraMeTvsh ?? 0)
+                var supplierId = g.Select(d => d.Subjekti).FirstOrDefault(s => s is > 0) ?? 0;
+                return new PurchaseSummary
+                {
+                    DocumentNumber = g.Key?.ToString() ?? "",
+                    InvoiceNumber = g.Select(d => d.NrFatures).FirstOrDefault(n => !string.IsNullOrEmpty(n)) ?? "",
+                    Date = g.Max(d => d.Data) ?? DateTime.MinValue,
+                    Time = g.Select(d => d.Ora).FirstOrDefault(o => !string.IsNullOrEmpty(o)) ?? "",
+                    PurchaseType = g.Select(d => d.Tipi).FirstOrDefault(t => !string.IsNullOrEmpty(t)) ?? "",
+                    SupplierId = supplierId,
+                    SupplierName = supplierId > 0 && suppliers.TryGetValue(supplierId, out var n) ? n : "",
+                    ItemCount = g.Count(),
+                    TotalAmount = (decimal)g.Sum(d => d.VleraMeTvsh ?? 0),
+                    // What the document still owes. The entry form writes it per line, so the
+                    // document's outstanding amount is the sum of its lines'.
+                    Outstanding = (decimal)g.Sum(d => d.Mbeti ?? 0),
+                };
             })
             .OrderByDescending(s => s.Date)
             .ToList();
@@ -372,8 +389,15 @@ public class PurchaseSummary
     public DateTime Date { get; set; }
     public string Time { get; set; } = "";
     public string PurchaseType { get; set; } = "";
+    public int SupplierId { get; set; }
+    public string SupplierName { get; set; } = "";
     public int ItemCount { get; set; }
     public decimal TotalAmount { get; set; }
+
+    /// <summary>Still owed on this document. Zero once it is paid.</summary>
+    public decimal Outstanding { get; set; }
+
+    public bool IsPaid => Outstanding <= 0;
 }
 
 public class PurchaseLineView

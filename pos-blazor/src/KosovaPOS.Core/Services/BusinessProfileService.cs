@@ -80,6 +80,22 @@ public class BusinessProfileService
         row.LabelWidthMm  = input.LabelWidthMm  is > 0 ? Math.Clamp(input.LabelWidthMm, 20, 200) : 55;
         row.LabelHeightMm = input.LabelHeightMm is > 0 ? Math.Clamp(input.LabelHeightMm, 10, 200) : 25;
 
+        // What the courtesy receipt prints. (See the whitelist warning above — leaving these out
+        // is exactly the failure it describes: the toggles moved, the preview followed them, the
+        // screen said "U ruajt", and the printer went on printing the old receipt.)
+        row.ReceiptShowBusinessName  = input.ReceiptShowBusinessName;
+        row.ReceiptShowAddress       = input.ReceiptShowAddress;
+        row.ReceiptShowPhone         = input.ReceiptShowPhone;
+        row.ReceiptShowFiscalNumber  = input.ReceiptShowFiscalNumber;
+        row.ReceiptShowVatNumber     = input.ReceiptShowVatNumber;
+        row.ReceiptShowCashier       = input.ReceiptShowCashier;
+        row.ReceiptShowVatBreakdown  = input.ReceiptShowVatBreakdown;
+        row.ReceiptShowPaidAndChange = input.ReceiptShowPaidAndChange;
+        row.ReceiptHeaderNote        = Clean(input.ReceiptHeaderNote);
+        // Blank means "print no footer at all" — a real choice, so it is stored as null and not
+        // quietly replaced with the default thank-you.
+        row.ReceiptFooterText        = Clean(input.ReceiptFooterText);
+
         await db.SaveChangesAsync();
 
         static string? Clean(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();

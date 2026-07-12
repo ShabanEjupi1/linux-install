@@ -89,6 +89,34 @@ namespace KosovaPOS.Models
 
         public int LabelHeightMm { get; set; } = 25;
 
+        // ── What the thermal receipt shows ────────────────────────────────────────
+        // A receipt is not one document: a kiosk wants a bare total, a wholesaler wants
+        // its fiscal number on every slip, and a shop whose cashiers are family does not
+        // want their names on paper a customer walks out with. Each of these is a line
+        // the shop may or may not want printed, so each is a switch rather than a fork
+        // in the layout code. Defaults reproduce exactly what was printed before.
+        //
+        // These govern the NON-fiscal courtesy receipt only. The fiscal receipt's content
+        // is fixed by the ATK and by the fiscal device — nothing here can change it.
+        public bool ReceiptShowBusinessName { get; set; } = true;
+        public bool ReceiptShowAddress      { get; set; } = true;
+        public bool ReceiptShowPhone        { get; set; } = true;
+        public bool ReceiptShowFiscalNumber { get; set; } = true;
+        public bool ReceiptShowVatNumber    { get; set; } = true;
+        public bool ReceiptShowCashier      { get; set; } = true;
+        public bool ReceiptShowVatBreakdown { get; set; } = true;
+
+        /// <summary>Cash tendered and change due, printed under the total. Off = the old layout.</summary>
+        public bool ReceiptShowPaidAndChange { get; set; }
+
+        /// <summary>Free line above the items — an opening time, a slogan, a promotion.</summary>
+        [StringLength(120)]
+        public string? ReceiptHeaderNote { get; set; }
+
+        /// <summary>The thank-you at the foot. Blank prints nothing at all.</summary>
+        [StringLength(120)]
+        public string? ReceiptFooterText { get; set; } = "Faleminderit për blerjen!";
+
         // ── Module toggles ────────────────────────────────────────────────────────
         public bool EnableTableManagement  { get; set; }
         public bool EnableAppointments     { get; set; }

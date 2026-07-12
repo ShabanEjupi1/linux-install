@@ -111,7 +111,8 @@ else
         if (invoice is null) { _notFound = true; return; }
 
         var shop = await Profile.GetSettingsAsync();
-        _lines = ReceiptFormatter.Format(invoice, HardwareBridge.ReceiptHeaderFor(shop));
+        _lines = ReceiptFormatter.Format(invoice,
+            HardwareBridge.ReceiptHeaderFor(shop), HardwareBridge.ReceiptOptionsFor(shop));
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)

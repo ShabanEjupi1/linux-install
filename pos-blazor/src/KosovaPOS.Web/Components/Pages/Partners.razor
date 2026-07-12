@@ -4,7 +4,9 @@
 @using KosovaPOS.Core.Services
 @using KosovaPOS.Models
 @using KosovaPOS.Models.BMDData
+@using KosovaPOS.Web.Services
 @inject PartnerService PartnerSvc
+@inject Audit Audit
 
 <PageTitle>Partnerët — KosovaPOS</PageTitle>
 
@@ -17,6 +19,17 @@
         <button class="btn-primary" @onclick="() => OpenEditor(null)">+ Partner i ri</button>
     </header>
 
+    @* What the column means, said once, where it is read. "Balanca" was a number with no
+       explanation on the screen, and a number nobody can explain is a number nobody trusts. *@
+    <p class="hint">
+        <strong>Balanca</strong> është llogaria e hapur e partnerit: sa faturë ka
+        <em>mbetur e papaguar</em>. <strong>Pozitive</strong> = biznesi i ka borxh atij
+        (faturë blerjeje e papaguar). <strong>Negative</strong> = i është paguar më shumë
+        se sa faturat e regjistruara. <strong>0.00 €</strong> = të pastër.
+        Për ta mbyllur një borxh, hap kartelën dhe <em>regjistro pagesën</em> — faturat nuk
+        ndryshohen, pagesa shtohet si rresht i ri dhe balanca bie vetë.
+    </p>
+
     <div class="search-row">
         <input @bind="_search" @bind:event="oninput" placeholder="Kërko emër, NUI, qytet…" class="search-box" />
         <select @bind="_typeFilter" class="cat-select">
@@ -24,6 +37,12 @@
             <option value="@PartnerService.Customer">Klientë</option>
             <option value="@PartnerService.Supplier">Furnizues</option>
             <option value="@PartnerService.Both">Të dy</option>
+        </select>
+        <select @bind="_balanceFilter" class="cat-select">
+            <option value="">Çdo balancë</option>
+            <option value="open">Me borxh (&gt; 0)</option>
+            <option value="credit">Të paguar tepër (&lt; 0)</option>
+            <option value="clear">Të pastër (0)</option>
         </select>
     </div>
 
@@ -62,8 +81,10 @@
                             <td>@p.Phone</td>
                             <td class="num @(p.Balance != 0 ? "out" : "")">@p.Balance.ToString("0.00") €</td>
                             <td class="actions">
-                                <button class="btn-mini" @onclick="() => OpenEditor(p)">✏️</button>
-                                <button class="btn-mini danger" @onclick="() => AskDelete(p)">🗑️</button>
+                                <button class="btn-mini" title="Kartela dhe pagesat"
+                                        @onclick="() => OpenLedger(p)">📒</button>
+                                <button class="btn-mini" title="Ndrysho" @onclick="() => OpenEditor(p)">✏️</button>
+                                <button class="btn-mini danger" title="Fshi" @onclick="() => AskDelete(p)">🗑️</button>
                             </td>
                         </tr>
                     }
@@ -151,6 +172,121 @@
     </div>
 }
 
+@* The account card. Every document that moved this partner's balance, and the balance it left
+   behind — so a figure on the list can always be traced to the invoices that produced it. *@
+@if (_ledgerOf is { } partner)
+{
+    <div class="modal-backdrop" @onclick="CloseLedger">
+        <div class="modal wide" @onclick:stopPropagation="true">
+            <h2>Kartela — @partner.Name</h2>
+
+            <div class="stat-row">
+                <div class="stat">
+                    <span class="stat-label">Balanca</span>
+                    <span class="stat-val @(LedgerBalance > 0 ? "out" : "")">@LedgerBalance.ToString("0.00") €</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Faturuar</span>
+                    <span class="stat-val">@_ledger.Sum(r => r.Due).ToString("0.00") €</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Paguar</span>
+                    <span class="stat-val">@_ledger.Sum(r => r.Paid).ToString("0.00") €</span>
+                </div>
+            </div>
+
+            <p class="hint">
+                @if (LedgerBalance > 0)
+                {
+                    <span>Biznesi i ka borxh <strong>@LedgerBalance.ToString("0.00") €</strong>. Regjistro pagesën për ta mbyllur.</span>
+                }
+                else if (LedgerBalance < 0)
+                {
+                    <span>
+                        Ky partner është paguar <strong>@Math.Abs(LedgerBalance).ToString("0.00") €</strong> më shumë
+                        se sa faturat e regjistruara. Zakonisht do të thotë që pagesa u regjistrua në BMD pa faturën
+                        përkatëse — kërkon një faturë hyrëse, jo një pagesë të re.
+                    </span>
+                }
+                else
+                {
+                    <span>Llogaria është e pastër — nuk ka asgjë të hapur.</span>
+                }
+            </p>
+
+            @if (!string.IsNullOrEmpty(_ledgerError))
+            {
+                <div class="sale-msg err">@_ledgerError</div>
+            }
+
+            <div class="table-wrap ledger-wrap">
+                @if (_ledgerLoading)
+                {
+                    <p class="muted">Duke ngarkuar…</p>
+                }
+                else
+                {
+                    <table class="grid-table">
+                        <thead>
+                            <tr>
+                                <th>Data</th><th>Dokumenti</th><th>Lloji</th>
+                                <th class="num">Faturuar</th><th class="num">Paguar</th><th class="num">Balanca</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var r in _ledger)
+                            {
+                                <tr class="@(r.Type == PartnerService.PaymentType ? "pay-row-ledger" : "")">
+                                    <td>@(r.Date?.ToString("dd.MM.yyyy") ?? "—")</td>
+                                    <td class="mono">@(r.DocumentId ?? r.DocumentNumber?.ToString() ?? "—")</td>
+                                    <td>@(r.Type == PartnerService.PaymentType ? (r.Description ?? "Pagesë") : r.Type)</td>
+                                    <td class="num">@(r.Due == 0 ? "—" : r.Due.ToString("0.00"))</td>
+                                    <td class="num">@(r.Paid == 0 ? "—" : r.Paid.ToString("0.00"))</td>
+                                    <td class="num strong">@r.RunningBalance.ToString("0.00")</td>
+                                </tr>
+                            }
+                            @if (_ledger.Count == 0)
+                            {
+                                <tr><td colspan="6" class="muted center">Asnjë dokument në kartelë.</td></tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+
+            <fieldset class="settings-set">
+                <legend>Regjistro pagesë</legend>
+                <div class="form-grid">
+                    <div class="field">
+                        <label>Shuma (€)</label>
+                        <input class="input" type="number" step="0.01" min="0" @bind="_payAmount" />
+                    </div>
+                    <div class="field">
+                        <label>Data</label>
+                        <input class="input" type="date" @bind="_payDate" />
+                    </div>
+                    <div class="field span2">
+                        <label>Përshkrimi</label>
+                        <input class="input" @bind="_payNote" maxlength="100" placeholder="p.sh. Pagesë me para në dorë" />
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn-primary" disabled="@(_busy || _payAmount <= 0)" @onclick="RecordPayment">
+                        @(_busy ? "Duke ruajtur…" : "Regjistro pagesën")
+                    </button>
+                    @if (LedgerBalance > 0)
+                    {
+                        <button class="btn-ghost" disabled="@_busy" @onclick="() => _payAmount = LedgerBalance">
+                            Mbylle të gjithë borxhin (@LedgerBalance.ToString("0.00") €)
+                        </button>
+                    }
+                    <button class="btn-ghost" @onclick="CloseLedger">Mbyll</button>
+                </div>
+            </fieldset>
+        </div>
+    </div>
+}
+
 @if (_deleting is not null)
 {
     <div class="modal-backdrop" @onclick="() => _deleting = null">
@@ -177,6 +313,71 @@
     private BusinessPartner? _editing;
     private BusinessPartner? _deleting;
 
+    // ── The account card ────────────────────────────────────────────────────────────────
+    private BusinessPartner? _ledgerOf;
+    private List<PartnerService.PartnerLedgerRow> _ledger = new();
+    private bool _ledgerLoading;
+    private string? _ledgerError;
+    private string _balanceFilter = "";
+
+    private decimal _payAmount;
+    private DateTime _payDate = DateTime.Today;
+    private string? _payNote;
+
+    /// <summary>The balance the card actually shows — the last row's running total.</summary>
+    private decimal LedgerBalance => _ledger.Count == 0 ? 0 : _ledger[^1].RunningBalance;
+
+    private async Task OpenLedger(BusinessPartner p)
+    {
+        _ledgerOf = p;
+        _ledgerError = null;
+        _ledgerLoading = true;
+        _payNote = null;
+        _payDate = DateTime.Today;
+        _ledger = await PartnerSvc.GetLedgerAsync(p.Id);
+        // Pre-filled with the debt, because closing it off is what this form is nearly always
+        // opened to do — but it stays editable, since a part payment is a part payment.
+        _payAmount = LedgerBalance > 0 ? LedgerBalance : 0;
+        _ledgerLoading = false;
+    }
+
+    private void CloseLedger()
+    {
+        _ledgerOf = null;
+        _ledger = new();
+        _payAmount = 0;
+    }
+
+    private async Task RecordPayment()
+    {
+        if (_ledgerOf is null || _payAmount <= 0) return;
+        _busy = true;
+        _ledgerError = null;
+        try
+        {
+            await PartnerSvc.RecordPaymentAsync(
+                _ledgerOf.Id, _payAmount, DateOnly.FromDateTime(_payDate), _payNote);
+
+            await Audit.LogAsync(AuditAction.Create, "PartnerPayment", _ledgerOf.Id, _ledgerOf.Name,
+                details: $"Pagesë {_payAmount:0.00} € · {_payDate:dd.MM.yyyy}");
+
+            _ledger = await PartnerSvc.GetLedgerAsync(_ledgerOf.Id);
+            _payAmount = LedgerBalance > 0 ? LedgerBalance : 0;
+            _payNote = null;
+
+            _success = true;
+            _message = $"Pagesa u regjistrua. Balanca e re: {LedgerBalance:0.00} €.";
+
+            // The list behind the modal is now stale — the balance column just moved.
+            await Reload();
+        }
+        catch (Exception ex)
+        {
+            _ledgerError = ex.Message;
+        }
+        finally { _busy = false; }
+    }
+
     protected override async Task OnInitializedAsync()
     {
         _cities = await PartnerSvc.GetCitiesAsync();
@@ -198,6 +399,15 @@
             IEnumerable<BusinessPartner> q = _all;
             if (!string.IsNullOrWhiteSpace(_typeFilter))
                 q = q.Where(p => p.PartnerType == _typeFilter);
+
+            q = _balanceFilter switch
+            {
+                "open"   => q.Where(p => p.Balance > 0),
+                "credit" => q.Where(p => p.Balance < 0),
+                "clear"  => q.Where(p => p.Balance == 0),
+                _        => q,
+            };
+
             if (!string.IsNullOrWhiteSpace(_search))
             {
                 var s = _search.Trim();

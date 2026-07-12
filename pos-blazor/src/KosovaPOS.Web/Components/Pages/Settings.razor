@@ -1,6 +1,7 @@
 @page "/cilesimet"
 @attribute [Authorize(Policy = "perm:settings")]
 @rendermode InteractiveServer
+@using KosovaPOS.Core.Printing
 @using KosovaPOS.Core.Services
 @using KosovaPOS.Models
 @using KosovaPOS.Web.Services
@@ -90,6 +91,50 @@
                 </div>
             </fieldset>
 
+            @* Which lines the courtesy receipt carries. Every switch here is a line some shop
+               wants and some shop does not: a cashier's name on paper the customer takes home,
+               a fiscal number a non-registered business must NOT print, an address nobody reads.
+               The preview beside them is laid out by the same formatter that drives the printer,
+               so what is on the right is what comes out of the roll — not an artist's impression. *@
+            <fieldset class="settings-set">
+                <legend>Kuponi termik (jofiskal)</legend>
+                <p class="hint">
+                    Zgjidh çfarë shtypet në kupon. Këto <strong>nuk e prekin faturën fiskale</strong> —
+                    përmbajtjen e saj e cakton ATK-ja dhe vetë printeri fiskal.
+                </p>
+
+                <div class="receipt-config">
+                    <div class="receipt-toggles">
+                        <label class="chk"><InputCheckbox @bind-Value="_settings.ReceiptShowBusinessName" /> Emri i biznesit</label>
+                        <label class="chk"><InputCheckbox @bind-Value="_settings.ReceiptShowAddress" /> Adresa</label>
+                        <label class="chk"><InputCheckbox @bind-Value="_settings.ReceiptShowPhone" /> Telefoni</label>
+                        <label class="chk"><InputCheckbox @bind-Value="_settings.ReceiptShowFiscalNumber" /> Numri fiskal</label>
+                        <label class="chk"><InputCheckbox @bind-Value="_settings.ReceiptShowVatNumber" /> Numri i TVSH-së</label>
+                        <label class="chk"><InputCheckbox @bind-Value="_settings.ReceiptShowCashier" /> Emri i shitësit (arkëtarit)</label>
+                        <label class="chk"><InputCheckbox @bind-Value="_settings.ReceiptShowVatBreakdown" /> Ndarja e TVSH-së</label>
+                        <label class="chk"><InputCheckbox @bind-Value="_settings.ReceiptShowPaidAndChange" /> Paguar dhe kusuri</label>
+
+                        <div class="field span2">
+                            <label>Rreshti i sipërm (opsional)</label>
+                            <input class="input" @bind="_settings.ReceiptHeaderNote" @bind:event="oninput"
+                                   maxlength="120" placeholder="p.sh. Hapur 08:00–20:00" />
+                        </div>
+                        <div class="field span2">
+                            <label>Rreshti i fundit</label>
+                            <input class="input" @bind="_settings.ReceiptFooterText" @bind:event="oninput"
+                                   maxlength="120" placeholder="Faleminderit për blerjen!" />
+                            <p class="hint">Lëre bosh që të mos shtypet asgjë në fund.</p>
+                        </div>
+                    </div>
+
+                    <div class="receipt-preview">
+                        <span class="muted">Pamja paraprake</span>
+                        <pre class="r80">@foreach (var l in PreviewLines)
+      {<span class="@Css(l.Emphasis)">@l.Text</span>@("\n")}</pre>
+                    </div>
+                </div>
+            </fieldset>
+
             <fieldset class="settings-set">
                 <legend>Profili i biznesit</legend>
                 <div class="form-grid">
@@ -126,6 +171,47 @@
     private BusinessProfile _shellProfile;
 
     private static readonly BusinessProfile[] Profiles = Enum.GetValues<BusinessProfile>();
+
+    /// <summary>
+    /// The receipt as it would come off the roll under the settings currently on screen — laid
+    /// out by the very formatter the printer is driven by, not by a mock-up of it. A toggle whose
+    /// effect you cannot see before you save is a toggle nobody dares to touch.
+    /// </summary>
+    private List<ReceiptTextLine> PreviewLines => ReceiptFormatter.Format(
+        SampleSale, HardwareBridge.ReceiptHeaderFor(_settings), HardwareBridge.ReceiptOptionsFor(_settings));
+
+    private static readonly Invoice SampleSale = new()
+    {
+        Number = "1024",
+        Date = new DateTime(2026, 1, 1),
+        Time = "14:32",
+        CashierName = "Arta K.",
+        PaymentMethod = "Para në dorë",
+        Lines =
+        {
+            new InvoiceLine { Name = "Kafe e bluar 200g", Quantity = 2, UnitPriceGross = 3.50m,
+                              VatRate = 18, GrossValue = 7.00m, VatValue = 1.07m, NetValue = 5.93m },
+            new InvoiceLine { Name = "Ujë mineral 1.5L", Quantity = 1, UnitPriceGross = 0.60m,
+                              VatRate = 8, GrossValue = 0.60m, VatValue = 0.04m, NetValue = 0.56m },
+        },
+        VatSummary =
+        {
+            new VatSummaryRow { Rate = 18, Net = 5.93m, Vat = 1.07m, Gross = 7.00m },
+            new VatSummaryRow { Rate = 8,  Net = 0.56m, Vat = 0.04m, Gross = 0.60m },
+        },
+        TotalNet = 6.49m,
+        TotalVat = 1.11m,
+        TotalGross = 7.60m,
+        PaidAmount = 10.00m,
+        ChangeAmount = 2.40m,
+    };
+
+    private static string Css(ReceiptEmphasis e) => e switch
+    {
+        ReceiptEmphasis.Title => "r80-title",
+        ReceiptEmphasis.Bold  => "r80-bold",
+        _                     => "",
+    };
 
     protected override async Task OnInitializedAsync()
     {

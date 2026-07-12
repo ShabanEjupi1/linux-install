@@ -1,0 +1,136 @@
+@page "/nderrimi/{Id:int}"
+@attribute [Authorize(Policy = "perm:sell")]
+@layout EmptyLayout
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using KosovaPOS.Core.Printing
+@using KosovaPOS.Core.Services
+@using KosovaPOS.Models
+@using KosovaPOS.Web.Services
+@inject ShiftService Shifts
+@inject BusinessProfileService Profile
+@inject HardwareBridge Hw
+@inject IJSRuntime JS
+
+@* The close-of-shift slip, on the same 80mm grid as the receipt — see Receipt80.razor for why
+   @@page lives here and not in app.css, and why its height is computed rather than `auto`.
+
+   A shift that is still OPEN prints too, with its sales read live and the slip marked as
+   provisional. That is the X-report a manager takes mid-day, and refusing to print it until the
+   drawer is counted would be refusing the one report they actually want. *@
+
+<PageTitle>Ndërrimi @Id — KosovaPOS</PageTitle>
+
+<HeadContent>
+    <style>
+        @@media print {
+            @@page { size: 80mm @(HeightMm)mm; margin: 0; }
+        }
+    </style>
+</HeadContent>
+
+@if (_notFound)
+{
+    <div class="inv-toolbar"><a class="btn-ghost" href="/arka">← Arka</a></div>
+    <div class="r80"><p>Ndërrimi #@Id nuk u gjet.</p></div>
+}
+else if (_lines is null)
+{
+    <div class="r80"><p>Duke ngarkuar…</p></div>
+}
+else
+{
+    <div class="inv-toolbar">
+        <a class="btn-ghost" href="/arka">← Arka</a>
+        <button class="btn-primary" @onclick="Print" disabled="@_busy">
+            @(_busy ? "Duke printuar…" : "🖨️ Printo raportin")
+        </button>
+        @if (_status is not null)
+        {
+            <span class="muted print-hint">@_status</span>
+        }
+    </div>
+
+    <pre class="r80">@foreach (var line in _lines)
+      {<span class="@Css(line.Emphasis)">@line.Text</span>@("\n")}</pre>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    /// <summary>?auto=1 prints as soon as the slip has rendered — how the agent-less PC prints it.</summary>
+    [SupplyParameterFromQuery(Name = "auto")] public string? Auto { get; set; }
+
+    private List<ReceiptTextLine>? _lines;
+    private CashShift? _shift;
+    private bool _notFound, _printed, _busy;
+    private string? _status;
+
+    private int HeightMm
+    {
+        get
+        {
+            const double LineMm = 2.85 * 1.25;
+            const double TitleExtraMm = 2.85 * 0.35 * 1.25;
+            const double TailMm = 8;
+            return (int)Math.Ceiling((_lines?.Count ?? 0) * LineMm + TitleExtraMm + TailMm);
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _shift = await Shifts.GetByIdAsync(Id);
+        if (_shift is null) { _notFound = true; return; }
+
+        // A closed shift carries its own snapshot. An open one has none yet — its totals are
+        // still accruing — so they are read live, and the formatter marks the slip provisional.
+        if (_shift.Status == ShiftStatus.Open)
+        {
+            var (cash, card, total, count) = await Shifts.GetShiftSalesAsync(_shift.OpenedAt);
+            _shift.TotalCashSales = cash;
+            _shift.TotalCardSales = card;
+            _shift.TotalSales = total;
+            _shift.TransactionCount = count;
+            _shift.ExpectedCash = _shift.OpeningCash + cash;
+        }
+
+        var shop = await Profile.GetSettingsAsync();
+        _lines = ShiftReportFormatter.Format(_shift, HardwareBridge.ReceiptHeaderFor(shop));
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_printed || _lines is null || Auto != "1") return;
+        _printed = true;
+        await Print();
+        StateHasChanged();
+    }
+
+    private async Task Print()
+    {
+        if (_shift is null) return;
+        _busy = true;
+        _status = null;
+        try
+        {
+            // Raw ESC/POS through the agent, no dialog; the browser only when there is no agent.
+            var shop = await Profile.GetSettingsAsync();
+            var sent = await Hw.PrintLinesAsync($"NDERRIMI-{_shift.Id}", _lines!, shop);
+            if (sent.Ok)
+            {
+                _status = "Raporti u dërgua te printeri termik.";
+                return;
+            }
+
+            await JS.InvokeVoidAsync("print");
+        }
+        finally { _busy = false; }
+    }
+
+    private static string Css(ReceiptEmphasis e) => e switch
+    {
+        ReceiptEmphasis.Title => "r80-title",
+        ReceiptEmphasis.Bold  => "r80-bold",
+        _                     => "",
+    };
+}

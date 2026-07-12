@@ -99,15 +99,37 @@ public sealed class HardwareBridge : IAsyncDisposable
         if (invoice is null) return AgentResult.Fail($"Fatura #{receiptNumber} nuk u gjet.");
 
         var shop = await _profile.GetSettingsAsync();
-        var lines = ReceiptFormatter.Format(invoice, ReceiptHeaderFor(shop));
-        var req = HardwareMapper.ToReceiptRequest(invoice.Number, lines, shop, printerName);
+        var lines = ReceiptFormatter.Format(invoice, ReceiptHeaderFor(shop), ReceiptOptionsFor(shop));
+        return await PrintLinesAsync(invoice.Number, lines, shop, printerName);
+    }
 
+    /// <summary>
+    /// Sends an already-laid-out document to the thermal printer as raw ESC/POS. The receipt,
+    /// the shift report and the test slip are all the same 42-column grid, so they are all the
+    /// same job — only the lines differ.
+    /// </summary>
+    public async Task<AgentResult> PrintLinesAsync(
+        string title, IEnumerable<ReceiptTextLine> lines, BusinessSettings? shop, string? printerName = null)
+    {
+        var req = HardwareMapper.ToReceiptRequest(title, lines, shop, printerName);
         try
         {
             var m = await ModuleAsync();
             return await m.InvokeAsync<AgentResult>("printReceipt", req);
         }
         catch (Exception ex) { return AgentResult.Fail(ex.Message); }
+    }
+
+    /// <summary>
+    /// Prints the close-of-shift slip on the thermal roll. Falls back to the browser page when
+    /// this PC has no agent, exactly as the receipt does.
+    /// </summary>
+    public async Task<AgentResult> PrintShiftReportAsync(CashShift shift, string? printerName = null)
+    {
+        var shop = await _profile.GetSettingsAsync();
+        var lines = ShiftReportFormatter.Format(shift, ReceiptHeaderFor(shop));
+        var sent = await PrintLinesAsync($"NDERRIMI-{shift.Id}", lines, shop, printerName);
+        return sent.Ok ? sent : await PrintUrlAsync($"/nderrimi/{shift.Id}");
     }
 
     /// <summary>
@@ -217,6 +239,27 @@ public sealed class HardwareBridge : IAsyncDisposable
         Phone: shop?.Phone,
         FiscalNumber: shop?.FiscalNumber,
         VatNumber: shop?.VatNumber);
+
+    /// <summary>
+    /// What the shop has chosen to print on its courtesy receipt. A shop that has never opened
+    /// the settings screen gets the defaults, which are what the receipt looked like before any
+    /// of this was configurable.
+    /// </summary>
+    public static ReceiptOptions ReceiptOptionsFor(BusinessSettings? shop) => shop is null
+        ? ReceiptOptions.Default
+        : new ReceiptOptions
+        {
+            ShowBusinessName  = shop.ReceiptShowBusinessName,
+            ShowAddress       = shop.ReceiptShowAddress,
+            ShowPhone         = shop.ReceiptShowPhone,
+            ShowFiscalNumber  = shop.ReceiptShowFiscalNumber,
+            ShowVatNumber     = shop.ReceiptShowVatNumber,
+            ShowCashier       = shop.ReceiptShowCashier,
+            ShowVatBreakdown  = shop.ReceiptShowVatBreakdown,
+            ShowPaidAndChange = shop.ReceiptShowPaidAndChange,
+            HeaderNote        = shop.ReceiptHeaderNote,
+            FooterText        = shop.ReceiptFooterText,
+        };
 
     /// <summary>
     /// Prints barcode labels for an article. The printer and the label stock default to the
