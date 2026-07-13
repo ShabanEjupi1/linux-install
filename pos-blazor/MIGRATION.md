@@ -954,6 +954,60 @@ with the agent killed, printing still worked through the hidden frame; the out-o
 The clear-articles command wrote `O,1,______,_,__;ALL` — byte-for-byte the shop's .bat. **The ESC/POS
 and TSPL bytes are still only checked at the byte level: no real printer has run this build.**
 
+## Phase 24 — the A4 paper gets its own printer, and the pages stop lurching ✅ (2026-07-13)
+
+Three printers sit on a shop counter and they take three different papers: the 80mm thermal roll,
+the label stock, and A4. The POS could aim the first two and **could not aim the third** — and the
+reason is worth writing down, because it is not a bug anyone would find by reading the code:
+
+> **A web page cannot choose a printer.** It prints where the print dialog says, and Chrome's
+> `--kiosk-printing` — the thing Phase 20 used to get rid of the dialog — always prints to the
+> **Windows default printer**. On a till the default is the thermal roll, because that is what
+> the receipts come off. So every A4 invoice the browser printed came out of the receipt printer
+> as a metre of curling till paper, and no amount of CSS was ever going to fix it.
+
+The only process that can route a sheet is one running on the PC. So the agent learned A4:
+
+- **`POST /a4/print`** takes an `A4Document` — a laid-out document (seller block, meta, buyer,
+  columns, rows, VAT summary, totals, notes, signatures), *not* HTML: a Windows service has no
+  browser in it and cannot render `/fatura/{n}`. `A4DocumentBuilder` in Core builds it from the
+  same `Invoice` the page renders, so the paper and the screen carry the same numbers.
+- **`WindowsA4Driver`** draws it with GDI (`System.Drawing.Printing`) onto a **named** printer,
+  paginating long invoices with repeated column headers and reserving room for the foot — an
+  invoice whose total lands alone on page 2 looks like a mistake, because it is one.
+- The browser path survives as the fallback for a PC with no agent, where a dialog the cashier can
+  steer beats a sheet that goes nowhere.
+
+Around it:
+
+- **`InvoicePrinter`** is a new business setting, and the three printers are now chosen from
+  **dropdowns of this PC's real printers** on **both** `/pajisjet` and `/cilesimet` — one shared
+  `PrinterSetup` component, not two copies, so the two screens cannot disagree. A `📄 Provo A4`
+  button proves the sheet comes out of the right machine before a customer is waiting for it.
+- **The downloaded zip is now built per business.** The generic one made the shop PC's installer
+  ask for things only the POS knows (which server to trust, which printer prints what) — and a
+  skipped answer there is silent: the agent installs, reports healthy, prints to the wrong printer.
+  `/shkarko/paketa-ime.zip` (auth: `perm:settings`) repacks the agent with **`konfigurimi.env`**
+  (this POS's origin, this shop's three printers, the code page), a **`LEXOME.txt`** in Albanian,
+  and **`instalo-ketu.cmd`** — right-click → Run as administrator, nothing to edit. `install-agent.ps1`
+  reads that file, and an explicit argument still wins over it. Agent → **1.2.0**; the /pajisjet
+  banner tells a shop running an older one that its A4 invoices are going to the wrong printer.
+- **Navigation stopped feeling cheap.** Enhanced navigation fetched the next page and showed
+  *nothing* until it arrived, then slammed it into place, then flashed "Duke ngarkuar…" while the
+  interactive circuit re-fetched the data. Now: the clicked nav item lights up instantly, a top
+  progress bar shows the wait is a wait, the page fades in, and the loading text is replaced by
+  **skeletons in the shape of the content** so nothing jumps when the data lands (`js/nav.js`,
+  `Skeleton.razor`). None of it makes the server faster; all of it stops the app looking broken
+  while the server works.
+
+**Verified:** agent (mock, Linux) reports `a4: true` and accepts both documents built by the real
+`A4DocumentBuilder` → `HardwareMapper` path, printer name and all, with Albanian text intact and
+every row's cell count matching its columns; win-x64 self-contained publish succeeds with
+`System.Drawing.Common` (44MB zip); `/pajisjet` and `/cilesimet` both render the three pickers;
+`/shkarko/paketa-ime.zip` 302s to `/login` when anonymous and, signed in, returns a 45MB zip whose
+`konfigurimi.env` and `LEXOME.txt` carry the shop's live printer names. **The GDI drawing itself has
+not been on paper — that needs the shop's Windows PC.**
+
 ## Known follow-ups
 - **Cut-over to pos.spacecode.tech:** only after Sale + core screens reach parity
   with the live React app; needs explicit go-ahead (replaces a live service).

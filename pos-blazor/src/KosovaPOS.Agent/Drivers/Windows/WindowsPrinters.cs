@@ -25,6 +25,7 @@ public sealed class WindowsPrinterEnumerator : IPrinterEnumerator
         Default = WindowsPrinters.Default(),
         ConfiguredReceipt = _cfg.ReceiptPrinter,
         ConfiguredBarcode = _cfg.BarcodePrinter,
+        ConfiguredInvoice = _cfg.InvoicePrinter,
     };
 }
 

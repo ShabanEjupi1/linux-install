@@ -46,6 +46,22 @@ public static class HardwareMapper
         CodePage = string.IsNullOrWhiteSpace(shop?.ReceiptCodePage) ? null : shop!.ReceiptCodePage,
     };
 
+    /// <summary>
+    /// Wraps an A4 document for the agent, aimed at the shop's A4 printer. The printer travels
+    /// with the job — the agent has an INVOICE_PRINTER of its own, but the shop changes its mind
+    /// on /pajisjet far more often than it reinstalls the agent, and only one of those two takes
+    /// effect on the next sale.
+    /// </summary>
+    public static A4PrintRequest ToA4Request(
+        string title, A4Document document, BusinessSettings? shop, string? printerOverride = null, int copies = 1) => new()
+    {
+        Title = title,
+        Document = document,
+        Copies = copies,
+        PrinterName = !string.IsNullOrWhiteSpace(printerOverride) ? printerOverride
+                    : string.IsNullOrWhiteSpace(shop?.InvoicePrinter) ? null : shop!.InvoicePrinter,
+    };
+
     public static BarcodePrintRequest ToBarcodeRequest(
         Article article, int copies = 1, string? printerName = null,
         int labelWidthMm = 55, int labelHeightMm = 25) => new()

@@ -26,6 +26,9 @@
     <ReconnectModal />
     <script src="@Assets["_framework/blazor.web.js"]"></script>
     <script src="@Assets["js/download.js"]"></script>
+    @* Acknowledges the click, shows the wait, fades the page in. Loaded after blazor.web.js so
+       Blazor.addEventListener('enhancedload') is there to hook. *@
+    <script src="@Assets["js/nav.js"]"></script>
     <script>
         // Registering a fetch-handling service worker is what makes the browser
         // offer "Install". It caches nothing — see service-worker.js.

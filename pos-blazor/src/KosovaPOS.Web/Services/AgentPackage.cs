@@ -17,6 +17,7 @@ public sealed class AgentPackage
         if (!File.Exists(zip)) return;
 
         Available = true;
+        ZipPath = zip;
         SizeMb = new FileInfo(zip).Length / 1024d / 1024d;
 
         var version = Path.Combine(dir, "version.txt");
@@ -27,4 +28,7 @@ public sealed class AgentPackage
     public bool Available { get; }
     public string? Version { get; }
     public double SizeMb { get; }
+
+    /// <summary>The staged zip on disk — the base every shop's own package is repacked from.</summary>
+    public string? ZipPath { get; }
 }

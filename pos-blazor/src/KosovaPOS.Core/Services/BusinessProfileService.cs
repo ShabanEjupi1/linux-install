@@ -66,6 +66,7 @@ public class BusinessProfileService
         row.BankAccount    = Clean(input.BankAccount);
         row.ReceiptPrinter = Clean(input.ReceiptPrinter);
         row.BarcodePrinter = Clean(input.BarcodePrinter);
+        row.InvoicePrinter = Clean(input.InvoicePrinter);
         row.Profile        = input.Profile;
         row.IsFirstRun     = false;
 

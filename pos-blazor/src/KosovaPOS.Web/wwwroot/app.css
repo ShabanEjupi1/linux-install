@@ -926,3 +926,91 @@ a.stat:hover { border-color: var(--accent); }
   flex: 1; border-top: 1px solid var(--ink-2); padding-top: .4rem;
   text-align: center; font-size: .8rem; color: var(--ink-3);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   NAVIGATION FEEL
+   Blazor fetches the next page before it swaps it in. The wait is real — a
+   server round trip and a database query — and nothing here makes it shorter.
+   What these rules do is stop it being SILENT: the click lands, the wait is
+   visible, and the page arrives instead of appearing. See js/nav.js.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Top progress bar. It fills fast and then crawls, because the honest thing to
+   show is "still working" — it cannot know how long the server will take, and a
+   bar that pretends to know stalls at 100% and looks broken. */
+#route-progress {
+  position: fixed; inset: 0 0 auto 0; height: 2px; z-index: 100;
+  pointer-events: none; opacity: 0;
+}
+#route-progress.running { opacity: 1; }
+#route-progress .route-progress-fill {
+  height: 100%; width: 0;
+  background: linear-gradient(90deg, var(--accent), #60a5fa);
+  box-shadow: 0 0 8px rgba(37,99,235,.5);
+}
+#route-progress.running .route-progress-fill {
+  animation: route-fill 8s cubic-bezier(.2,.8,.2,1) forwards;
+}
+#route-progress.done { opacity: 0; transition: opacity .22s ease-out .06s; }
+#route-progress.done .route-progress-fill {
+  width: 100%; animation: none; transition: width .18s ease-out;
+}
+@keyframes route-fill {
+  0%   { width: 0; }
+  30%  { width: 55%; }
+  60%  { width: 78%; }
+  100% { width: 92%; }
+}
+
+/* The clicked nav item lights up before the server answers — NavLink cannot,
+   because it only knows the route changed once the new page is rendered. */
+.nav-link.pending {
+  background: var(--nav-hover); color: #fff;
+}
+.nav-link.pending .nav-ico { animation: nav-ico-pulse 1s ease-in-out infinite; }
+@keyframes nav-ico-pulse { 50% { opacity: .45; } }
+
+/* The new page arrives rather than being slammed into place. Short, and it
+   starts from a small offset: long enough to read as motion, short enough that
+   a cashier ringing up a queue never waits on it. */
+.shell-content.page-enter > * {
+  animation: page-in .22s cubic-bezier(.2,.7,.3,1) both;
+}
+@keyframes page-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ── Skeletons ────────────────────────────────────────────────────────────────
+   What a page shows while its data is on the way. The point is not decoration:
+   "Duke ngarkuar…" is a line of text where a table is about to be, so the page
+   visibly jumps when the data lands. A skeleton is the SHAPE of what is coming,
+   so nothing moves when it does. */
+.sk {
+  background: linear-gradient(90deg, var(--line-2) 25%, var(--line) 37%, var(--line-2) 63%);
+  background-size: 400% 100%;
+  animation: sk-shimmer 1.4s ease-in-out infinite;
+  border-radius: var(--r-sm);
+}
+@keyframes sk-shimmer {
+  from { background-position: 100% 50%; }
+  to   { background-position: 0 50%; }
+}
+.sk-line { height: 12px; margin: .55rem 0; }
+.sk-row  { height: 40px; margin: .35rem 0; border-radius: var(--r); }
+.sk-tile { height: 76px; border-radius: var(--r-lg); }
+.sk-head { height: 22px; width: 40%; margin-bottom: 1rem; }
+.sk-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+.sk-panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 1rem 1.1rem; }
+
+/* Motion is a nicety; nobody's sale depends on it. */
+@media (prefers-reduced-motion: reduce) {
+  #route-progress .route-progress-fill,
+  .nav-link.pending .nav-ico,
+  .shell-content.page-enter > *,
+  .sk { animation: none !important; }
+  .shell-content.page-enter > * { opacity: 1; transform: none; }
+}
+
+/* The A4 printer tests sit under the pickers, not in a modal. */
+.printer-tests { justify-content: flex-start; flex-wrap: wrap; margin-top: .5rem; }

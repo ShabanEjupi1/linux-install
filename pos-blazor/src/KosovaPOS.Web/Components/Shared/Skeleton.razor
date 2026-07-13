@@ -1,0 +1,50 @@
+@* What a page shows while its data is on the way.
+
+   It replaces "Duke ngarkuar…", which was a line of text standing where a table was about to be —
+   so when the data landed, the page visibly jumped. This is the SHAPE of what is coming: the rows
+   are where the rows will be, so nothing moves when they arrive. The wait is the same length; it
+   just stops looking like a mistake. *@
+
+<div class="sk-wrap" aria-busy="true" aria-live="polite">
+    @if (Tiles > 0)
+    {
+        <div class="sk-tiles">
+            @for (var i = 0; i < Tiles; i++)
+            {
+                <div class="sk sk-tile"></div>
+            }
+        </div>
+    }
+
+    <div class="@(Panel ? "sk-panel" : "")">
+        @if (Head)
+        {
+            <div class="sk sk-head"></div>
+        }
+        @for (var i = 0; i < Rows; i++)
+        {
+            <div class="sk sk-row" style="@Fade(i)"></div>
+        }
+    </div>
+</div>
+
+@code {
+    /// <summary>Stat tiles above the table, when the page has them.</summary>
+    [Parameter] public int Tiles { get; set; }
+
+    /// <summary>How many table rows to stand in for.</summary>
+    [Parameter] public int Rows { get; set; } = 6;
+
+    [Parameter] public bool Head { get; set; } = true;
+
+    /// <summary>Wrap the rows in a card, matching the panels most screens put their tables in.</summary>
+    [Parameter] public bool Panel { get; set; } = true;
+
+    /// <summary>
+    /// The rows fade out towards the bottom. A block of identical bars reads as a broken page;
+    /// a list that dissolves reads as a list still arriving.
+    /// </summary>
+    private string Fade(int i) => Rows <= 1
+        ? ""
+        : $"opacity: {(1 - 0.62 * i / (Rows - 1)).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)}";
+}

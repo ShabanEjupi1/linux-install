@@ -68,6 +68,7 @@ if (useReal)
     builder.Services.AddSingleton<IFiscalDriver, WindowsFiscalDriver>();
     builder.Services.AddSingleton<IReceiptDriver, WindowsReceiptDriver>();
     builder.Services.AddSingleton<IBarcodeDriver, WindowsBarcodeDriver>();
+    builder.Services.AddSingleton<IA4Driver, WindowsA4Driver>();
     builder.Services.AddSingleton<IScaleDriver, WindowsScaleDriver>();
     builder.Services.AddSingleton<IPrinterEnumerator, WindowsPrinterEnumerator>();
 }
@@ -76,6 +77,7 @@ else
     builder.Services.AddSingleton<IFiscalDriver, MockFiscalDriver>();
     builder.Services.AddSingleton<IReceiptDriver, MockReceiptDriver>();
     builder.Services.AddSingleton<IBarcodeDriver, MockBarcodeDriver>();
+    builder.Services.AddSingleton<IA4Driver, MockA4Driver>();
     builder.Services.AddSingleton<IScaleDriver, MockScaleDriver>();
     builder.Services.AddSingleton<IPrinterEnumerator, MockPrinterEnumerator>();
 }
@@ -85,7 +87,8 @@ app.UseCors(CorsPolicy);
 
 var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "1.0.0";
 
-app.MapGet("/health", (IFiscalDriver fiscal, IReceiptDriver receipt, IBarcodeDriver barcode, IScaleDriver scale) =>
+app.MapGet("/health", (IFiscalDriver fiscal, IReceiptDriver receipt, IBarcodeDriver barcode,
+                       IA4Driver a4, IScaleDriver scale) =>
     Results.Ok(new AgentHealth
     {
         Version = version,
@@ -98,6 +101,7 @@ app.MapGet("/health", (IFiscalDriver fiscal, IReceiptDriver receipt, IBarcodeDri
             Fiscal = fiscal.Available,
             Receipt = receipt.Available,
             Barcode = barcode.Available,
+            A4 = a4.Available,
             Scale = scale.Available,
         },
     }));
@@ -117,6 +121,12 @@ app.MapPost("/receipt/print", async (ReceiptPrintRequest req, IReceiptDriver rec
 
 app.MapPost("/barcode/print", async (BarcodePrintRequest req, IBarcodeDriver barcode, CancellationToken ct) =>
     Results.Ok(await barcode.PrintAsync(req, ct)));
+
+// The A4 paper: the invoice and the waybill, drawn with GDI onto the printer the shop chose.
+// This endpoint is the whole reason the agent can do something the browser cannot — pick which
+// printer a document goes to. Give it room: a laser warming up from sleep is not quick.
+app.MapPost("/a4/print", async (A4PrintRequest req, IA4Driver a4, CancellationToken ct) =>
+    Results.Ok(await a4.PrintAsync(req, ct)));
 
 // The printers on THIS PC, so the POS can offer them as a list instead of asking the shop to
 // type a Windows printer name exactly right.

@@ -70,6 +70,19 @@ namespace KosovaPOS.Models
         public string? BarcodePrinter { get; set; }
 
         /// <summary>
+        /// Where the A4 paper goes: the invoice and the waybill.
+        ///
+        /// It has to be its own setting, and the agent has to do the printing, because a WEB PAGE
+        /// CANNOT CHOOSE A PRINTER — the browser prints to whatever the user picks in the dialog,
+        /// and Chrome's kiosk-printing (which is what removes the dialog) always prints to the
+        /// Windows DEFAULT printer. On a till the default is the thermal roll, so an A4 invoice
+        /// printed through the browser comes out of the receipt printer as a metre of paper.
+        /// Null = the agent's INVOICE_PRINTER, else this PC's default printer.
+        /// </summary>
+        [StringLength(100)]
+        public string? InvoicePrinter { get; set; }
+
+        /// <summary>
         /// The ESC/POS code page the thermal printer is switched to before every receipt:
         /// 1252, 852, 858, 850, 1250, 437, or "ascii" to print e/c instead of ë/ç.
         ///

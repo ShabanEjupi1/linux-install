@@ -40,6 +40,17 @@ public interface IBarcodeDriver
     Task<AgentResult> PrintAsync(BarcodePrintRequest req, CancellationToken ct = default);
 }
 
+/// <summary>
+/// Prints A4 paper (the invoice, the waybill) on a named printer, with no print dialog.
+/// The browser cannot choose a printer — kiosk-printing always goes to the Windows default,
+/// which on a till is the thermal roll. Only a process on the PC can route the sheet.
+/// </summary>
+public interface IA4Driver
+{
+    bool Available { get; }
+    Task<AgentResult> PrintAsync(A4PrintRequest req, CancellationToken ct = default);
+}
+
 /// <summary>Reads the current weight from a serial scale.</summary>
 public interface IScaleDriver
 {

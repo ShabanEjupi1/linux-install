@@ -20,7 +20,7 @@
     before the F-Link licence is applied, then re-run without -Mock.
 
 .EXAMPLE
-    .\install-agent.ps1 -ReceiptPrinter "POS-80" -FiscalTempPath "C:\TEMP\"
+    .\install-agent.ps1 -ReceiptPrinter "POS-80" -InvoicePrinter "HP LaserJet" -FiscalTempPath "C:\TEMP\"
 
 .EXAMPLE
     .\install-agent.ps1 -Mock          # dry run, no hardware touched
@@ -39,6 +39,11 @@ param(
     # Windows printer names. Empty = system default printer / feature unused.
     [string]$ReceiptPrinter = '',
     [string]$BarcodePrinter = '',
+    # The A4 paper: the invoice and the waybill. Its own printer, because a web page cannot
+    # choose one -- kiosk-printing always uses the Windows default, which on a till is the
+    # thermal roll, and an A4 invoice sent there prints as a metre of receipt paper.
+    [string]$InvoicePrinter = '',
+    [string]$ReceiptCodePage = '1252',
 
     # Serial scale
     [string]$ScalePort      = 'COM3',
@@ -61,6 +66,45 @@ function Write-Warn { param($m) Write-Host "    $m" -ForegroundColor Yellow }
 $identity = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
 if (-not $identity.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     throw "Run this from an elevated PowerShell (right-click -> Run as administrator)."
+}
+
+# --- konfigurimi.env ---------------------------------------------------------
+# The package downloaded from the POS carries the shop's settings next to this script, so the
+# install has no arguments to get wrong. Anything passed on the command line still wins: the file
+# is a default, not an override.
+$envFile = Join-Path $PSScriptRoot 'konfigurimi.env'
+if (Test-Path $envFile) {
+    Write-Step "Reading konfigurimi.env"
+    $fromFile = @{}
+    foreach ($line in Get-Content $envFile) {
+        $trimmed = $line.Trim()
+        if ($trimmed -eq '' -or $trimmed.StartsWith('#')) { continue }
+        $split = $trimmed.IndexOf('=')
+        if ($split -lt 1) { continue }
+        $fromFile[$trimmed.Substring(0, $split).Trim()] = $trimmed.Substring($split + 1).Trim()
+    }
+
+    $map = @{
+        'POS_URL'              = 'PosUrl'
+        'RECEIPT_PRINTER'      = 'ReceiptPrinter'
+        'BARCODE_PRINTER'      = 'BarcodePrinter'
+        'INVOICE_PRINTER'      = 'InvoicePrinter'
+        'RECEIPT_CODEPAGE'     = 'ReceiptCodePage'
+        'FISCAL_TEMP_PATH'     = 'FiscalTempPath'
+        'FISCAL_PRINTER_PORT'  = 'FiscalComPort'
+        'FISCAL_PRINTER_MODEL' = 'FiscalModel'
+        'FISCAL_NUMBER'        = 'FiscalNumber'
+    }
+
+    foreach ($key in $map.Keys) {
+        $param = $map[$key]
+        # An explicit argument beats the file; an empty value in the file means "not set".
+        if ($PSBoundParameters.ContainsKey($param)) { continue }
+        if (-not $fromFile.ContainsKey($key)) { continue }
+        if ([string]::IsNullOrWhiteSpace($fromFile[$key])) { continue }
+        Set-Variable -Name $param -Value $fromFile[$key]
+    }
+    Write-Ok "configuration loaded for $PosUrl"
 }
 
 $sourceExe = Join-Path $PSScriptRoot 'KosovaPOS.Agent.exe'
@@ -123,12 +167,14 @@ $env_vars = @(
     "FISCAL_PRINTER_PORT=$FiscalComPort",
     "FISCAL_PRINTER_MODEL=$FiscalModel",
     "FISCAL_NUMBER=$FiscalNumber",
+    "RECEIPT_CODEPAGE=$ReceiptCodePage",
     "SCALE_PORT=$ScalePort",
     "SCALE_BAUD=$ScaleBaud"
 )
 if ($Mock)                                  { $env_vars += 'AGENT_MOCK=true' }
 if (-not [string]::IsNullOrWhiteSpace($ReceiptPrinter)) { $env_vars += "RECEIPT_PRINTER=$ReceiptPrinter" }
 if (-not [string]::IsNullOrWhiteSpace($BarcodePrinter)) { $env_vars += "BARCODE_PRINTER=$BarcodePrinter" }
+if (-not [string]::IsNullOrWhiteSpace($InvoicePrinter)) { $env_vars += "INVOICE_PRINTER=$InvoicePrinter" }
 
 Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\$ServiceName" `
                  -Name 'Environment' -Value $env_vars -Type MultiString
@@ -162,7 +208,7 @@ Write-Host "  KosovaPOS Agent is running." -ForegroundColor Green
 Write-Host "  version      : $($health.version)"
 Write-Host "  hardware     : $(if ($health.realHardware) { 'REAL' } else { 'MOCK' })"
 Write-Host "  fiscal folder: $($health.fiscal.tempPath)"
-Write-Host "  capabilities : fiscal=$($health.capabilities.fiscal) receipt=$($health.capabilities.receipt) barcode=$($health.capabilities.barcode) scale=$($health.capabilities.scale)"
+Write-Host "  capabilities : fiscal=$($health.capabilities.fiscal) receipt=$($health.capabilities.receipt) barcode=$($health.capabilities.barcode) a4=$($health.capabilities.a4) scale=$($health.capabilities.scale)"
 Write-Host "  logs         : $($health.logDirectory)"
 Write-Host ""
 Write-Host "  Next: open $PosUrl on THIS PC and check the badge on the Shitje screen." -ForegroundColor Cyan

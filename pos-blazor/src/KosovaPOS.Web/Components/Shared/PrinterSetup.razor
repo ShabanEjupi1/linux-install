@@ -1,0 +1,193 @@
+@using KosovaPOS.Core.Printing
+@using KosovaPOS.Core.Services
+@using KosovaPOS.Models
+@using KosovaPOS.Web.Services
+@inject BusinessProfileService Profile
+@inject HardwareBridge Hw
+@rendermode InteractiveServer
+
+@* The shop's three printers, in one block — used by both /pajisjet and /cilesimet.
+   It is one component and not two copies because the day they disagree is the day a shop
+   sets its A4 printer on one screen and watches the other screen quietly unset it. *@
+
+<div class="setup-grid">
+    @if (_printers is not null)
+    {
+        @* The agent is on this PC, so its real printers can be listed. Picking beats typing: a
+           mistyped Windows printer name fails silently and looks exactly like a printer that is
+           switched off. *@
+        <label>Printeri i kuponave (80mm)
+            <select @bind="_receipt">
+                <option value="">— printeri i parazgjedhur i Windows-it —</option>
+                @foreach (var p in _printers.Printers)
+                {
+                    <option value="@p">@p @(p == _printers.Default ? "(parazgjedhur)" : "")</option>
+                }
+            </select>
+        </label>
+        <label>Printeri i etiketave (barkodi)
+            <select @bind="_barcode">
+                <option value="">— printeri i parazgjedhur i Windows-it —</option>
+                @foreach (var p in _printers.Printers)
+                {
+                    <option value="@p">@p @(p == _printers.Default ? "(parazgjedhur)" : "")</option>
+                }
+            </select>
+        </label>
+        <label>Printeri A4 (fatura &amp; fletëdërgesa)
+            <select @bind="_invoice">
+                <option value="">— printeri i parazgjedhur i Windows-it —</option>
+                @foreach (var p in _printers.Printers)
+                {
+                    <option value="@p">@p @(p == _printers.Default ? "(parazgjedhur)" : "")</option>
+                }
+            </select>
+        </label>
+    }
+    else
+    {
+        @* No agent on this PC: the list cannot be read, so the names have to be typed. *@
+        <label>Printeri i kuponave (80mm)
+            <input @bind="_receipt" placeholder="p.sh. POS-80" />
+        </label>
+        <label>Printeri i etiketave (barkodi)
+            <input @bind="_barcode" placeholder="p.sh. HPRT HT300" />
+        </label>
+        <label>Printeri A4 (fatura &amp; fletëdërgesa)
+            <input @bind="_invoice" placeholder="p.sh. HP LaserJet" />
+        </label>
+    }
+
+    <label>Kodimi i kuponit
+        <select @bind="_codePage">
+            @foreach (var opt in ReceiptCodePages.All)
+            {
+                <option value="@opt.Value">@opt.Label</option>
+            }
+        </select>
+    </label>
+    <label>Etiketa — gjerësia (mm)
+        <input type="number" min="20" max="200" @bind="_labelW" />
+    </label>
+    <label>Etiketa — lartësia (mm)
+        <input type="number" min="10" max="200" @bind="_labelH" />
+    </label>
+
+    <button type="button" class="btn-primary" @onclick="Save" disabled="@_busy">
+        @(_busy ? "Duke ruajtur…" : "Ruaj printerët")
+    </button>
+</div>
+
+<div class="modal-actions printer-tests">
+    <button type="button" class="btn-ghost" @onclick="TestReceipt" disabled="@_busy">🧾 Provo kuponin</button>
+    <button type="button" class="btn-ghost" @onclick="TestLabel"   disabled="@_busy">🏷️ Provo etiketën</button>
+    <button type="button" class="btn-ghost" @onclick="TestA4"      disabled="@_busy">📄 Provo A4</button>
+    <button type="button" class="btn-ghost" @onclick="TestCodePages" disabled="@(_busy || _printers is null)">🔤 Provo kodimin</button>
+</div>
+
+@if (_msg is not null)
+{
+    <div class="sale-msg @(_ok ? "ok" : "err")">@_msg</div>
+}
+
+@if (_printers is null)
+{
+    <p class="muted setup-p">
+        Agjenti nuk po përgjigjet në këtë kompjuter, prandaj lista e printerëve nuk lexohet dot
+        dhe emrat duhen shkruar ashtu si duken te <em>Windows → Printers &amp; scanners</em>.
+        Pa agjent, printimi kalon nëpër shfletuesin — i cili <strong>nuk e zgjedh dot printerin</strong>
+        dhe printon gjithmonë te ai i parazgjedhuri i Windows-it, prandaj fatura A4 mund të dalë
+        në rrotullën termike. Instalo agjentin te <a href="/pajisjet">Pajisjet</a>.
+    </p>
+}
+
+@code {
+    /// <summary>Fires after a successful save, with the settings row as it now stands.</summary>
+    [Parameter] public EventCallback<BusinessSettings> OnSaved { get; set; }
+
+    private BusinessSettings? _shop;
+    private string? _receipt, _barcode, _invoice;
+    private string _codePage = ReceiptCodePages.Default;
+    private int _labelW = 55, _labelH = 25;
+
+    private KosovaPOS.Agent.Contracts.PrinterList? _printers;
+    private bool _busy, _ok;
+    private string? _msg;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _shop = await Profile.GetSettingsAsync();
+        _receipt  = _shop?.ReceiptPrinter;
+        _barcode  = _shop?.BarcodePrinter;
+        _invoice  = _shop?.InvoicePrinter;
+        _codePage = string.IsNullOrWhiteSpace(_shop?.ReceiptCodePage) ? ReceiptCodePages.Default : _shop!.ReceiptCodePage;
+        _labelW   = _shop?.LabelWidthMm  is > 0 ? _shop.LabelWidthMm  : 55;
+        _labelH   = _shop?.LabelHeightMm is > 0 ? _shop.LabelHeightMm : 25;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // The agent lives on the CASHIER's PC, so only the browser can reach it — which means
+        // not before the component is interactive.
+        if (!firstRender) return;
+        _printers = await Hw.GetPrintersAsync();
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Saves through the settings row we loaded, not a fresh one: SaveSettingsAsync copies every
+    /// field it is handed, so a blank object would wipe the shop's name and fiscal numbers on its
+    /// way to changing three printer names.
+    /// </summary>
+    private async Task Save()
+    {
+        _busy = true;
+        _msg = null;
+        try
+        {
+            var shop = _shop ??= await Profile.GetSettingsAsync();
+            shop.ReceiptPrinter  = _receipt;
+            shop.BarcodePrinter  = _barcode;
+            shop.InvoicePrinter  = _invoice;
+            shop.ReceiptCodePage = _codePage;
+            shop.LabelWidthMm    = Math.Clamp(_labelW, 20, 200);
+            shop.LabelHeightMm   = Math.Clamp(_labelH, 10, 200);
+
+            await Profile.SaveSettingsAsync(shop);
+            _ok = true;
+            // The POS sends the printer name with every print job, so this takes effect on the
+            // next sale — the agent is not reconfigured and does not need reinstalling.
+            _msg = "U ruajt. Zbatohet menjëherë, pa riinstalim të agjentit.";
+            await OnSaved.InvokeAsync(shop);
+        }
+        finally { _busy = false; }
+    }
+
+    private Task TestReceipt() => Test(Hw.PrintTestReceiptAsync,
+        "Prova u dërgua te printeri i kuponave.");
+
+    private Task TestLabel() => Test(Hw.PrintTestLabelAsync,
+        $"U dërgua një etiketë provë ({_labelW}×{_labelH} mm). Skanoje: barkodi duhet të lexohet.");
+
+    private Task TestA4() => Test(Hw.PrintTestA4Async,
+        "U dërgua një faqe provë A4. Duhet të dalë te printeri A4 — jo te rrotulla termike.");
+
+    private Task TestCodePages() => Test(Hw.PrintCodePageSampleAsync,
+        "Prova u printua. Gjej rreshtin ku Ë ë Ç ç duken saktë dhe zgjidh atë kodim më sipër.");
+
+    private async Task Test(Func<Task<KosovaPOS.Agent.Contracts.AgentResult>> print, string okMessage)
+    {
+        // A test that printed on the OLD printer name would be worse than no test at all, so what
+        // is on screen is saved before anything is sent to paper.
+        _busy = true;
+        _msg = null;
+        try
+        {
+            await Save();
+            var r = await print();
+            _ok = r.Ok;
+            _msg = r.Ok ? okMessage : $"Prova dështoi: {r.Error}";
+        }
+        finally { _busy = false; }
+    }
+}

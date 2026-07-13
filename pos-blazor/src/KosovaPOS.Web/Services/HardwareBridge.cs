@@ -290,6 +290,78 @@ public sealed class HardwareBridge : IAsyncDisposable
         catch (Exception ex) { return AgentResult.Fail(ex.Message); }
     }
 
+    // ── A4 paper ─────────────────────────────────────────────────────────────
+    //
+    // The invoice and the waybill go to their OWN printer, and only the agent can send them there.
+    // A web page cannot choose a printer: it prints to whatever the user picks in the dialog, and
+    // Chrome's --kiosk-printing — the thing that removes the dialog — always prints to the Windows
+    // default. On a till the default is the thermal roll, so the browser path prints A4 invoices
+    // on 80mm receipt paper. It stays only as the fallback for a PC with no agent, where a dialog
+    // the cashier can steer is better than a sheet that goes nowhere.
+
+    /// <summary>The A4 tax invoice for a saved sale, on the shop's A4 printer.</summary>
+    public async Task<AgentResult> PrintInvoiceA4AnyWayAsync(long receiptNumber, A4Party? buyer = null)
+    {
+        var invoice = await _sales.GetInvoiceAsync(receiptNumber);
+        if (invoice is null) return AgentResult.Fail($"Fatura #{receiptNumber} nuk u gjet.");
+
+        var shop = await _profile.GetSettingsAsync();
+        var doc = A4DocumentBuilder.Invoice(invoice, shop, buyer);
+        var sent = await PrintA4Async($"Fatura {invoice.Number}", doc, shop);
+        return sent.Ok ? sent : await PrintUrlAsync($"/fatura/{receiptNumber}");
+    }
+
+    /// <summary>The A4 waybill for a saved sale, on the shop's A4 printer.</summary>
+    public async Task<AgentResult> PrintWaybillA4AnyWayAsync(long receiptNumber, A4Party? receiver = null)
+    {
+        var invoice = await _sales.GetInvoiceAsync(receiptNumber);
+        if (invoice is null) return AgentResult.Fail($"Fatura #{receiptNumber} nuk u gjet.");
+
+        var shop = await _profile.GetSettingsAsync();
+        var doc = A4DocumentBuilder.Waybill(invoice, shop, receiver);
+        var sent = await PrintA4Async($"Fletedergesa {invoice.Number}", doc, shop);
+        return sent.Ok ? sent : await PrintUrlAsync($"/fletedergese/{receiptNumber}");
+    }
+
+    /// <summary>
+    /// A one-page sample on the A4 printer: proves the sheet comes out of the right machine
+    /// before a customer is standing there waiting for their invoice.
+    /// </summary>
+    public async Task<AgentResult> PrintTestA4Async()
+    {
+        var shop = await _profile.GetSettingsAsync();
+        var doc = new A4Document
+        {
+            DocumentTitle = "PROVË A4",
+            SellerLines = { string.IsNullOrWhiteSpace(shop?.BusinessName) ? "KosovaPOS" : shop!.BusinessName! },
+            Meta = { new A4Field { Key = "Data:", Value = DateTime.Now.ToString("dd.MM.yyyy HH:mm") } },
+            Columns =
+            {
+                new A4Column { Header = "#", Weight = 0.5, Align = 1 },
+                new A4Column { Header = "Përshkrimi", Weight = 5 },
+                new A4Column { Header = "Vlera", Weight = 1.5, Align = 2 },
+            },
+            Rows =
+            {
+                new A4Row { Cells = { "1", "Ky nuk është faturë — vetëm provë e printerit A4.", "0.00 €" } },
+                new A4Row { Cells = { "2", "Shkronjat shqipe: Ë ë Ç ç — Kërçovë", "0.00 €" } },
+            },
+            Notes = { "Nëse kjo faqe doli në printerin e duhur, faturat dhe fletëdërgesat do të dalin aty." },
+        };
+        return await PrintA4Async("Prova A4", doc, shop);
+    }
+
+    private async Task<AgentResult> PrintA4Async(string title, A4Document doc, BusinessSettings? shop)
+    {
+        var req = HardwareMapper.ToA4Request(title, doc, shop);
+        try
+        {
+            var m = await ModuleAsync();
+            return await m.InvokeAsync<AgentResult>("printA4", req);
+        }
+        catch (Exception ex) { return AgentResult.Fail(ex.Message); }
+    }
+
     /// <summary>
     /// The printers installed on the cashier PC, so the shop can pick one rather than type its
     /// Windows name. Null when the agent is offline — the caller falls back to a free-text box.

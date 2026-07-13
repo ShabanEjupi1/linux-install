@@ -29,6 +29,11 @@
 .PARAMETER BarcodePrinter
     Windows printer name for the barcode labels (the HPRT). Empty = the system default printer.
 
+.PARAMETER InvoicePrinter
+    Windows printer name for the A4 paper — the invoice and the waybill. Empty = the system
+    default printer, which on a till is usually the thermal roll: an A4 invoice sent there comes
+    out as a metre of receipt paper. Pick the office printer.
+
 .PARAMETER Mock
     Install with mock drivers: nothing is sent to real hardware, but the whole path is
     exercised end to end. Re-run without -Mock once the printers are wired up.
@@ -42,6 +47,7 @@ param(
     [string] $PosUrl         = 'https://pos.spacecode.tech',
     [string] $ReceiptPrinter = '',
     [string] $BarcodePrinter = '',
+    [string] $InvoicePrinter = '',
     [string] $FiscalTempPath = 'C:\TEMP\',
     [string] $FiscalComPort  = 'COM1',
     [string] $FiscalNumber   = '003910',
@@ -92,6 +98,7 @@ try {
     }
     if ($ReceiptPrinter) { $params.ReceiptPrinter = $ReceiptPrinter }
     if ($BarcodePrinter) { $params.BarcodePrinter = $BarcodePrinter }
+    if ($InvoicePrinter) { $params.InvoicePrinter = $InvoicePrinter }
     if ($Mock)           { $params.Mock           = $true }
 
     Write-Host "==> Duke instaluar sherbimin" -ForegroundColor Cyan

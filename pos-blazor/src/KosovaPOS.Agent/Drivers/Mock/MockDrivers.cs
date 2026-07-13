@@ -1,3 +1,4 @@
+using System.Text;
 using KosovaPOS.Agent.Contracts;
 
 namespace KosovaPOS.Agent.Drivers.Mock;
@@ -87,6 +88,57 @@ public sealed class MockBarcodeDriver : IBarcodeDriver
     }
 }
 
+/// <summary>
+/// Writes the A4 document out as plain text instead of drawing it on paper, so the invoice and
+/// the waybill can be inspected — columns, totals, buyer block — off a Windows box.
+/// </summary>
+public sealed class MockA4Driver : IA4Driver
+{
+    private readonly ILogger<MockA4Driver> _log;
+    private readonly string _dir;
+
+    public MockA4Driver(ILogger<MockA4Driver> log)
+    {
+        _log = log;
+        _dir = Path.Combine(Path.GetTempPath(), "kosovapos-agent", "a4");
+        Directory.CreateDirectory(_dir);
+    }
+
+    public bool Available => true;
+
+    public async Task<AgentResult> PrintAsync(A4PrintRequest req, CancellationToken ct = default)
+    {
+        var d = req.Document;
+        var text = new StringBuilder();
+        text.AppendLine(d.DocumentTitle);
+        foreach (var l in d.SellerLines) text.AppendLine("  " + l);
+        foreach (var m in d.Meta) text.AppendLine($"  {m.Key} {m.Value}");
+        if (d.PartyTitle is not null)
+        {
+            text.AppendLine($"[{d.PartyTitle}]");
+            foreach (var p in d.Party) text.AppendLine($"  {p.Key} {p.Value}");
+        }
+        text.AppendLine(string.Join(" | ", d.Columns.Select(c => c.Header)));
+        foreach (var r in d.Rows) text.AppendLine(string.Join(" | ", r.Cells));
+        if (d.SummaryTitle is not null)
+        {
+            text.AppendLine($"[{d.SummaryTitle}]");
+            foreach (var r in d.SummaryRows) text.AppendLine("  " + string.Join(" | ", r.Cells));
+        }
+        foreach (var t in d.Totals) text.AppendLine($"  {t.Key} {t.Value}");
+        foreach (var n in d.Notes) text.AppendLine(n);
+
+        var safe = string.Concat((req.Title.Length == 0 ? "a4" : req.Title)
+            .Select(c => char.IsLetterOrDigit(c) ? c : '-'));
+        var path = Path.Combine(_dir, $"{safe}.txt");
+        await File.WriteAllTextAsync(path, text.ToString(), ct);
+
+        _log.LogInformation("MOCK A4 '{Title}' → printer '{Printer}' x{Copies}, written to {Path}\n{Doc}",
+            req.Title, req.PrinterName ?? "(default)", req.Copies, path, text.ToString());
+        return AgentResult.Success();
+    }
+}
+
 public sealed class MockScaleDriver : IScaleDriver
 {
     private static readonly Random Rng = new();
@@ -110,9 +162,10 @@ public sealed class MockPrinterEnumerator : IPrinterEnumerator
 
     public PrinterList List() => new()
     {
-        Printers = ["EPSON TM-T20 Receipt", "HPRT HT300 (labels)", "Microsoft Print to PDF"],
+        Printers = ["EPSON TM-T20 Receipt", "HPRT HT300 (labels)", "HP LaserJet A4", "Microsoft Print to PDF"],
         Default = "Microsoft Print to PDF",
         ConfiguredReceipt = _cfg.ReceiptPrinter,
         ConfiguredBarcode = _cfg.BarcodePrinter,
+        ConfiguredInvoice = _cfg.InvoicePrinter,
     };
 }

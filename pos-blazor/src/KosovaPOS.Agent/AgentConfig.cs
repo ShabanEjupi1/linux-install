@@ -18,9 +18,17 @@ public sealed class AgentConfig
     public string FiscalModel { get; init; } = "FP700+";
     public string FiscalNumber { get; init; } = "003910";
 
-    // Receipt / barcode printers (Windows printer names; null = default printer)
+    // Receipt / barcode / A4 printers (Windows printer names; null = default printer)
     public string? ReceiptPrinter { get; init; }
     public string? BarcodePrinter { get; init; }
+
+    /// <summary>
+    /// Where the A4 paper goes — the invoice and the waybill. Separate from the receipt printer
+    /// because it is a different sheet of paper: an invoice sent to the 80mm roll prints as a
+    /// metre of curling till receipt, and that is exactly what happens when the browser prints
+    /// it, because the browser can only ever use the Windows default printer.
+    /// </summary>
+    public string? InvoicePrinter { get; init; }
 
     /// <summary>
     /// The ESC/POS code page the receipt printer is switched to before each job: 1252, 852,
@@ -64,6 +72,7 @@ public sealed class AgentConfig
             FiscalNumber   = Env("FISCAL_NUMBER") ?? "003910",
             ReceiptPrinter = Env("RECEIPT_PRINTER"),
             BarcodePrinter = Env("BARCODE_PRINTER"),
+            InvoicePrinter = Env("INVOICE_PRINTER"),
             ReceiptCodePage = Env("RECEIPT_CODEPAGE") ?? "1252",
             ScaleComPort   = Env("SCALE_PORT") ?? "COM3",
             ScaleBaudRate  = IntEnv("SCALE_BAUD", 9600),

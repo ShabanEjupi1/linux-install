@@ -12,7 +12,7 @@
 
     <!-- Shipped to shop PCs as a single self-contained .exe, so the cashier PC needs
          no .NET runtime. Compression roughly halves the ~103MB payload. -->
-    <Version>1.1.0</Version>
+    <Version>1.2.0</Version>
     <PublishSingleFile>true</PublishSingleFile>
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
     <!-- Not hosted under IIS: skip the web.config / aspnetcorev2_inprocess.dll transform. -->
@@ -26,6 +26,10 @@
     <!-- Code page 1252, which the printers speak. .NET Core does not ship it; without this
          the raw ESC/POS and TSPL encoders throw and nothing prints. See Program.cs. -->
     <PackageReference Include="System.Text.Encoding.CodePages" Version="10.0.0" />
+    <!-- GDI printing for the A4 invoice/waybill: the only way to send a sheet to a NAMED printer
+         without a print dialog. Windows-only at runtime (it throws on Linux), which is fine —
+         the A4 driver is only registered on Windows, and the mock stands in elsewhere. -->
+    <PackageReference Include="System.Drawing.Common" Version="10.0.0" />
   </ItemGroup>
 
   <ItemGroup>

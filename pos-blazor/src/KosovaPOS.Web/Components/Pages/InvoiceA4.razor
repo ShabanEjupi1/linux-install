@@ -5,9 +5,11 @@
 @using Microsoft.AspNetCore.Authorization
 @using KosovaPOS.Core.Services
 @using KosovaPOS.Models
+@using KosovaPOS.Core.Printing
 @using KosovaPOS.Web.Services
 @inject SalesService Sales
 @inject BusinessProfileService Profile
+@inject HardwareBridge Hw
 @inject IJSRuntime JS
 
 <PageTitle>Faturë @Numri — KosovaPOS</PageTitle>
@@ -36,7 +38,17 @@ else
 {
     <div class="inv-toolbar">
         <a class="btn-ghost" href="/faturat">← Faturat</a>
-        <button class="btn-primary" @onclick="Print">🖨️ Printo / Ruaj PDF</button>
+        @* Printo → the shop's A4 printer, through the agent, with no dialog. The browser button
+           stays beside it because only the browser can save the sheet as a PDF or send it to a
+           printer this PC has but the shop has not chosen. *@
+        <button class="btn-primary" disabled="@_printing" @onclick="Print">
+            @(_printing ? "Duke printuar…" : "🖨️ Printo (A4)")
+        </button>
+        <button class="btn-ghost" @onclick="SavePdf">📄 Ruaj PDF / zgjidh printerin</button>
+        @if (_printMsg is not null)
+        {
+            <span class="@(_printOk ? "muted" : "err-input")">@_printMsg</span>
+        }
     </div>
 
     <div class="a4">
@@ -153,6 +165,8 @@ else
     private string _buyerName = "";
     private string _buyerFiscal = "";
     private string _buyerAddress = "";
+    private bool _printing, _printOk;
+    private string? _printMsg;
 
     private string SellerName => string.IsNullOrWhiteSpace(_shop?.BusinessName) ? "KosovaPOS" : _shop!.BusinessName!;
 
@@ -168,5 +182,23 @@ else
         _buyerAddress = _invoice.BuyerAddress ?? "";
     }
 
-    private async Task Print() => await JS.InvokeVoidAsync("print");
+    /// <summary>
+    /// Sends the invoice to the A4 printer the shop chose on /pajisjet — carrying whatever the
+    /// cashier typed into the buyer block, which is the whole reason those boxes are on screen.
+    /// Falls back to the browser (dialog and all) when this PC has no agent.
+    /// </summary>
+    private async Task Print()
+    {
+        _printing = true;
+        _printMsg = null;
+        try
+        {
+            var r = await Hw.PrintInvoiceA4AnyWayAsync(Numri, new A4Party(_buyerName, _buyerFiscal, _buyerAddress));
+            _printOk = r.Ok;
+            _printMsg = r.Ok ? "U dërgua te printeri." : $"Printimi dështoi: {r.Error}";
+        }
+        finally { _printing = false; }
+    }
+
+    private async Task SavePdf() => await JS.InvokeVoidAsync("print");
 }

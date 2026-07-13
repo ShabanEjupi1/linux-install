@@ -33,9 +33,10 @@ public sealed class PrinterList
     public List<string> Printers { get; set; } = new();
     /// <summary>The Windows default printer — what the agent uses when nothing is configured.</summary>
     public string? Default { get; set; }
-    /// <summary>What the agent is configured to use today (RECEIPT_PRINTER / BARCODE_PRINTER).</summary>
+    /// <summary>What the agent is configured to use today (RECEIPT_PRINTER / BARCODE_PRINTER / INVOICE_PRINTER).</summary>
     public string? ConfiguredReceipt { get; set; }
     public string? ConfiguredBarcode { get; set; }
+    public string? ConfiguredInvoice { get; set; }
 }
 
 public sealed class AgentCapabilities
@@ -44,6 +45,8 @@ public sealed class AgentCapabilities
     public bool Receipt { get; set; }
     public bool Barcode { get; set; }
     public bool Scale { get; set; }
+    /// <summary>Prints A4 paper (the invoice, the waybill) to a named printer, with no print dialog.</summary>
+    public bool A4 { get; set; }
 }
 
 public sealed class FiscalConfig
@@ -143,6 +146,90 @@ public sealed class BarcodePrintRequest
     /// </summary>
     public int LabelWidthMm { get; set; } = 55;
     public int LabelHeightMm { get; set; } = 25;
+}
+
+// --- A4 paper (invoice, waybill) --------------------------------------------
+
+/// <summary>
+/// An A4 document the agent prints on a named printer, with no print dialog.
+///
+/// It exists because a WEB PAGE CANNOT CHOOSE A PRINTER. The browser prints whatever the
+/// user picks in the dialog, and Chrome's --kiosk-printing (which suppresses the dialog)
+/// always prints to the Windows default printer — so an A4 invoice printed from the browser
+/// on a till whose default is the thermal roll comes out of the thermal roll, a metre of it.
+/// The agent is the only path that can say "this paper goes to the office laser".
+///
+/// The document arrives laid out as CONTENT, not as HTML: the agent is a Windows service with
+/// no browser in it and nothing that can render a web page. It draws these blocks with GDI —
+/// which is why this carries a table and totals rather than markup.
+/// </summary>
+public sealed class A4PrintRequest
+{
+    /// <summary>The name Windows shows in the print queue, e.g. "Fatura 12345".</summary>
+    public string Title { get; set; } = "";
+
+    /// <summary>The A4 printer chosen on /pajisjet. Null = the agent's INVOICE_PRINTER, else this PC's default.</summary>
+    public string? PrinterName { get; set; }
+
+    public int Copies { get; set; } = 1;
+
+    public A4Document Document { get; set; } = new();
+}
+
+public sealed class A4Document
+{
+    /// <summary>The big word in the top-right corner: FATURË, FLETËDËRGESË.</summary>
+    public string DocumentTitle { get; set; } = "";
+
+    /// <summary>The seller block, top-left. First line is the business name and prints larger.</summary>
+    public List<string> SellerLines { get; set; } = new();
+
+    /// <summary>Number / date / payment method — the small table under the title.</summary>
+    public List<A4Field> Meta { get; set; } = new();
+
+    /// <summary>"Blerësi" / "Pranuesi". Null hides the whole block.</summary>
+    public string? PartyTitle { get; set; }
+    public List<A4Field> Party { get; set; } = new();
+
+    public List<A4Column> Columns { get; set; } = new();
+    public List<A4Row> Rows { get; set; } = new();
+
+    /// <summary>A second, smaller table under the lines — the VAT breakdown. Null hides it.</summary>
+    public string? SummaryTitle { get; set; }
+    public List<A4Column> SummaryColumns { get; set; } = new();
+    public List<A4Row> SummaryRows { get; set; } = new();
+
+    /// <summary>The totals block, bottom-right. The last one prints as the grand total.</summary>
+    public List<A4Field> Totals { get; set; } = new();
+
+    /// <summary>Free paragraphs above the signatures (bank account, legal note).</summary>
+    public List<string> Notes { get; set; } = new();
+
+    /// <summary>Signature lines across the foot — "Nënshkrimi i shitësit", …</summary>
+    public List<string> Signatures { get; set; } = new();
+}
+
+/// <param name="Align">0 left · 1 centre · 2 right. Numbers right-align or the column cannot be read.</param>
+public sealed class A4Column
+{
+    public string Header { get; set; } = "";
+    /// <summary>Share of the table width. Weights are normalised, so they need not add to anything.</summary>
+    public double Weight { get; set; } = 1;
+    public int Align { get; set; }
+}
+
+public sealed class A4Row
+{
+    public List<string> Cells { get; set; } = new();
+    /// <summary>Prints bold and ruled off — the TOTAL row of a waybill.</summary>
+    public bool Emphasis { get; set; }
+}
+
+public sealed class A4Field
+{
+    public string Key { get; set; } = "";
+    public string Value { get; set; } = "";
+    public bool Emphasis { get; set; }
 }
 
 // --- Scale ------------------------------------------------------------------

@@ -55,6 +55,14 @@ export async function printBarcode(req) {
     return await call("/barcode/print", { method: "POST", body: req });
 }
 
+// The A4 invoice / waybill, drawn by the agent onto the printer the shop chose. This is the one
+// document the browser genuinely cannot handle: a page cannot pick its printer, and kiosk-printing
+// always uses the Windows default — which on a till is the thermal roll. A laser waking from sleep
+// takes its time, so this gets longer than the default budget.
+export async function printA4(req) {
+    return await call("/a4/print", { method: "POST", body: req, timeoutMs: 30000 });
+}
+
 export async function printers() {
     return await call("/printers", { timeoutMs: 4000 });
 }

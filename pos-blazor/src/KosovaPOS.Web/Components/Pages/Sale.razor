@@ -447,8 +447,8 @@
         {
             var r = doc switch
             {
-                Doc.InvoiceA4 => await Hw.PrintUrlAsync($"/fatura/{_lastNumri}"),
-                Doc.WaybillA4 => await Hw.PrintUrlAsync($"/fletedergese/{_lastNumri}"),
+                Doc.InvoiceA4 => await Hw.PrintInvoiceA4AnyWayAsync(_lastNumri.Value),
+                Doc.WaybillA4 => await Hw.PrintWaybillA4AnyWayAsync(_lastNumri.Value),
                 _ => await Hw.PrintReceiptAnyWayAsync(_lastNumri.Value),
             };
 
@@ -716,19 +716,20 @@
                 await RefreshAgentStatusAsync();
             }
 
-            // The A4 documents, when this shop sells on paper as well as on the roll. They are
-            // drawn by the browser in a hidden frame — the agent has no A4 path — so the till
-            // screen, the change due and the customer in front of the cashier all stay put.
+            // The A4 documents, when this shop sells on paper as well as on the roll. They go to
+            // the shop's A4 printer through the agent (/pajisjet), which is the only way a sheet
+            // can be aimed at all: with no agent the browser prints it, and the browser can only
+            // print to the Windows default — the thermal roll, on a till.
             if (_printInvoiceA4)
             {
-                var ir = await Hw.PrintUrlAsync($"/fatura/{savedNumri}");
+                var ir = await Hw.PrintInvoiceA4AnyWayAsync(savedNumri.Value);
                 _message += ir.Ok ? " · Fatura A4 u printua" : $" · ⚠ Fatura A4 nuk u printua: {ir.Error}";
                 if (!ir.Ok) _success = false;
             }
 
             if (_printWaybillA4)
             {
-                var wr = await Hw.PrintUrlAsync($"/fletedergese/{savedNumri}");
+                var wr = await Hw.PrintWaybillA4AnyWayAsync(savedNumri.Value);
                 _message += wr.Ok ? " · Fletëdërgesa u printua" : $" · ⚠ Fletëdërgesa nuk u printua: {wr.Error}";
                 if (!wr.Ok) _success = false;
             }

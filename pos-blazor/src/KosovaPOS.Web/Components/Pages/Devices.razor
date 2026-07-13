@@ -32,10 +32,10 @@
     {
         <div class="sale-msg err">
             Agjenti i instaluar këtu është versioni <strong>@_agentVersion</strong>, ndërsa ky server
-            shpërndan <strong>@Package.Version</strong>. Një agjent i vjetër printon gabimisht
-            <strong>ë</strong> dhe <strong>ç</strong> (dhe nuk lajmëron për këtë) dhe e shtyp çmimin
-            e etiketës të vogël. Ekzekuto përsëri komandën e instalimit më poshtë — e zëvendëson
-            atë të vjetrin, pa e çinstaluar.
+            shpërndan <strong>@Package.Version</strong>. Një agjent i vjetër nuk di të printojë
+            <strong>faturën A4</strong> te printeri i zgjedhur (e printon shfletuesi, te printeri i
+            parazgjedhur i Windows-it) dhe shtyp gabimisht <strong>ë</strong> dhe <strong>ç</strong>.
+            Ekzekuto përsëri komandën e instalimit më poshtë — e zëvendëson atë të vjetrin, pa e çinstaluar.
         </div>
     }
 
@@ -43,7 +43,8 @@
     {
         <div class="sale-msg ok">
             Agjenti është i instaluar në këtë kompjuter@(_agentVersion is null ? "" : $" (versioni {_agentVersion})").
-            Kuponat dhe etiketat printohen drejtpërdrejt te printerët, <strong>pa dialog printimi</strong>.
+            Kuponat, etiketat dhe faturat A4 printohen drejtpërdrejt te printerët e zgjedhur,
+            <strong>pa dialog printimi</strong>.
             @if (!_agentReal)
             {
                 <text>
@@ -57,75 +58,23 @@
     {
         <div class="sale-msg err">
             Agjenti nuk po përgjigjet në këtë kompjuter, prandaj printimi kalon nëpër shfletuesin,
-            i cili hap dialogun e printimit në çdo shitje. Ndiq hapat më poshtë.
+            i cili hap dialogun e printimit në çdo shitje dhe <strong>nuk e zgjedh dot printerin</strong>.
+            Ndiq hapat më poshtë.
         </div>
     }
 
     <h2 class="section-title">1. Zgjidh printerët</h2>
 
-    @if (_printers is not null)
-    {
-        @* The agent is here, so the PC's real printers can be listed. Picking beats typing:
-           a mistyped Windows printer name fails silently and looks exactly like a printer
-           that is switched off. *@
-        <p class="muted setup-p">
-            Printerët e instaluar në këtë kompjuter. Zgjedhja ruhet për gjithë biznesin dhe
-            zbatohet menjëherë — agjenti nuk ka nevojë të riinstalohet.
-        </p>
-        <div class="setup-grid">
-            <label>Printeri i kuponave (80mm)
-                <select @bind="_receiptPrinter">
-                    <option value="">— printeri i parazgjedhur i Windows-it —</option>
-                    @foreach (var p in _printers.Printers)
-                    {
-                        <option value="@p">@p @(p == _printers.Default ? "(parazgjedhur)" : "")</option>
-                    }
-                </select>
-            </label>
-            <label>Printeri i etiketave
-                <select @bind="_barcodePrinter">
-                    <option value="">— printeri i parazgjedhur i Windows-it —</option>
-                    @foreach (var p in _printers.Printers)
-                    {
-                        <option value="@p">@p @(p == _printers.Default ? "(parazgjedhur)" : "")</option>
-                    }
-                </select>
-            </label>
-            <button class="btn-primary" @onclick="SavePrinters" disabled="@_saving">
-                @(_saving ? "Duke ruajtur…" : "Ruaj")
-            </button>
-            <button class="btn-ghost" @onclick="TestPrint" disabled="@_saving">🧾 Provo kuponin</button>
-            <button class="btn-ghost" @onclick="TestLabel" disabled="@_saving">🏷️ Provo etiketën</button>
-        </div>
-    }
-    else
-    {
-        @* No agent on this PC (or an older one, before /printers existed): the list cannot be
-           read, so fall back to typing the names. *@
-        <p class="muted setup-p">
-            Agjenti nuk po përgjigjet, prandaj lista e printerëve nuk lexohet dot. Shkruaj emrat
-            ashtu si duken te <em>Windows → Printers &amp; scanners</em>, ose instalo agjentin
-            më poshtë dhe rifresko këtë faqe për t'i zgjedhur nga lista.
-        </p>
-        <div class="setup-grid">
-            <label>Printeri i kuponave (80mm)
-                <input @bind="_receiptPrinter" placeholder="p.sh. POS-80" />
-            </label>
-            <label>Printeri i etiketave
-                <input @bind="_barcodePrinter" placeholder="p.sh. HPRT HT300" />
-            </label>
-            <button class="btn-primary" @onclick="SavePrinters" disabled="@_saving">
-                @(_saving ? "Duke ruajtur…" : "Ruaj emrat")
-            </button>
-        </div>
-    }
+    @* Tri printerë, tri letra të ndryshme: rrotulla termike, etiketa, dhe A4-shi. Fatura A4 e
+       dërguar te printeri i kuponave del si një metër letër termike — prandaj ka printerin e vet. *@
+    <p class="muted setup-p">
+        Zgjedhja ruhet për gjithë biznesin dhe zbatohet menjëherë — agjenti nuk ka nevojë të
+        riinstalohet. Të njëjtat cilësime gjenden edhe te <a href="/cilesimet">Cilësimet</a>.
+    </p>
 
-    @if (_saveMsg is not null)
-    {
-        <div class="sale-msg @(_saveOk ? "ok" : "err")">@_saveMsg</div>
-    }
+    <PrinterSetup OnSaved="OnPrintersSaved" />
 
-    <h2 class="section-title">2. Shkronjat shqipe (ë, ç) dhe etiketa</h2>
+    <h2 class="section-title">2. Shkronjat shqipe (ë, ç)</h2>
 
     @* A thermal printer decides for itself which code pages its firmware honours, and one that
        ignores the page it was told to use reports no error — it just prints δ where ë belongs.
@@ -134,33 +83,10 @@
     <p class="muted setup-p">
         Nëse kuponi shtyp <code>δ</code> ose <code>?</code> në vend të <strong>ë</strong> dhe
         <strong>ç</strong>, printeri nuk e njeh kodimin e zgjedhur. Shtyp
-        <em>Provo kodimin</em>: printohet nga një rresht për çdo kodim, secili i shënuar me
+        <em>Provo kodimin</em> më sipër: printohet nga një rresht për çdo kodim, secili i shënuar me
         numrin e vet. Shiko letrën, gjej rreshtin ku <strong>Ë ë Ç ç</strong> duken saktë, dhe
-        zgjidh atë numër këtu.
+        zgjidh atë numër te <em>Kodimi i kuponit</em>.
     </p>
-
-    <div class="setup-grid">
-        <label>Kodimi i kuponit
-            <select @bind="_codePage">
-                @foreach (var opt in ReceiptCodePages.All)
-                {
-                    <option value="@opt.Value">@opt.Label</option>
-                }
-            </select>
-        </label>
-        <label>Etiketa — gjerësia (mm)
-            <input type="number" min="20" max="200" @bind="_labelW" />
-        </label>
-        <label>Etiketa — lartësia (mm)
-            <input type="number" min="10" max="200" @bind="_labelH" />
-        </label>
-        <button class="btn-primary" @onclick="SavePrinters" disabled="@_saving">
-            @(_saving ? "Duke ruajtur…" : "Ruaj")
-        </button>
-        <button class="btn-ghost" @onclick="TestCodePages" disabled="@(_saving || !_agentOnline)">
-            🔤 Provo kodimin
-        </button>
-    </div>
 
     <h2 class="section-title">3. Printeri fiskal</h2>
     <p class="muted setup-p">
@@ -194,9 +120,6 @@
 
         <div class="modal-actions">
             <button class="btn-primary" @onclick="CopyCommand">📋 Kopjo komandën</button>
-            <a class="btn-ghost" href="/shkarko/agjenti.zip">
-                ⬇️ Shkarko paketën (@Package.SizeMb.ToString("0") MB@(Package.Version is null ? "" : $", v{Package.Version}"))
-            </a>
             <button class="btn-ghost" @onclick="RefreshAgentStatusAsync">Kontrollo agjentin</button>
         </div>
 
@@ -204,6 +127,24 @@
             Pas instalimit, rifresko këtë faqe: shenja lart duhet të kthehet në <strong>Pajisje</strong>.
             Për një provë pa prekur pajisjet reale, shto <code>-Mock</code> në fund të komandës.
         </p>
+
+        <h3 class="section-title">Ose shkarko paketën dhe instaloje me dorë</h3>
+
+        @* The plain zip needed hand-editing on the shop PC to know its POS and its printers, and
+           the only place that knowledge exists is HERE. So the download is built per shop: it
+           carries konfigurimi.env, and install-agent.ps1 reads it — no arguments, no editing. *@
+        <p class="muted setup-p">
+            Kjo paketë ndërtohet <strong>për këtë biznes</strong>: brenda saj shkon
+            <code>konfigurimi.env</code> me adresën e këtij POS-i dhe emrat e printerëve që zgjodhe
+            më sipër, si dhe udhëzimi <code>LEXOME.txt</code>. Shpaketoje, kliko me të djathtën mbi
+            <code>instalo-ketu.cmd</code> → <em>Run as administrator</em>. Nuk ka çka të redaktohet.
+        </p>
+        <div class="modal-actions">
+            <a class="btn-ghost" href="/shkarko/paketa-ime.zip">
+                ⬇️ Shkarko paketën e këtij biznesi (@Package.SizeMb.ToString("0") MB@(Package.Version is null ? "" : $", v{Package.Version}"))
+            </a>
+            <a class="btn-ghost" href="/shkarko/agjenti.zip">⬇️ Paketa e thjeshtë (pa konfigurim)</a>
+        </div>
     }
 
     <h2 class="section-title">5. Nëse agjenti nuk mund të instalohet</h2>
@@ -214,7 +155,7 @@
     </p>
     <div class="sale-msg err">
         Kujdes: kiosk-printing printon <strong>gjithmonë te printeri i parazgjedhur i Windows-it</strong> —
-        faqja nuk e zgjedh dot. Me dy printerë (kupona + etiketa) vetëm njëri merr letrën e duhur,
+        faqja nuk e zgjedh dot. Me tre printerë (kupona + etiketa + A4) vetëm njëri merr letrën e duhur,
         dhe fatura A4 do të dalë në rrotullën termike. Përdore vetëm si zgjidhje kalimtare.
     </div>
     @if (Package.Available)
@@ -227,12 +168,6 @@
 
 @code {
     private BusinessSettings? _shop;
-    private string? _receiptPrinter, _barcodePrinter;
-    private string _codePage = ReceiptCodePages.Default;
-    private int _labelW = 55, _labelH = 25;
-    private KosovaPOS.Agent.Contracts.PrinterList? _printers;
-    private bool _saving, _saveOk;
-    private string? _saveMsg;
 
     private bool _agentOnline, _agentReal;
     private string? _agentVersion;
@@ -240,9 +175,10 @@
 
     /// <summary>
     /// The installed agent is older than the package this server hands out. Worth saying out
-    /// loud: an agent from before the code-page fix prints δ for every ë and cannot be told
-    /// otherwise, and nothing in its behaviour reveals that it is out of date — it prints, the
-    /// letters are just wrong.
+    /// loud: an agent from before the A4 driver cannot print an invoice to the printer the shop
+    /// chose — it falls back to the browser, and the browser prints to the Windows default. The
+    /// invoice still comes out, just on the wrong paper, which is exactly the kind of failure
+    /// nobody reports.
     /// </summary>
     private bool AgentOutdated =>
         _agentOnline && _agentVersion is { Length: > 0 } installed && Package.Version is { Length: > 0 } shipped &&
@@ -261,24 +197,18 @@
             var cmd = $"irm {origin}/shkarko/instalo.ps1 -OutFile \"$env:TEMP\\instalo.ps1\"; " +
                       $"& \"$env:TEMP\\instalo.ps1\" -PosUrl \"{origin}\"";
 
-            if (!string.IsNullOrWhiteSpace(_receiptPrinter))
-                cmd += $" -ReceiptPrinter \"{_receiptPrinter}\"";
-            if (!string.IsNullOrWhiteSpace(_barcodePrinter))
-                cmd += $" -BarcodePrinter \"{_barcodePrinter}\"";
+            if (!string.IsNullOrWhiteSpace(_shop?.ReceiptPrinter))
+                cmd += $" -ReceiptPrinter \"{_shop!.ReceiptPrinter}\"";
+            if (!string.IsNullOrWhiteSpace(_shop?.BarcodePrinter))
+                cmd += $" -BarcodePrinter \"{_shop!.BarcodePrinter}\"";
+            if (!string.IsNullOrWhiteSpace(_shop?.InvoicePrinter))
+                cmd += $" -InvoicePrinter \"{_shop!.InvoicePrinter}\"";
 
             return cmd;
         }
     }
 
-    protected override async Task OnInitializedAsync()
-    {
-        _shop = await Profile.GetSettingsAsync();
-        _receiptPrinter = _shop?.ReceiptPrinter;
-        _barcodePrinter = _shop?.BarcodePrinter;
-        _codePage = string.IsNullOrWhiteSpace(_shop?.ReceiptCodePage) ? ReceiptCodePages.Default : _shop!.ReceiptCodePage;
-        _labelW = _shop?.LabelWidthMm is > 0 ? _shop.LabelWidthMm : 55;
-        _labelH = _shop?.LabelHeightMm is > 0 ? _shop.LabelHeightMm : 25;
-    }
+    protected override async Task OnInitializedAsync() => _shop = await Profile.GetSettingsAsync();
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -286,6 +216,9 @@
         await RefreshAgentStatusAsync();
         StateHasChanged();
     }
+
+    /// <summary>The install command quotes the printer names, so it has to be rebuilt when they change.</summary>
+    private void OnPrintersSaved(BusinessSettings shop) => _shop = shop;
 
     private async Task RefreshAgentStatusAsync()
     {
@@ -296,82 +229,6 @@
         _agentTitle = health is null
             ? "Agjenti i pajisjeve nuk po përgjigjet"
             : $"{(health.RealHardware ? "pajisje reale" : "modaliteti test")}";
-
-        _printers = _agentOnline ? await Hw.GetPrintersAsync() : null;
-    }
-
-    private async Task TestPrint()
-    {
-        _saving = true;
-        try
-        {
-            var r = await Hw.PrintTestReceiptAsync();
-            _saveOk = r.Ok;
-            _saveMsg = r.Ok
-                ? "Prova u dërgua te printeri i kuponave."
-                : $"Prova dështoi: {r.Error}";
-        }
-        finally { _saving = false; }
-    }
-
-    private async Task TestLabel()
-    {
-        _saving = true;
-        try
-        {
-            var r = await Hw.PrintTestLabelAsync();
-            _saveOk = r.Ok;
-            _saveMsg = r.Ok
-                ? $"U dërgua një etiketë provë ({_labelW}×{_labelH} mm). Skanoje: barkodi duhet të lexohet."
-                : $"Prova dështoi: {r.Error}";
-        }
-        finally { _saving = false; }
-    }
-
-    /// <summary>
-    /// Prints the encoding sample: the same "Ë ë Ç ç" under every code page we can select, each
-    /// line labelled with the page that printed it. The shop reads the paper — this is the only
-    /// place the answer exists, because a printer that ignores a code page does not say so.
-    /// </summary>
-    private async Task TestCodePages()
-    {
-        _saving = true;
-        try
-        {
-            var r = await Hw.PrintCodePageSampleAsync();
-            _saveOk = r.Ok;
-            _saveMsg = r.Ok
-                ? "Prova u printua. Gjej rreshtin ku Ë ë Ç ç duken saktë dhe zgjidh atë kodim më sipër."
-                : $"Prova dështoi: {r.Error}";
-        }
-        finally { _saving = false; }
-    }
-
-    /// <summary>
-    /// Saves through the settings row we loaded, not a fresh one: SaveSettingsAsync copies
-    /// every field it is handed, so a blank object would wipe the shop's name and fiscal
-    /// numbers on its way to changing two printer names.
-    /// </summary>
-    private async Task SavePrinters()
-    {
-        _saving = true;
-        _saveMsg = null;
-        try
-        {
-            var shop = _shop ??= await Profile.GetSettingsAsync();
-            shop.ReceiptPrinter = _receiptPrinter;
-            shop.BarcodePrinter = _barcodePrinter;
-            shop.ReceiptCodePage = _codePage;
-            shop.LabelWidthMm = Math.Clamp(_labelW, 20, 200);
-            shop.LabelHeightMm = Math.Clamp(_labelH, 10, 200);
-
-            await Profile.SaveSettingsAsync(shop);
-            _saveOk = true;
-            // The POS sends the printer name with every print job, so this takes effect on the
-            // next sale — the agent is not reconfigured and does not need reinstalling.
-            _saveMsg = "U ruajt. Zbatohet menjëherë, pa riinstalim të agjentit.";
-        }
-        finally { _saving = false; }
     }
 
     private async Task CopyCommand() =>

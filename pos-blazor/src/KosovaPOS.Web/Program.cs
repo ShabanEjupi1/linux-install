@@ -81,6 +81,7 @@ builder.Services.AddScoped<KosovaPOS.Web.Services.LocalState>();
 
 // Singleton: the package on disk does not change while the process runs.
 builder.Services.AddSingleton<KosovaPOS.Web.Services.AgentPackage>();
+builder.Services.AddSingleton<KosovaPOS.Web.Services.AgentPackageBuilder>();
 
 // Singleton: the failed-login counters are process-wide state, and a lockout that
 // reset with every circuit would lock nobody out.
@@ -278,6 +279,30 @@ app.MapGet("/shkarko/{name}", (string name) =>
         ? Results.File(path, d.ContentType, fileDownloadName: d.File)
         : Results.NotFound();
 }).AllowAnonymous();
+
+// The same agent, repacked for THIS business: the zip carries konfigurimi.env (this POS's
+// address, this shop's printers) and a one-click instalo-ketu.cmd, so the shop PC install has
+// nothing left to type and nothing left to edit — which is what made the plain zip a trap.
+//
+// This one is NOT anonymous, unlike the generic package above: it names the business and its
+// printers. It is downloaded by a browser that is already signed in, so a cookie is all it needs.
+app.MapGet("/shkarko/paketa-ime.zip", async (
+    KosovaPOS.Web.Services.AgentPackageBuilder builder,
+    KosovaPOS.Core.Services.BusinessProfileService profile,
+    HttpContext ctx) =>
+{
+    var package = ctx.RequestServices.GetRequiredService<KosovaPOS.Web.Services.AgentPackage>();
+    if (!package.Available) return Results.NotFound();
+
+    var shop = await profile.GetSettingsAsync();
+    var origin = $"{ctx.Request.Scheme}://{ctx.Request.Host}";
+    var bytes = builder.Build(shop, origin);
+
+    var name = string.Concat((shop?.BusinessName ?? "kosovapos")
+        .Select(c => char.IsLetterOrDigit(c) ? char.ToLowerInvariant(c) : '-'));
+
+    return Results.File(bytes, "application/zip", $"agjenti-{name}.zip");
+}).RequireAuthorization("perm:settings");
 
 // Sign-out endpoint (POST from the shell)
 app.MapPost("/auth/logout", async (HttpContext ctx) =>

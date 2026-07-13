@@ -5,9 +5,11 @@
 @using Microsoft.AspNetCore.Authorization
 @using KosovaPOS.Core.Services
 @using KosovaPOS.Models
+@using KosovaPOS.Core.Printing
 @using KosovaPOS.Web.Services
 @inject SalesService Sales
 @inject BusinessProfileService Profile
+@inject HardwareBridge Hw
 @inject IJSRuntime JS
 
 <PageTitle>Fletëdërgesë @Numri — KosovaPOS</PageTitle>
@@ -35,7 +37,14 @@ else
 {
     <div class="inv-toolbar">
         <a class="btn-ghost" href="/faturat">← Faturat</a>
-        <button class="btn-primary" @onclick="Print">🖨️ Printo / Ruaj PDF</button>
+        <button class="btn-primary" disabled="@_printing" @onclick="Print">
+            @(_printing ? "Duke printuar…" : "🖨️ Printo (A4)")
+        </button>
+        <button class="btn-ghost" @onclick="SavePdf">📄 Ruaj PDF / zgjidh printerin</button>
+        @if (_printMsg is not null)
+        {
+            <span class="@(_printOk ? "muted" : "err-input")">@_printMsg</span>
+        }
     </div>
 
     <div class="a4">
@@ -144,6 +153,8 @@ else
     private string _vehicle = "";
     private string _from = "";
     private string _departure = "";
+    private bool _printing, _printOk;
+    private string? _printMsg;
 
     private string SellerName => string.IsNullOrWhiteSpace(_shop?.BusinessName) ? "KosovaPOS" : _shop!.BusinessName!;
     private decimal TotalQuantity => _invoice?.Lines.Sum(l => l.Quantity) ?? 0;
@@ -159,5 +170,24 @@ else
         _buyerAddress = _invoice.BuyerAddress ?? "";
     }
 
-    private async Task Print() => await JS.InvokeVoidAsync("print");
+    /// <summary>
+    /// The waybill on the shop's A4 printer, carrying the receiver and the transport details the
+    /// cashier typed — a delivery note with no lorry and no receiver on it proves nothing about
+    /// where the goods went, which is the only reason it exists.
+    /// </summary>
+    private async Task Print()
+    {
+        _printing = true;
+        _printMsg = null;
+        try
+        {
+            var party = new A4Party(_buyerName, _buyerFiscal, _buyerAddress, _vehicle, _from, _departure);
+            var r = await Hw.PrintWaybillA4AnyWayAsync(Numri, party);
+            _printOk = r.Ok;
+            _printMsg = r.Ok ? "U dërgua te printeri." : $"Printimi dështoi: {r.Error}";
+        }
+        finally { _printing = false; }
+    }
+
+    private async Task SavePdf() => await JS.InvokeVoidAsync("print");
 }

@@ -26,7 +26,7 @@
 
     @if (_loading)
     {
-        <p class="muted">Duke ngarkuar…</p>
+        <Skeleton Rows="6" />
     }
     else
     {
@@ -131,35 +131,27 @@
                 </table>
 
                 <p class="hint">
-                    Dokumentet A4 i vizaton shfletuesi (jo agjenti) dhe dalin te printeri i
-                    parazgjedhur i Windows-it — zakonisht ai i letrës A4, jo termiku.
+                    Fatura dhe fletëdërgesa A4 dalin te <strong>printeri A4</strong> i zgjedhur më
+                    poshtë, përmes agjentit — pa dialog printimi. Pa agjent i printon shfletuesi, i
+                    cili nuk e zgjedh dot printerin: shkojnë te printeri i parazgjedhur i Windows-it,
+                    që në arkë shpesh është rrotulla termike.
                 </p>
             </fieldset>
 
+            @* Three printers, three different papers: the thermal roll, the label stock and A4.
+               They are here AND on /pajisjet, from one component — the day the two screens have
+               their own copy of this is the day a shop sets its A4 printer on one and watches the
+               other quietly unset it. *@
             <fieldset class="settings-set">
                 <legend>Printerët lokalë (agjenti)</legend>
                 <p class="hint">
-                    Printeri i kuponit është i gjithë biznesit dhe caktohet <strong>vetëm këtu</strong>
-                    (ose te <a href="/pajisjet">Pajisjet</a>, ku lexohet lista e printerëve të këtij
-                    kompjuteri). Te <em>Shitja</em> nuk zgjidhet më printer: një menu në arkë është
-                    edhe një gjë që arkëtari mund ta gabojë me klientin përpara, dhe një emër i gabuar
-                    printeri dështon në heshtje — duket njësoj si një printer i fikur.
+                    Printerët janë të gjithë biznesit. Lista lexohet nga agjenti i këtij kompjuteri;
+                    pa agjent, emrat shkruhen ashtu si duken te <em>Windows → Printers &amp; scanners</em>.
+                    Te <em>Shitja</em> nuk zgjidhet më printer: një menu në arkë është edhe një gjë që
+                    arkëtari mund ta gabojë me klientin përpara, dhe një emër i gabuar printeri dështon
+                    në heshtje — duket njësoj si një printer i fikur.
                 </p>
-                <div class="form-grid">
-                    <div class="field">
-                        <label>Printeri i kuponit (termik)</label>
-                        <input class="input" @bind="_settings.ReceiptPrinter" maxlength="100" placeholder="p.sh. POS-80" />
-                        <p class="hint">Emri i printerit termik në Windows për kuponin jofiskal.</p>
-                    </div>
-                    <div class="field">
-                        <label>Printeri i barkodit (HPRT)</label>
-                        <input class="input" @bind="_settings.BarcodePrinter" maxlength="100" placeholder="p.sh. HPRT ..." />
-                        <p class="hint warn">
-                            Emri i printerit HPRT në Windows për etiketat me barkod. Etiketat
-                            dërgohen si TSPL. Kërkon agjentin e instaluar në PC-në e shitores.
-                        </p>
-                    </div>
-                </div>
+                <PrinterSetup OnSaved="OnPrintersSaved" />
             </fieldset>
 
             @* Which lines the courtesy receipt carries. Every switch here is a line some shop
@@ -290,6 +282,22 @@
         _shellName = _settings.BusinessName;
         _shellProfile = _settings.Profile;
         _loading = false;
+    }
+
+    /// <summary>
+    /// The printer block saves itself (its test prints have to go to the printer that is on the
+    /// screen, not the one in the database). This form holds its OWN copy of the settings row and
+    /// SaveSettingsAsync copies every field it is handed — so without this, pressing Ruaj on the
+    /// form afterwards would write the pre-edit printer names straight back over the new ones.
+    /// </summary>
+    private void OnPrintersSaved(BusinessSettings saved)
+    {
+        _settings.ReceiptPrinter  = saved.ReceiptPrinter;
+        _settings.BarcodePrinter  = saved.BarcodePrinter;
+        _settings.InvoicePrinter  = saved.InvoicePrinter;
+        _settings.ReceiptCodePage = saved.ReceiptCodePage;
+        _settings.LabelWidthMm    = saved.LabelWidthMm;
+        _settings.LabelHeightMm   = saved.LabelHeightMm;
     }
 
     private async Task Save()
