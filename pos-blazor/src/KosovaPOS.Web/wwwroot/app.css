@@ -657,6 +657,20 @@ a.stat:hover { border-color: var(--accent); }
   .receipt-toggles { grid-template-columns: 1fr; }
 }
 
+/* Which documents the till offers, and which start ticked. A grid rather than a row of
+   loose checkboxes: the two columns mean different things, and side by side the second
+   one reads as "…and it starts on", which is exactly what it is. */
+.doc-matrix { margin-top: .7rem; }
+.doc-matrix th.num, .doc-matrix td.num { text-align: center; width: 12rem; }
+.doc-matrix td { padding-top: .5rem; padding-bottom: .5rem; }
+.doc-matrix input[type="checkbox"] { width: 1.05rem; height: 1.05rem; cursor: pointer; }
+/* A document that is not offered cannot be a default — the box is disabled rather than
+   hidden, so the rule is visible instead of merely enforced. */
+.doc-matrix input[type="checkbox"]:disabled { opacity: .35; cursor: not-allowed; }
+@media (max-width: 700px) {
+  .doc-matrix th.num, .doc-matrix td.num { width: auto; }
+}
+
 /* Impersonation banner — a platform admin driving a shop user's session. Amber,
    sticky at the top of the main pane so it is never lost while scrolling. */
 .impersonation-bar {

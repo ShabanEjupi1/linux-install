@@ -8,6 +8,7 @@
 @inject CatalogService Catalog
 @inject SalesService Sales
 @inject UserService Users
+@inject BusinessProfileService Profile
 @inject HardwareBridge Hw
 @inject LocalState Local
 @inject Audit Audit
@@ -98,22 +99,40 @@
                     <button class="pm @(_payment == m ? "active" : "")" @onclick="() => SetPayment(m)">@m</button>
                 }
             </div>
-            <label class="fiscal-toggle">
-                <input type="checkbox" @bind="_printFiscal" @bind:after="SavePrefs" />
-                Printo faturën fiskale
-            </label>
-            <label class="fiscal-toggle">
-                <input type="checkbox" @bind="_printReceipt" @bind:after="SavePrefs" />
-                Printo kuponin termik
-            </label>
-
-            @* The printer belongs to this PC, not to the shop row: two tills share one login and
-               one settings table, but not one printer. So the choice is remembered in this
-               browser — and it is remembered, which is the whole point: it used to be re-read
-               from settings on every visit and any pick the cashier made was gone by the time
-               they came back from another screen. *@
-            <PrinterPicker Label="Printeri i kuponit" Printers="_printers"
-                           Value="_receiptPrinter" ValueChanged="SetReceiptPrinter" />
+            @* What this sale prints. Which of these four the cashier is even offered is the
+               admin's decision on /cilesimet — a kiosk that only ever prints a fiscal receipt
+               should not have three unused checkboxes on the busiest screen in the shop.
+               The printer itself is NOT chosen here: it is the shop's, set once on /pajisjet.
+               A dropdown on the till is a thing a cashier can get wrong mid-queue, and getting
+               it wrong looks exactly like a printer that is switched off. *@
+            @if (_shop?.SellOfferFiscal ?? true)
+            {
+                <label class="fiscal-toggle">
+                    <input type="checkbox" @bind="_printFiscal" @bind:after="SavePrefs" />
+                    Printo faturën fiskale
+                </label>
+            }
+            @if (_shop?.SellOfferReceipt80 ?? true)
+            {
+                <label class="fiscal-toggle">
+                    <input type="checkbox" @bind="_printReceipt" @bind:after="SavePrefs" />
+                    Printo kuponin termik (80mm)
+                </label>
+            }
+            @if (_shop?.SellOfferInvoiceA4 ?? true)
+            {
+                <label class="fiscal-toggle">
+                    <input type="checkbox" @bind="_printInvoiceA4" @bind:after="SavePrefs" />
+                    Printo faturën A4
+                </label>
+            }
+            @if (_shop?.SellOfferWaybillA4 ?? true)
+            {
+                <label class="fiscal-toggle">
+                    <input type="checkbox" @bind="_printWaybillA4" @bind:after="SavePrefs" />
+                    Printo fletëdërgesën A4
+                </label>
+            }
 
             @if (!string.IsNullOrEmpty(_message))
             {
@@ -135,15 +154,24 @@
             @if (_lastNumri is not null)
             {
                 <div class="print-links">
-                    <button class="btn-ghost" disabled="@_printing" @onclick="() => Reprint(Doc.Receipt80)">
-                        🧾 Kupon 80mm
-                    </button>
-                    <button class="btn-ghost" disabled="@_printing" @onclick="() => Reprint(Doc.InvoiceA4)">
-                        📄 Faturë A4
-                    </button>
-                    <button class="btn-ghost" disabled="@_printing" @onclick="() => Reprint(Doc.WaybillA4)">
-                        🚚 Fletëdërgesë A4
-                    </button>
+                    @if (_shop?.SellOfferReceipt80 ?? true)
+                    {
+                        <button class="btn-ghost" disabled="@_printing" @onclick="() => Reprint(Doc.Receipt80)">
+                            🧾 Kupon 80mm
+                        </button>
+                    }
+                    @if (_shop?.SellOfferInvoiceA4 ?? true)
+                    {
+                        <button class="btn-ghost" disabled="@_printing" @onclick="() => Reprint(Doc.InvoiceA4)">
+                            📄 Faturë A4
+                        </button>
+                    }
+                    @if (_shop?.SellOfferWaybillA4 ?? true)
+                    {
+                        <button class="btn-ghost" disabled="@_printing" @onclick="() => Reprint(Doc.WaybillA4)">
+                            🚚 Fletëdërgesë A4
+                        </button>
+                    }
                 </div>
             }
 
@@ -240,6 +268,9 @@
 
     private bool _printFiscal = true;
     private bool _printReceipt;
+    private bool _printInvoiceA4;
+    private bool _printWaybillA4;
+
     /// <summary>The journal number of the sale just saved, so it can be printed from the browser.</summary>
     private long? _lastNumri;
     private Receipt? _lastReceipt;
@@ -247,9 +278,11 @@
     private bool _agentOnline, _agentReal, _printing;
     private string _agentTitle = "Agjenti i pajisjeve nuk është kontrolluar ende";
 
-    /// <summary>The receipt printer chosen on THIS PC; empty means the shop default.</summary>
-    private string? _receiptPrinter;
-    private KosovaPOS.Agent.Contracts.PrinterList? _printers;
+    /// <summary>
+    /// The shop's own settings: which documents this till may print, and how they start out.
+    /// Read once when the till opens — a cashier cannot change any of it from here.
+    /// </summary>
+    private BusinessSettings? _shop;
 
     /// <summary>Which paper the cashier asked for. All three come off the same saved sale.</summary>
     private enum Doc { Receipt80, InvoiceA4, WaybillA4 }
@@ -261,18 +294,22 @@
     // a price on /stoku. So the till's state lives in the browser as well as in the circuit.
     //
     // But the basket and the till's SETTINGS have opposite lifetimes, and storing them together
-    // was the bug: finishing a sale correctly clears the basket, and it was clearing the printer,
-    // the payment method and the print toggles along with it — so every sale reset the till to
-    // factory settings and the cashier re-picked their printer all day long. They are two records
-    // under two keys now: the cart dies with the sale, the preferences outlive it.
+    // was the bug: finishing a sale correctly clears the basket, and it was clearing the payment
+    // method and the print toggles along with it — so every sale reset the till to factory
+    // settings. They are two records under two keys now: the cart dies with the sale, the
+    // preferences outlive it.
 
     private sealed record DraftLine(int ArticleId, string Barcode, string Name,
                                     decimal Price, decimal Quantity, decimal VatRate);
 
     private sealed record SaleDraftState(List<DraftLine> Lines);
 
-    /// <summary>Settings of THIS till, kept across sales, navigations and logins.</summary>
-    private sealed record TillPrefs(string Payment, bool PrintFiscal, bool PrintReceipt, string? Category);
+    /// <summary>
+    /// Settings of THIS till, kept across sales, navigations and logins. A till that has never
+    /// been used has none, and starts from the shop's defaults instead.
+    /// </summary>
+    private sealed record TillPrefs(string Payment, bool PrintFiscal, bool PrintReceipt,
+                                    bool PrintInvoiceA4, bool PrintWaybillA4, string? Category);
 
     private bool _restored;
 
@@ -295,7 +332,8 @@
     {
         if (!_restored) return;
         await Local.SaveAsync(LocalKeys.TillPrefs,
-            new TillPrefs(_payment, _printFiscal, _printReceipt, _activeCategory));
+            new TillPrefs(_payment, _printFiscal, _printReceipt,
+                          _printInvoiceA4, _printWaybillA4, _activeCategory));
     }
 
     /// <summary>
@@ -307,18 +345,39 @@
     {
         var prefs = await Local.LoadAsync<TillPrefs>(LocalKeys.TillPrefs);
         var draft = await Local.LoadAsync<SaleDraftState>(LocalKeys.SaleDraft);
-        _receiptPrinter = await Local.LoadAsync<string>(LocalKeys.ReceiptPrinter);
         _restored = true;
 
         if (prefs is not null)
         {
             if (!string.IsNullOrWhiteSpace(prefs.Payment)) _payment = prefs.Payment;
-            _printFiscal = prefs.PrintFiscal;
-            _printReceipt = prefs.PrintReceipt;
+            _printFiscal    = prefs.PrintFiscal;
+            _printReceipt   = prefs.PrintReceipt;
+            _printInvoiceA4 = prefs.PrintInvoiceA4;
+            _printWaybillA4 = prefs.PrintWaybillA4;
             // Only restore a category that still exists — a shelf can be renamed, and a filter
             // pinned to a category that is gone shows an empty catalogue that looks like a crash.
             if (!string.IsNullOrWhiteSpace(prefs.Category) && _categories.Contains(prefs.Category!))
                 _activeCategory = prefs.Category!;
+        }
+        else if (_shop is not null)
+        {
+            // A till nobody has set up yet starts the way the shop says it should, so a new PC
+            // in the corner prints the same paper as the one beside it without anyone ticking
+            // four boxes.
+            _printFiscal    = _shop.SellDefaultFiscal;
+            _printReceipt   = _shop.SellDefaultReceipt80;
+            _printInvoiceA4 = _shop.SellDefaultInvoiceA4;
+            _printWaybillA4 = _shop.SellDefaultWaybillA4;
+        }
+
+        // A document the admin has taken off this shop's till cannot be printed by it, whatever
+        // the cashier last ticked or whatever an older build left in the browser.
+        if (_shop is not null)
+        {
+            _printFiscal    &= _shop.SellOfferFiscal;
+            _printReceipt   &= _shop.SellOfferReceipt80;
+            _printInvoiceA4 &= _shop.SellOfferInvoiceA4;
+            _printWaybillA4 &= _shop.SellOfferWaybillA4;
         }
 
         if (draft is null || draft.Lines.Count == 0) return;
@@ -351,12 +410,6 @@
     {
         _activeCategory = category ?? "";
         await SavePrefs();
-    }
-
-    private async Task SetReceiptPrinter(string? printer)
-    {
-        _receiptPrinter = printer;
-        await Local.SaveAsync(LocalKeys.ReceiptPrinter, printer ?? "");
     }
 
     /// <summary>
@@ -396,7 +449,7 @@
             {
                 Doc.InvoiceA4 => await Hw.PrintUrlAsync($"/fatura/{_lastNumri}"),
                 Doc.WaybillA4 => await Hw.PrintUrlAsync($"/fletedergese/{_lastNumri}"),
-                _ => await Hw.PrintReceiptAnyWayAsync(_lastNumri.Value, _receiptPrinter),
+                _ => await Hw.PrintReceiptAnyWayAsync(_lastNumri.Value),
             };
 
             if (!r.Ok)
@@ -410,6 +463,9 @@
 
     protected override async Task OnInitializedAsync()
     {
+        // Loaded before RestoreAsync runs, because a till with no saved preferences takes its
+        // opening state from these.
+        _shop = await Profile.GetSettingsAsync();
         _articles = await Catalog.GetAllArticlesAsync();
         _categories = await Catalog.GetCategoriesAsync();
         _loading = false;
@@ -432,12 +488,6 @@
         _agentTitle = health is null
             ? "Agjenti i pajisjeve nuk u gjet — faturat fiskale nuk do të printohen."
             : $"{health.Fiscal.Model} · {health.Fiscal.ComPort} · {(health.RealHardware ? "pajisje reale" : "modaliteti test")}";
-
-        // The list is REPLACED only when a new one actually arrives. This runs after every sale,
-        // and a momentarily unreachable agent used to blank it — which took the printer dropdown
-        // off the screen mid-shift and made the cashier's choice look like it had been forgotten.
-        var printers = _agentOnline ? await Hw.GetPrintersAsync() : null;
-        if (printers is { Printers.Count: > 0 }) _printers = printers;
 
         StateHasChanged();
     }
@@ -655,15 +705,32 @@
                 await RefreshAgentStatusAsync();
             }
 
-            // Courtesy thermal receipt on the configured (any) thermal printer. Also
+            // Courtesy thermal receipt on the shop's thermal printer (set on /pajisjet). Also
             // best-effort — the sale stands whether or not it prints. Laid out from what
             // was just persisted, so the paper is the sale, not the cart it came from.
             if (_printReceipt)
             {
-                var rr = await Hw.PrintReceiptAsync(savedNumri.Value, _receiptPrinter);
+                var rr = await Hw.PrintReceiptAsync(savedNumri.Value);
                 _message += rr.Ok ? " · Kuponi u printua" : $" · ⚠ Kuponi nuk u printua: {rr.Error}";
                 if (!rr.Ok) _success = false;
                 await RefreshAgentStatusAsync();
+            }
+
+            // The A4 documents, when this shop sells on paper as well as on the roll. They are
+            // drawn by the browser in a hidden frame — the agent has no A4 path — so the till
+            // screen, the change due and the customer in front of the cashier all stay put.
+            if (_printInvoiceA4)
+            {
+                var ir = await Hw.PrintUrlAsync($"/fatura/{savedNumri}");
+                _message += ir.Ok ? " · Fatura A4 u printua" : $" · ⚠ Fatura A4 nuk u printua: {ir.Error}";
+                if (!ir.Ok) _success = false;
+            }
+
+            if (_printWaybillA4)
+            {
+                var wr = await Hw.PrintUrlAsync($"/fletedergese/{savedNumri}");
+                _message += wr.Ok ? " · Fletëdërgesa u printua" : $" · ⚠ Fletëdërgesa nuk u printua: {wr.Error}";
+                if (!wr.Ok) _success = false;
             }
 
             _cart.Clear();

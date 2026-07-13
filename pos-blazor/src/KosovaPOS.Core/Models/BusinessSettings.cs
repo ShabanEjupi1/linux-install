@@ -117,6 +117,28 @@ namespace KosovaPOS.Models
         [StringLength(120)]
         public string? ReceiptFooterText { get; set; } = "Faleminderit për blerjen!";
 
+        // ── What the till may print ───────────────────────────────────────────────
+        // Four documents come off one sale, and no two shops want the same set of them:
+        // a kiosk prints a fiscal receipt and nothing else, a wholesaler prints an A4
+        // invoice and a waybill and never touches the thermal roll. So the SET of
+        // documents the cashier can choose from is the admin's decision, and the
+        // DEFAULT state of each is theirs too — a cashier should not have to tick the
+        // same two boxes on every sale of the day.
+        //
+        // Available = the option is rendered on the till at all (and reprintable after
+        // the sale). Default = it starts ticked on a till that has never been set up.
+        // A till that HAS been set up keeps the cashier's own choice; hiding a document
+        // here overrides both.
+        public bool SellOfferFiscal      { get; set; } = true;
+        public bool SellOfferReceipt80   { get; set; } = true;
+        public bool SellOfferInvoiceA4   { get; set; } = true;
+        public bool SellOfferWaybillA4   { get; set; } = true;
+
+        public bool SellDefaultFiscal    { get; set; } = true;
+        public bool SellDefaultReceipt80 { get; set; }
+        public bool SellDefaultInvoiceA4 { get; set; }
+        public bool SellDefaultWaybillA4 { get; set; }
+
         // ── Module toggles ────────────────────────────────────────────────────────
         public bool EnableTableManagement  { get; set; }
         public bool EnableAppointments     { get; set; }

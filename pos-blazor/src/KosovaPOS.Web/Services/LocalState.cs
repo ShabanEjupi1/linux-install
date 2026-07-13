@@ -74,8 +74,10 @@ public static class LocalKeys
     /// </summary>
     public const string TillPrefs = "pos.till.prefs.v1";
 
-    /// <summary>The thermal/receipt printer this PC prints on, overriding the shop default.</summary>
-    public const string ReceiptPrinter = "pos.printer.receipt.v1";
+    // There is deliberately no per-browser receipt-printer key. The receipt printer is the
+    // shop's, chosen once on /pajisjet: a dropdown on the till is one more thing a cashier can
+    // get wrong mid-queue, and a wrong printer name fails silently — it looks exactly like a
+    // printer that is switched off.
 
     /// <summary>The label printer this PC prints barcodes on, overriding the shop default.</summary>
     public const string LabelPrinter = "pos.printer.label.v1";

@@ -72,8 +72,79 @@
                 </div>
             </fieldset>
 
+            @* Four documents come off one sale, and no two shops want the same set: a kiosk prints
+               a fiscal receipt and nothing else, a wholesaler prints an A4 invoice and a waybill
+               and never touches the thermal roll. So the shop decides which of them the till even
+               offers, and how each one starts out — a cashier should not tick the same two boxes
+               on every sale of the day. *@
+            <fieldset class="settings-set">
+                <legend>Dokumentet e shitjes</legend>
+                <p class="hint">
+                    <strong>Shfaqet</strong> = arkëtari e sheh këtë opsion te <em>Shitja</em> (dhe mund
+                    ta rishtypë pas shitjes). <strong>I zgjedhur</strong> = fillon i shënuar në një arkë
+                    të re. Një arkë e konfiguruar më parë e mban zgjedhjen e vet; heqja e një dokumenti
+                    nga <em>Shfaqet</em> e ndalon atë kudo.
+                </p>
+
+                <table class="grid-table doc-matrix">
+                    <thead>
+                        <tr>
+                            <th>Dokumenti</th>
+                            <th class="num">Shfaqet te Shitja</th>
+                            <th class="num">I zgjedhur si parazgjedhje</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>🧾 Fatura fiskale</td>
+                            <td class="num"><InputCheckbox @bind-Value="_settings.SellOfferFiscal" /></td>
+                            <td class="num">
+                                <InputCheckbox @bind-Value="_settings.SellDefaultFiscal"
+                                               disabled="@(!_settings.SellOfferFiscal)" />
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>🧾 Kuponi termik (80mm)</td>
+                            <td class="num"><InputCheckbox @bind-Value="_settings.SellOfferReceipt80" /></td>
+                            <td class="num">
+                                <InputCheckbox @bind-Value="_settings.SellDefaultReceipt80"
+                                               disabled="@(!_settings.SellOfferReceipt80)" />
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>📄 Fatura A4</td>
+                            <td class="num"><InputCheckbox @bind-Value="_settings.SellOfferInvoiceA4" /></td>
+                            <td class="num">
+                                <InputCheckbox @bind-Value="_settings.SellDefaultInvoiceA4"
+                                               disabled="@(!_settings.SellOfferInvoiceA4)" />
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>🚚 Fletëdërgesa A4</td>
+                            <td class="num"><InputCheckbox @bind-Value="_settings.SellOfferWaybillA4" /></td>
+                            <td class="num">
+                                <InputCheckbox @bind-Value="_settings.SellDefaultWaybillA4"
+                                               disabled="@(!_settings.SellOfferWaybillA4)" />
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <p class="hint">
+                    Dokumentet A4 i vizaton shfletuesi (jo agjenti) dhe dalin te printeri i
+                    parazgjedhur i Windows-it — zakonisht ai i letrës A4, jo termiku.
+                </p>
+            </fieldset>
+
             <fieldset class="settings-set">
                 <legend>Printerët lokalë (agjenti)</legend>
+                <p class="hint">
+                    Printeri i kuponit është i gjithë biznesit dhe caktohet <strong>vetëm këtu</strong>
+                    (ose te <a href="/pajisjet">Pajisjet</a>, ku lexohet lista e printerëve të këtij
+                    kompjuteri). Te <em>Shitja</em> nuk zgjidhet më printer: një menu në arkë është
+                    edhe një gjë që arkëtari mund ta gabojë me klientin përpara, dhe një emër i gabuar
+                    printeri dështon në heshtje — duket njësoj si një printer i fikur.
+                </p>
                 <div class="form-grid">
                     <div class="field">
                         <label>Printeri i kuponit (termik)</label>

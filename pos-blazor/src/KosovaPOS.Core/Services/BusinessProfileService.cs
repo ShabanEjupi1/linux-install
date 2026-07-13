@@ -96,6 +96,18 @@ public class BusinessProfileService
         // quietly replaced with the default thank-you.
         row.ReceiptFooterText        = Clean(input.ReceiptFooterText);
 
+        // Which documents the till offers, and which of them start ticked.
+        row.SellOfferFiscal      = input.SellOfferFiscal;
+        row.SellOfferReceipt80   = input.SellOfferReceipt80;
+        row.SellOfferInvoiceA4   = input.SellOfferInvoiceA4;
+        row.SellOfferWaybillA4   = input.SellOfferWaybillA4;
+        // A document that is not offered cannot be a default — otherwise a till set up
+        // afresh would silently print paper the admin has taken off the screen.
+        row.SellDefaultFiscal    = input.SellDefaultFiscal    && input.SellOfferFiscal;
+        row.SellDefaultReceipt80 = input.SellDefaultReceipt80 && input.SellOfferReceipt80;
+        row.SellDefaultInvoiceA4 = input.SellDefaultInvoiceA4 && input.SellOfferInvoiceA4;
+        row.SellDefaultWaybillA4 = input.SellDefaultWaybillA4 && input.SellOfferWaybillA4;
+
         await db.SaveChangesAsync();
 
         static string? Clean(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
