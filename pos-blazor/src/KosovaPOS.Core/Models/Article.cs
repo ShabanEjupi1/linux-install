@@ -8,12 +8,15 @@ namespace KosovaPOS.Models
         [Key]
         public int Id { get; set; }
         
-        [Required]
-        [StringLength(50)]
+        // The two the article editor can actually trip. Spelled out in Albanian because the
+        // person who reads them is standing at the till, and the framework's default ("The
+        // Barcode field is required") is not a sentence anyone here reads.
+        [Required(ErrorMessage = "Barkodi është i detyrueshëm.")]
+        [StringLength(50, ErrorMessage = "Barkodi nuk mund të jetë më i gjatë se 50 karaktere.")]
         public string Barcode { get; set; } = string.Empty;
-        
-        [Required]
-        [StringLength(250)]
+
+        [Required(ErrorMessage = "Emërtimi është i detyrueshëm.")]
+        [StringLength(250, ErrorMessage = "Emërtimi nuk mund të jetë më i gjatë se 250 karaktere.")]
         public string Name { get; set; } = string.Empty;
         
         [StringLength(20)]

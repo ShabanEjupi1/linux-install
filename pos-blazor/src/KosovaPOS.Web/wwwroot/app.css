@@ -524,6 +524,16 @@ a.stat:hover { border-color: var(--accent); }
 }
 .complete:hover:not(:disabled) { background: var(--ok-ink); }
 
+/* What a form says when it will not accept what you typed. Before these existed,
+   a form with a DataAnnotationsValidator and no message simply ignored the click:
+   validation failed, OnValidSubmit never ran, and the button looked broken. */
+.form-errors {
+  list-style: none; margin: .6rem 0 0; padding: .55rem .75rem;
+  background: var(--danger-bg); color: var(--danger-ink);
+  border-radius: var(--r); font-size: .9rem;
+}
+.form-errors li + li { margin-top: .25rem; }
+
 .sale-msg { padding: .55rem .75rem; border-radius: var(--r); margin: .4rem 0; font-size: .9rem; }
 .sale-msg.ok  { background: var(--ok-bg); color: var(--ok-ink); }
 .sale-msg.err { background: var(--danger-bg); color: var(--danger-ink); }

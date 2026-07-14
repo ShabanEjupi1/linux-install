@@ -107,8 +107,11 @@
             <EditForm Model="_editing" OnValidSubmit="Save">
                 <DataAnnotationsValidator />
                 <div class="form-grid">
+                    @* Starred because the model requires it and the column is NOT NULL. It used to
+                       be presented as optional, and leaving it empty made "Ruaj" do nothing at
+                       all. *@
                     <div class="field">
-                        <label>Barkodi</label>
+                        <label>Barkodi *</label>
                         <input class="input" @bind="_editing.Barcode" />
                     </div>
                     <div class="field span2">
@@ -150,6 +153,11 @@
                         <input class="input" type="number" step="0.001" @bind="_editing.StockQuantity" />
                     </div>
                 </div>
+
+                @* Without this the form REFUSED IN SILENCE: a missing barcode failed validation,
+                   OnValidSubmit never ran, and "Ruaj" simply did nothing — no message, no closed
+                   modal, nothing to tell the clerk what the form wanted. *@
+                <ValidationSummary class="form-errors" />
 
                 @if (!string.IsNullOrEmpty(_formError))
                 {
