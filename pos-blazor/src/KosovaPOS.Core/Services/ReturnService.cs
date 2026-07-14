@@ -85,12 +85,18 @@ public class ReturnService
             foreach (var item in ret.Items)
             {
                 if (string.IsNullOrWhiteSpace(item.Barcode)) continue;
-                var art = await db.Artikujt.FirstOrDefaultAsync(a => a.Barkodi == item.Barcode);
-                if (art is null) continue;
-                art.Sasia = (art.Sasia ?? 0) + (double)item.Quantity;
-                art.SasiaHyrje = (art.SasiaHyrje ?? 0) + (double)item.Quantity;
+
+                // Only the id is read here — the quantity is added in the database, so a till
+                // selling this article at the same moment cannot lose the restock.
+                var id = await db.Artikujt.AsNoTracking()
+                    .Where(a => a.Barkodi == item.Barcode)
+                    .Select(a => (long?)a.Id)
+                    .FirstOrDefaultAsync();
+                if (id is null) continue;
+
+                var qty = (double)item.Quantity;
+                await db.MoveStockAsync(id.Value, delta: qty, inQty: qty);
             }
-            await db.SaveChangesAsync();
         }
 
         await tx.CommitAsync();

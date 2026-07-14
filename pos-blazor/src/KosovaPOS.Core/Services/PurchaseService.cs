@@ -32,8 +32,12 @@ public class PurchaseService
         return rows;
     }
 
-    /// <summary>Next purchase document number = max(DitariH.Numri) + 1.</summary>
-    public async Task<string> GetNextDocumentNumberAsync()
+    /// <summary>
+    /// The number the next purchase is <em>likely</em> to get — for display only.
+    /// Read outside the allocation lock; the number that counts is the one
+    /// <see cref="SavePurchaseAsync"/> assigns. Never persist this value.
+    /// </summary>
+    public async Task<string> PreviewNextDocumentNumberAsync()
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
         var max = await db.DitariH.MaxAsync(d => (long?)d.Numri) ?? 0;
@@ -43,6 +47,8 @@ public class PurchaseService
     /// <summary>
     /// Persists a purchase (journal rows + stock/price update) atomically.
     /// Returns the assigned journal number on success, or null on failure.
+    /// The number is allocated under the journal lock — see <see cref="JournalNumber"/>
+    /// for why max+1 on its own hands two concurrent entries the same one.
     /// </summary>
     public async Task<long?> SavePurchaseAsync(PurchaseDraft draft)
     {
@@ -52,9 +58,18 @@ public class PurchaseService
         await using var tx = await db.Database.BeginTransactionAsync();
         try
         {
+            await db.LockAsync(JournalNumber.PurchasesKey);
+
             var maxNumri = await db.DitariH.MaxAsync(d => (long?)d.Numri) ?? 0;
             var nextNumri = maxNumri + 1;
             int nrRendor = 1;
+
+            // Blank means "no supplier invoice number was typed", so the document refers to
+            // itself by its journal number. Filling it in here rather than on the screen keeps
+            // it equal to the number actually allocated, instead of the one the screen guessed.
+            var docNumber = string.IsNullOrWhiteSpace(draft.DocumentNumber)
+                ? nextNumri.ToString()
+                : draft.DocumentNumber;
 
             foreach (var item in draft.Items)
             {
@@ -67,8 +82,8 @@ public class PurchaseService
                     Data = draft.Date,
                     Ora = draft.Date.ToString("HH:mm:ss"),
                     Numri = nextNumri,
-                    NrFatures = draft.DocumentNumber,
-                    NrDUD = draft.DocumentNumber,
+                    NrFatures = docNumber,
+                    NrDUD = docNumber,
                     Subjekti = draft.SupplierId > 0 ? draft.SupplierId : null,
                     Tipi = draft.PurchaseType,
                     Punetori = draft.Worker,
@@ -91,15 +106,9 @@ public class PurchaseService
                     NrRendor = nrRendor++
                 });
 
-                var artikull = await db.Artikujt.FirstOrDefaultAsync(a => a.Id == item.ArticleId);
-                if (artikull != null)
-                {
-                    artikull.Sasia = (artikull.Sasia ?? 0) + (double)item.Quantity;
-                    artikull.SasiaHyrje = (artikull.SasiaHyrje ?? 0) + (double)item.Quantity;
-                    artikull.CFurnizimit = (double)item.PurchasePrice;
-                    if (item.SalesPrice > 0)
-                        artikull.CShitjes = (double)item.SalesPrice;
-                }
+                var qty = (double)item.Quantity;
+                await db.MoveStockAsync(item.ArticleId, delta: qty, inQty: qty);
+                await ApplyPurchasePricesAsync(db, item);
             }
 
             await db.SaveChangesAsync();
@@ -112,6 +121,19 @@ public class PurchaseService
             return null;
         }
     }
+
+    /// <summary>
+    /// A delivery restates the article's prices. Unlike stock these are facts, not running
+    /// totals, so the last delivery in simply wins — there is nothing to accumulate and so
+    /// nothing to lose.
+    /// </summary>
+    private static Task ApplyPurchasePricesAsync(PosDbContext db, PurchaseDraftItem item) =>
+        db.Artikujt
+            .Where(a => a.Id == item.ArticleId)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(a => a.CFurnizimit, _ => (double)item.PurchasePrice)
+                .SetProperty(a => a.CShitjes, a =>
+                    item.SalesPrice > 0 ? (double)item.SalesPrice : a.CShitjes));
 
     /// <summary>
     /// Every purchase document the shop has, newest first. The screen that shows these has a
@@ -227,6 +249,12 @@ public class PurchaseService
             db.DitariH.RemoveRange(old);
             await db.SaveChangesAsync();   // flush the delete before re-inserting the same Numri
 
+            // The number is fixed — this is the same document — so a blank invoice number
+            // falls back to it, exactly as it did when the document was first saved.
+            var docNumber = string.IsNullOrWhiteSpace(draft.DocumentNumber)
+                ? numri.ToString()
+                : draft.DocumentNumber;
+
             int nrRendor = 1;
             foreach (var item in draft.Items)
             {
@@ -239,8 +267,8 @@ public class PurchaseService
                     Data = draft.Date,
                     Ora = draft.Date.ToString("HH:mm:ss"),
                     Numri = numri,
-                    NrFatures = draft.DocumentNumber,
-                    NrDUD = draft.DocumentNumber,
+                    NrFatures = docNumber,
+                    NrDUD = docNumber,
                     Subjekti = draft.SupplierId > 0 ? draft.SupplierId : null,
                     Tipi = draft.PurchaseType,
                     Punetori = draft.Worker,
@@ -263,15 +291,9 @@ public class PurchaseService
                     NrRendor = nrRendor++
                 });
 
-                var artikull = await db.Artikujt.FirstOrDefaultAsync(a => a.Id == item.ArticleId);
-                if (artikull != null)
-                {
-                    artikull.Sasia = (artikull.Sasia ?? 0) + (double)item.Quantity;
-                    artikull.SasiaHyrje = (artikull.SasiaHyrje ?? 0) + (double)item.Quantity;
-                    artikull.CFurnizimit = (double)item.PurchasePrice;
-                    if (item.SalesPrice > 0)
-                        artikull.CShitjes = (double)item.SalesPrice;
-                }
+                var qty = (double)item.Quantity;
+                await db.MoveStockAsync(item.ArticleId, delta: qty, inQty: qty);
+                await ApplyPurchasePricesAsync(db, item);
             }
 
             await db.SaveChangesAsync();
@@ -291,12 +313,9 @@ public class PurchaseService
         foreach (var row in rows)
         {
             if (row.ArtikullId is null) continue;
-            var artikull = await db.Artikujt.FirstOrDefaultAsync(a => a.Id == row.ArtikullId);
-            if (artikull is null) continue;
 
             var qty = row.Sasia ?? 0;
-            artikull.Sasia = (artikull.Sasia ?? 0) - qty;
-            artikull.SasiaHyrje = (artikull.SasiaHyrje ?? 0) - qty;
+            await db.MoveStockAsync(row.ArtikullId.Value, delta: -qty, inQty: -qty);
         }
     }
 

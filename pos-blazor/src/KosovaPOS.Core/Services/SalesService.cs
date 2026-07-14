@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using KosovaPOS.Core.Data;
 using KosovaPOS.Models;
 using KosovaPOS.Models.BMDData;
@@ -15,11 +16,18 @@ namespace KosovaPOS.Core.Services;
 public class SalesService
 {
     private readonly IDbContextFactory<PosDbContext> _dbFactory;
+    private readonly ILogger<SalesService> _log;
 
-    public SalesService(IDbContextFactory<PosDbContext> dbFactory) => _dbFactory = dbFactory;
+    public SalesService(IDbContextFactory<PosDbContext> dbFactory, ILogger<SalesService> log)
+        => (_dbFactory, _log) = (dbFactory, log);
 
-    /// <summary>Next receipt/journal number = max(DitariD.Numri) + 1.</summary>
-    public async Task<string> GetNextReceiptNumberAsync()
+    /// <summary>
+    /// The number the next receipt is <em>likely</em> to get — for display only.
+    /// It is read outside the allocation lock, so another till can take it first;
+    /// the number that counts is the one <see cref="SaveReceiptAsync"/> assigns and
+    /// writes back onto the receipt. Never persist this value.
+    /// </summary>
+    public async Task<string> PreviewNextReceiptNumberAsync()
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
         var maxNumri = await db.DitariD.MaxAsync(d => (long?)d.Numri) ?? 0;
@@ -29,6 +37,12 @@ public class SalesService
     /// <summary>
     /// Persists a complete receipt (journal rows + stock decrement) atomically.
     /// Returns the assigned journal number on success, or null on failure.
+    ///
+    /// The number is allocated here, under the journal lock, and written back onto
+    /// <paramref name="receipt"/>: the caller prints from that object, so the number
+    /// on the paper is the number in the journal by construction. Reading it ahead of
+    /// the save (as the Sale screen used to) reads it outside the lock, where another
+    /// till can take it first.
     /// </summary>
     public async Task<long?> SaveReceiptAsync(Receipt receipt)
     {
@@ -36,8 +50,11 @@ public class SalesService
         await using var tx = await db.Database.BeginTransactionAsync();
         try
         {
+            await db.LockAsync(JournalNumber.SalesKey);
+
             var maxNumri = await db.DitariD.MaxAsync(d => (long?)d.Numri) ?? 0;
             var nextNumri = maxNumri + 1;
+            receipt.ReceiptNumber = nextNumri.ToString();
             int nrRendor = 1;
 
             foreach (var item in receipt.Items)
@@ -78,20 +95,20 @@ public class SalesService
                     Perpunimi = "POS"
                 });
 
-                var artikull = await db.Artikujt.FirstOrDefaultAsync(a => a.Id == item.ArticleId);
-                if (artikull != null)
-                {
-                    artikull.Sasia = (artikull.Sasia ?? 0) - (double)item.Quantity;
-                    artikull.SasiaDalje = (artikull.SasiaDalje ?? 0) + (double)item.Quantity;
-                }
+                var qty = (double)item.Quantity;
+                await db.MoveStockAsync(item.ArticleId, delta: -qty, outQty: qty);
             }
 
             await db.SaveChangesAsync();
             await tx.CommitAsync();
             return nextNumri;
         }
-        catch
+        catch (Exception ex)
         {
+            // The cashier is told only "try again", so without this line a sale that
+            // will not save leaves no trace of why anywhere.
+            _log.LogError(ex, "Sale not saved: {Lines} line(s), total {Total}, cashier {Cashier}",
+                receipt.Items.Count, receipt.TotalAmount, receipt.CashierName);
             await tx.RollbackAsync();
             return null;
         }

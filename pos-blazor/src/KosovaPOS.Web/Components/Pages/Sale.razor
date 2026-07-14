@@ -647,10 +647,12 @@
             var total = Total;
             var paid = _paid < total ? total : _paid;
 
-            var receiptNo = await Sales.GetNextReceiptNumberAsync();
             var receipt = new Receipt
             {
-                ReceiptNumber = receiptNo,
+                // Left blank on purpose: SaveReceiptAsync allocates the number under the
+                // journal lock and writes it back here, so the receipt we print below
+                // carries the same number the journal stored. Reading it up front raced
+                // another till for it.
                 Date = DateTime.Now,
                 CashierName = cashierName,
                 PaymentMethod = _payment,
@@ -684,7 +686,7 @@
             _lastTotal = total;
             _changeDue = IsCash ? change : null;
 
-            await Audit.LogAsync(AuditAction.Sale, "Receipt", (int)savedNumri, receiptNo,
+            await Audit.LogAsync(AuditAction.Sale, "Receipt", (int)savedNumri, receipt.ReceiptNumber,
                 details: $"{total:0.00} € · {_payment} · {receipt.Items.Count} artikuj");
 
             // The sale is already persisted; fiscal printing is best-effort and

@@ -470,7 +470,7 @@ else
 
         _articles = await Catalog.GetAllArticlesAsync();
         _suppliers = await PurchaseSvc.GetSuppliersAsync();
-        _docNumber = await PurchaseSvc.GetNextDocumentNumberAsync();
+        _docNumber = await PurchaseSvc.PreviewNextDocumentNumberAsync();
         _loading = false;
         await LoadRecent();
     }
@@ -548,7 +548,10 @@ else
         {
             var draft = new PurchaseDraft
             {
-                DocumentNumber = string.IsNullOrWhiteSpace(_invoiceNumber) ? _docNumber : _invoiceNumber,
+                // Blank when the supplier gave no invoice number: SavePurchaseAsync then stamps
+                // the journal number it actually allocated. _docNumber is only the heading's
+                // guess, and by now another entry may have taken it.
+                DocumentNumber = _invoiceNumber,
                 Date = DateTime.Now,
                 SupplierId = _supplierId,
                 PurchaseType = _purchaseType,
@@ -594,7 +597,7 @@ else
             _isPaid = false;
             // Refresh catalogue stock + next doc number for the following entry.
             _articles = await Catalog.GetAllArticlesAsync();
-            _docNumber = await PurchaseSvc.GetNextDocumentNumberAsync();
+            _docNumber = await PurchaseSvc.PreviewNextDocumentNumberAsync();
             await LoadRecent();
             _view = View.Recent;
         }

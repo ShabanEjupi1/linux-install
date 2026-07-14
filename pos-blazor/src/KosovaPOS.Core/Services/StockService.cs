@@ -63,8 +63,14 @@ public class StockService
             throw new ArgumentOutOfRangeException(nameof(quantity), "Sasia e numëruar nuk mund të jetë negative.");
 
         await using var db = await _dbFactory.CreateDbContextAsync();
-        // Read-modify-write on Sasia: serialize against a concurrent till sale.
         await using var tx = await db.Database.BeginTransactionAsync();
+
+        // This is a read-modify-write: a count sets stock to an absolute figure and has to
+        // read the previous one to record how far off it was. The transaction alone does not
+        // make that safe — at READ COMMITTED a concurrent till sale reads the same starting
+        // figure and one of the two movements is simply lost. The row lock is what serialises
+        // them; every other stock writer goes through MoveStockAsync, whose UPDATE waits on it.
+        await db.LockArticleAsync(articleId);
 
         var art = await db.Artikujt.FirstOrDefaultAsync(a => a.Id == articleId)
             ?? throw new InvalidOperationException("Artikulli nuk u gjet.");
