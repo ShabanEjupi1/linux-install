@@ -18,18 +18,32 @@ namespace KosovaPOS.Core.Services;
 public class BusinessProfileService
 {
     private readonly IDbContextFactory<PosDbContext> _dbFactory;
+    private readonly PosCache _cache;
 
-    public BusinessProfileService(IDbContextFactory<PosDbContext> dbFactory) => _dbFactory = dbFactory;
+    public BusinessProfileService(IDbContextFactory<PosDbContext> dbFactory, PosCache cache)
+    {
+        _dbFactory = dbFactory;
+        _cache = cache;
+    }
 
     /// <summary>
     /// Returns the current BusinessSettings, or a sensible default if the row
     /// does not exist yet (fresh install / first run).
+    ///
+    /// Served from memory: the shell reads this on every navigation (the shop's name, its
+    /// profile) and the hardware bridge reads it on every print, for one row that changes when
+    /// somebody visits /cilesimet. Each caller gets its own copy — the Settings screen binds a
+    /// form directly onto the object it is handed.
     /// </summary>
     public async Task<BusinessSettings> GetSettingsAsync()
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
-        var settings = await db.BusinessSettings.AsNoTracking().FirstOrDefaultAsync();
-        return settings ?? new BusinessSettings { Id = 0, IsFirstRun = true };
+
+        var settings = await _cache.GetOrLoadAsync(db.DatabaseName, DataVersions.Settings,
+            async () => await db.BusinessSettings.AsNoTracking().FirstOrDefaultAsync()
+                        ?? new BusinessSettings { Id = 0, IsFirstRun = true });
+
+        return settings.Clone();
     }
 
     /// <summary>True when the business runs in restaurant / food-service mode.</summary>

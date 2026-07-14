@@ -14,14 +14,34 @@ namespace KosovaPOS.Core.Services;
 public class CatalogService
 {
     private readonly IDbContextFactory<PosDbContext> _dbFactory;
+    private readonly PosCache _cache;
 
-    public CatalogService(IDbContextFactory<PosDbContext> dbFactory) => _dbFactory = dbFactory;
+    public CatalogService(IDbContextFactory<PosDbContext> dbFactory, PosCache cache)
+    {
+        _dbFactory = dbFactory;
+        _cache = cache;
+    }
 
+    /// <summary>
+    /// The whole catalogue, which is how six screens open. Served from memory between writes —
+    /// see <see cref="PosCache"/>.
+    ///
+    /// The cache holds the raw rows and every caller is mapped a fresh set of <see cref="Article"/>
+    /// objects. Handing out the same instances would be faster still, and wrong: the Articles
+    /// screen binds an edit form straight onto one of them, so an abandoned edit would rewrite
+    /// what every other cashier sees the price to be.
+    /// </summary>
     public async Task<List<Article>> GetAllArticlesAsync()
     {
+        var rows = await CachedRowsAsync();
+        return rows.Select(MapToArticle).ToList();
+    }
+
+    private async Task<List<Artikujt>> CachedRowsAsync()
+    {
         await using var db = await _dbFactory.CreateDbContextAsync();
-        var artikujt = await db.Artikujt.AsNoTracking().ToListAsync();
-        return artikujt.Select(MapToArticle).ToList();
+        return await _cache.GetOrLoadAsync(db.DatabaseName, DataVersions.Catalog,
+            () => db.Artikujt.AsNoTracking().ToListAsync());
     }
 
     public async Task<List<Article>> SearchArticlesAsync(string searchText, int limit = 30)
@@ -115,11 +135,10 @@ public class CatalogService
     /// </summary>
     public async Task<List<string>> GetCategoriesAsync()
     {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        var raw = await db.Artikujt.AsNoTracking()
-            .Where(a => a.Kategoria != null && a.Kategoria != "")
-            .Select(a => a.Kategoria!)
-            .ToListAsync();
+        // Folded from the rows already in memory rather than asked of Postgres again: the
+        // Sale screen wants the categories and the articles together, and that was two scans
+        // of the same table.
+        var raw = (await CachedRowsAsync()).Select(a => a.Kategoria).OfType<string>();
 
         return raw.Where(c => !string.IsNullOrWhiteSpace(c))
                   .GroupBy(c => CategoryKey(c), StringComparer.Ordinal)

@@ -189,5 +189,13 @@ namespace KosovaPOS.Models
 
         /// <summary>Hour of day (0–23) when the nightly cloud backup runs.</summary>
         public int BackupScheduleHour    { get; set; } = 2;
+
+        /// <summary>
+        /// A private copy. The settings row is cached and read by every screen, while the
+        /// Settings form binds straight onto the object it is given — so callers must not be
+        /// handed the cached instance itself. Every property here is a value or a string, so a
+        /// shallow copy is a complete one.
+        /// </summary>
+        public BusinessSettings Clone() => (BusinessSettings)MemberwiseClone();
     }
 }

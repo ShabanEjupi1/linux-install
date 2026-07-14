@@ -25,6 +25,49 @@ public class PosDbContext : DbContext
 
     public PosDbContext(DbContextOptions<PosDbContext> options) : base(options) { }
 
+    /// <summary>
+    /// The business database this context is connected to — the key everything cached in
+    /// memory is filed under. Read from the connection string, so it costs nothing and needs
+    /// no open connection.
+    /// </summary>
+    public string DatabaseName => Database.GetDbConnection().Database;
+
+    /// <summary>
+    /// Saves, then tells the caches what changed. The stamps are bumped from the change
+    /// tracker rather than by the calling service, so a new write path cannot forget to
+    /// invalidate — the reason cached stock quantities would otherwise start lying to a cashier.
+    ///
+    /// Bumped only after the save succeeds: a rolled-back transaction changed nothing, and
+    /// throwing away a good cache for it would just cost the next reader a query.
+    /// </summary>
+    public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    {
+        var catalogTouched = ChangeTracker.Entries<Artikujt>().Any(e => e.State is EntityState.Added or EntityState.Modified or EntityState.Deleted);
+        var settingsTouched = ChangeTracker.Entries<BusinessSettings>().Any(e => e.State is EntityState.Added or EntityState.Modified or EntityState.Deleted);
+
+        var written = await base.SaveChangesAsync(cancellationToken);
+
+        if (catalogTouched) DataVersions.Bump(DatabaseName, DataVersions.Catalog);
+        if (settingsTouched) DataVersions.Bump(DatabaseName, DataVersions.Settings);
+
+        return written;
+    }
+
+    /// <summary>Nothing in this codebase saves synchronously, but a cache that only invalidates
+    /// on one of the two save paths is a trap laid for whoever writes the first one.</summary>
+    public override int SaveChanges()
+    {
+        var catalogTouched = ChangeTracker.Entries<Artikujt>().Any(e => e.State is EntityState.Added or EntityState.Modified or EntityState.Deleted);
+        var settingsTouched = ChangeTracker.Entries<BusinessSettings>().Any(e => e.State is EntityState.Added or EntityState.Modified or EntityState.Deleted);
+
+        var written = base.SaveChanges();
+
+        if (catalogTouched) DataVersions.Bump(DatabaseName, DataVersions.Catalog);
+        if (settingsTouched) DataVersions.Bump(DatabaseName, DataVersions.Settings);
+
+        return written;
+    }
+
     // ── BMDData (legacy accounting) models ──────────────────────────────
     public DbSet<Artikujt> Artikujt => Set<Artikujt>();
     public DbSet<ArkaHyrje> ArkaHyrje => Set<ArkaHyrje>();

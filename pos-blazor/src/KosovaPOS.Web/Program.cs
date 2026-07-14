@@ -60,6 +60,12 @@ builder.Services.AddScoped<CurrentBusiness>();
 builder.Services.AddScoped<IDbContextFactory<PosDbContext>, TenantDbContextFactory>();
 
 // ── Domain services (from Core) ─────────────────────────────────────────
+
+// Singleton, and it must be: it is what stops six screens re-reading the same 1,600-row
+// catalogue from Postgres every time somebody walks between them. Per-circuit it would cache
+// nothing that outlived one user's page. Invalidated by PosDbContext on save, never by a timer.
+builder.Services.AddSingleton<PosCache>();
+
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<PlatformAuthService>();
 builder.Services.AddScoped<BusinessProfileService>();
