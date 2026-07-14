@@ -91,27 +91,125 @@ document.addEventListener("click", e => {
     if (!isEnhanced(anchor, e)) return;
     markPending(anchor);
     startProgress();
+    // Up on the click, not on the server's answer: the wait starts here, and so does the thing
+    // that shows it. The destination is on the anchor, which is why the shape can be right.
+    showSkeleton(new URL(anchor.href, document.baseURI).pathname);
 }, { capture: true });
 
 // Back/forward is a navigation too, and it has no anchor to light up.
-window.addEventListener("popstate", () => startProgress());
+window.addEventListener("popstate", () => {
+    startProgress();
+    showSkeleton(location.pathname);
+});
 
-// Enhanced navigation finished and the new DOM is in place. Fade the content in from here rather
-// than from a CSS rule on load: enhanced nav DIFFS the DOM, so a page whose shell survives the
-// swap would never re-run a mount animation.
-function pageArrived() {
-    endProgress();
-    document.querySelectorAll(".nav-link.pending").forEach(el => el.classList.remove("pending"));
-
-    if (REDUCED) return;
-
-    const content = document.querySelector(".shell-content");
-    if (!content) return;
-
+function fadeIn(content) {
+    if (REDUCED || !content) return;
     content.classList.remove("page-enter");
     void content.offsetWidth;
     content.classList.add("page-enter");
 }
+
+// ── The shell skeleton ───────────────────────────────────────────────────────────────────────
+// Pages render with prerender:false (see RenderModes.cs), so the page slot is EMPTY until the
+// circuit has connected AND the page's first render has come back over it. MainLayout draws a
+// skeleton there; this shows and hides it.
+//
+// Hides — never removes. Blazor's enhanced navigation will not insert a new element into a slot
+// an interactive component owns, so a skeleton taken out of the DOM after the first page would
+// never come back for the second (measured: the page area just went blank instead). Left in place
+// as an overlay, it is ours to toggle and Blazor has nothing to reinsert.
+//
+// The trigger is the page RENDERING, not the circuit connecting: the circuit comes up one round
+// trip before the page does, and hiding the skeleton then would show an empty box.
+
+const STUCK_AFTER_MS = 15000;   // a skeleton still shimmering this long after the click is a hang
+
+let observer = null;
+let stuckTimer = null;
+
+const skeletonEl = () => document.querySelector(".shell-skeleton");
+const contentEl = () => document.querySelector(".shell-content");
+
+function isSkeleton(node) {
+    return node instanceof Element && node.classList.contains("shell-skeleton");
+}
+
+function hasPage(content) {
+    return Array.from(content.children).some(el => !isSkeleton(el));
+}
+
+// The till looks nothing like the list screens, and the shape has to be right AT THE CLICK — the
+// server has not been asked where we are going yet, and by the time it answers, the wait we are
+// filling is mostly over.
+function shapeFor(pathname) {
+    return /^\/sale(\/|$)/i.test(pathname) ? "as-till" : "as-page";
+}
+
+function showSkeleton(pathname) {
+    const skeleton = skeletonEl();
+    const content = contentEl();
+    if (!skeleton || !content) return;
+
+    skeleton.classList.remove("as-till", "as-page", "is-stuck");
+    skeleton.classList.add(shapeFor(pathname));
+    skeleton.classList.remove("is-idle");
+
+    // The overlay is positioned against the top of the scrolling area, so a page left scrolled
+    // down would show it above the fold and the old page below it. Navigation lands at the top
+    // anyway.
+    content.scrollTop = 0;
+
+    watchForPage();
+}
+
+function hideSkeleton() {
+    clearTimeout(stuckTimer);
+    if (observer) { observer.disconnect(); observer = null; }
+
+    const skeleton = skeletonEl();
+    if (!skeleton || skeleton.classList.contains("is-idle")) return;
+
+    skeleton.classList.add("is-idle");
+    fadeIn(contentEl());
+}
+
+function watchForPage() {
+    if (observer) { observer.disconnect(); observer = null; }
+    clearTimeout(stuckTimer);
+
+    const content = contentEl();
+    if (!content) return;
+
+    // A statically-rendered page (403, and anything else with no render mode) arrives with the
+    // HTML and no mutation is ever coming. Hide now, before the browser paints a frame of it.
+    if (hasPage(content)) {
+        hideSkeleton();
+        return;
+    }
+
+    observer = new MutationObserver(records => {
+        const arrived = records.some(r => Array.from(r.addedNodes).some(n => n instanceof Element && !isSkeleton(n)));
+        if (arrived) hideSkeleton();
+    });
+    observer.observe(content, { childList: true });
+
+    stuckTimer = setTimeout(() => skeletonEl()?.classList.add("is-stuck"), STUCK_AFTER_MS);
+}
+
+document.addEventListener("click", e => {
+    if (e.target instanceof Element && e.target.closest(".sk-retry")) location.reload();
+});
+
+// Enhanced navigation finished: the layout is in place, the page itself is still a round trip
+// away. Blazor rewrote the skeleton's class from the server's copy, so re-assert the shape and
+// keep it up until the page actually renders.
+function pageArrived() {
+    endProgress();
+    document.querySelectorAll(".nav-link.pending").forEach(el => el.classList.remove("pending"));
+    showSkeleton(location.pathname);
+}
+
+watchForPage();   // the first page load raises no enhancedload; its skeleton is already on screen
 
 if (window.Blazor) {
     Blazor.addEventListener("enhancedload", pageArrived);

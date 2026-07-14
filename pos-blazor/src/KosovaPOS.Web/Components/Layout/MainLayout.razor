@@ -5,6 +5,7 @@
 @using KosovaPOS.Web.Services
 @inject BusinessProfileService Profile
 @inject CurrentBusiness CurrentBiz
+@inject NavigationManager Nav
 
 @* The layout renders in static SSR even when the page inside it is
    InteractiveServer, so the sidebar cannot use @onclick. The mobile drawer is
@@ -135,7 +136,48 @@
             </form>
         </header>
 
+        @* The pages render with prerender:false, so this slot holds nothing at all until the
+           circuit connects — see RenderModes. The layout is server-rendered and arrives with the
+           first byte, so it is the only thing that CAN fill that gap.
+
+           It is an overlay, and it is never taken out of the DOM — js/nav.js only hides it. Both
+           of those are forced by Blazor's enhanced navigation: it will not insert a new element
+           into a slot an interactive component owns (a skeleton removed after the first page
+           would never come back on the second), and the outgoing page's DOM belongs to its
+           circuit, so covering it is safe where replacing it is not.
+
+           Both shapes are rendered and CSS shows one, because the shape has to change at the
+           instant of the CLICK — the server does not know where we are going until it is asked,
+           and by then the wait it was meant to fill has already started. *@
         <div class="shell-content">
+            <div class="shell-skeleton @(IsTillRoute ? "as-till" : "as-page")" aria-hidden="true">
+                <div class="sk-shape sk-shape-till">
+                    <div class="sale">
+                        <section class="catalogue">
+                            <div class="sk sk-search"></div>
+                            <div class="grid">
+                                @for (var i = 0; i < 12; i++)
+                                {
+                                    <div class="sk sk-prod"></div>
+                                }
+                            </div>
+                        </section>
+                        <section class="sk sk-cart"></section>
+                    </div>
+                </div>
+                <div class="sk-shape sk-shape-page">
+                    <div class="mgmt">
+                        <Skeleton Tiles="3" Rows="7" />
+                    </div>
+                </div>
+
+                @* A skeleton still shimmering after fifteen seconds is not a wait, it is a hang.
+                   Shown by js/nav.js in place of the shape when the circuit never comes up. *@
+                <div class="sk-stuck">
+                    <p>Serveri po vonohet me përgjigje.</p>
+                    <button type="button" class="btn-primary sk-retry">Provo përsëri</button>
+                </div>
+            </div>
             @Body
         </div>
     </div>
@@ -196,6 +238,16 @@
         if (await CurrentBiz.GetAsync() is not null)
             _settings = await Profile.GetSettingsAsync();
     }
+
+    /// <summary>
+    /// The till is the one screen whose shape is nothing like the others — a product grid beside
+    /// a cart, not a table under some tiles. Standing a list-shaped skeleton in front of it would
+    /// move everything the instant the real page landed, which is the exact fault skeletons exist
+    /// to avoid.
+    /// </summary>
+    private bool IsTillRoute =>
+        Nav.ToBaseRelativePath(Nav.Uri).TrimStart('/').Split('?')[0]
+           .StartsWith("sale", StringComparison.OrdinalIgnoreCase);
 
     private string BusinessName => string.IsNullOrWhiteSpace(_settings?.BusinessName)
         ? (_isPlatformAdmin ? "Platforma" : "KosovaPOS")

@@ -1,6 +1,6 @@
 @page "/stoku"
 @attribute [Authorize(Policy = "perm:stock")]
-@rendermode InteractiveServer
+@rendermode RenderModes.Interactive
 @using KosovaPOS.Core.Services
 @using KosovaPOS.Models
 @inject CatalogService Catalog

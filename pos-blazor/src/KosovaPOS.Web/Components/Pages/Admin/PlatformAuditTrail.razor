@@ -1,6 +1,6 @@
 @page "/admin/auditimi"
 @attribute [Authorize(Policy = AuthService.PlatformPolicy)]
-@rendermode InteractiveServer
+@rendermode RenderModes.Interactive
 @using KosovaPOS.Core.Services
 @using KosovaPOS.Models.Control
 @inject AuditService AuditLog

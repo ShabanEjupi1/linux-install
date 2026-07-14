@@ -2,7 +2,7 @@
 @* Business-scoped, not merely authenticated: a platform admin holds no bizid and
    the dashboard's first query would have nowhere to run. They belong in /admin. *@
 @attribute [Authorize(Policy = AuthService.BusinessPolicy)]
-@rendermode InteractiveServer
+@rendermode RenderModes.Interactive
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Authorization
 @using KosovaPOS.Core.Services

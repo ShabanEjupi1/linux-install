@@ -1,6 +1,6 @@
 @page "/raportet"
 @attribute [Authorize(Policy = "perm:reports")]
-@rendermode InteractiveServer
+@rendermode RenderModes.Interactive
 @using KosovaPOS.Core.Services
 @inject ReportService ReportSvc
 

@@ -1,6 +1,6 @@
 @page "/librat"
 @attribute [Authorize(Policy = "perm:reports")]
-@rendermode InteractiveServer
+@rendermode RenderModes.Interactive
 @using KosovaPOS.Core.Services
 @inject VatBookService Books
 @inject IJSRuntime JS

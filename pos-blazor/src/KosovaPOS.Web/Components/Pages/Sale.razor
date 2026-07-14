@@ -1,6 +1,6 @@
 @page "/sale"
 @attribute [Authorize(Policy = "perm:sell")]
-@rendermode InteractiveServer
+@rendermode RenderModes.Interactive
 @using System.Security.Claims
 @using KosovaPOS.Core.Services
 @using KosovaPOS.Models
@@ -37,7 +37,13 @@
         <div class="grid">
             @if (_loading)
             {
-                <p class="muted">Duke ngarkuar artikujt…</p>
+                @* The same tiles the articles are about to be, so the grid does not jump when
+                   they land — and the same tiles the layout's skeleton was already showing, so
+                   the hand-off from shell to page is invisible. *@
+                @for (var i = 0; i < 12; i++)
+                {
+                    <div class="sk sk-prod"></div>
+                }
             }
             else
             {

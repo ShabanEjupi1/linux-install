@@ -17,6 +17,11 @@
     <meta name="theme-color" content="#1e293b" />
     <meta name="application-name" content="KosovaPOS" />
 
+    @* Pages carry their own <PageTitle>, but they no longer prerender — so until the circuit is
+       up there is no title at all and the tab reads as the URL. HeadOutlet overwrites this the
+       moment the page renders; it only ever shows during the shell. *@
+    <title>KosovaPOS</title>
+
     <ImportMap />
     <HeadOutlet />
 </head>

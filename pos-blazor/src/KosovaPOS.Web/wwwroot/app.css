@@ -1003,6 +1003,49 @@ a.stat:hover { border-color: var(--accent); }
 .sk-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
 .sk-panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 1rem 1.1rem; }
 
+/* ── The shell skeleton ───────────────────────────────────────────────────────
+   Pages no longer prerender (see RenderModes.cs), so between the HTML arriving
+   and the circuit connecting there is nothing in the page slot at all. This is
+   what stands there — drawn by the layout, which needs no circuit, and hidden
+   by js/nav.js when the real page mounts.
+
+   An OVERLAY, not a placeholder: on the second and every later navigation the
+   page it stands in front of is the one you are leaving, and that DOM belongs to
+   its Blazor circuit. Covering it is safe; removing it is not.
+
+   It swallows clicks (no pointer-events:none) on purpose. Underneath is a page
+   that is on its way out, still wired to a live circuit — a tap that reaches it
+   would act on the screen the cashier has already left. The sidebar sits outside
+   this overlay, so changing your mind mid-load still works. */
+.shell-content  { position: relative; }
+.shell-skeleton {
+  position: absolute; inset: 0; z-index: 5;
+  background: var(--bg); overflow: hidden;
+}
+.shell-skeleton.is-idle { display: none; }   /* the page is up; nothing to stand in for */
+
+/* Both shapes ship; the class picks one. See MainLayout. */
+.shell-skeleton.as-till .sk-shape-page,
+.shell-skeleton.as-page .sk-shape-till { display: none; }
+.sk-shape { height: 100%; }
+
+/* Fifteen seconds in, the shimmer stops pretending. */
+.sk-stuck { display: none; }
+.shell-skeleton.is-stuck .sk-shape { display: none; }
+.shell-skeleton.is-stuck .sk-stuck {
+  display: grid; place-content: center; justify-items: center; gap: .9rem;
+  height: 100%; color: var(--ink-2);
+}
+
+/* The till's shape: a wall of product tiles beside the cart. */
+.sk-search { height: 40px; margin-bottom: .75rem; }
+.sk-prod   { min-height: 96px; border-radius: var(--r-lg); }
+.sk-cart   { border-radius: var(--r-xl); }
+
+/* The skeleton is not the page arriving — it is the wait. Only the real content
+   gets the entrance animation. */
+.shell-content.page-enter > .shell-skeleton { animation: none; }
+
 /* Motion is a nicety; nobody's sale depends on it. */
 @media (prefers-reduced-motion: reduce) {
   #route-progress .route-progress-fill,
