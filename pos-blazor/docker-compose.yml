@@ -58,11 +58,33 @@ services:
       POS_PLATFORM_ADMIN_PASSWORD: ${POS_PLATFORM_ADMIN_PASSWORD:-}
       POS_KEYS_DIR: /keys
       ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
+
+      # ── Online shop ────────────────────────────────────────────────────
+      # Product photos are data the shop creates, so they live on a volume, not in the
+      # image — a redeploy replaces the image and would take wwwroot with it.
+      POS_MEDIA_DIR: /media
+
+      # Order mail goes out through the business's own Mailcow (which relays via Brevo),
+      # so it is DKIM-signed by the sending domain instead of landing in spam.
+      POS_SMTP_HOST: ${POS_SMTP_HOST:-}
+      POS_SMTP_PORT: ${POS_SMTP_PORT:-587}
+      POS_SMTP_USER: ${POS_SMTP_USER:-}
+      POS_SMTP_PASSWORD: ${POS_SMTP_PASSWORD:-}
+      POS_SMTP_FROM: ${POS_SMTP_FROM:-}
+      POS_SMTP_FROM_NAME: ${POS_SMTP_FROM_NAME:-}
+
+      # PAYPAL_ENVIRONMENT=production means this moves real money. There is no test mode
+      # hiding behind a flag: if it is live, it is live.
+      PAYPAL_CLIENT_ID: ${PAYPAL_CLIENT_ID:-}
+      PAYPAL_CLIENT_SECRET: ${PAYPAL_CLIENT_SECRET:-}
+      PAYPAL_ENVIRONMENT: ${PAYPAL_ENVIRONMENT:-sandbox}
     volumes:
       - pos-keys:/keys
+      - pos-media:/media
     ports:
       - "127.0.0.1:8121:8080"   # nginx/tunnel proxies to this (pos-web uses 8120)
 
 volumes:
   pos-keys:
+  pos-media:
   pos-blazor-pg:

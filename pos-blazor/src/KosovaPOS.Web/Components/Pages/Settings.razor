@@ -138,6 +138,49 @@
                 </p>
             </fieldset>
 
+            @* The public shop. The domain it answers on is NOT here — it lives in the control
+               database, because a request arriving on enisi.tech has to be matched to a business
+               before this row can be read at all. A platform admin sets it on /admin/bizneset. *@
+            <fieldset class="settings-set">
+                <legend>Dyqani online</legend>
+                <p class="hint">
+                    Dyqani shet nga i njëjti stok si arka: një shitje në dyqan e zbret gjendjen edhe
+                    në internet, dhe çmimi i artikullit është çmimi që paguan klienti.
+                    <strong>Një produkt shfaqet vetëm kur ka të paktën një foto</strong> — shtoni foto te
+                    <a href="/foto">Fotot</a>. Porositë vijnë te <a href="/porosite">Porositë online</a>.
+                </p>
+
+                <div class="receipt-toggles">
+                    <label class="chk"><InputCheckbox @bind-Value="_settings.ShopEnabled" /> Dyqani online është i hapur</label>
+                    <label class="chk"><InputCheckbox @bind-Value="_settings.ShopAcceptPayPal" /> Prano PayPal / kartë</label>
+                    <label class="chk"><InputCheckbox @bind-Value="_settings.ShopAcceptCashOnDelivery" /> Prano para në dorë (në dorëzim)</label>
+                </div>
+
+                <div class="form-grid">
+                    <div class="field span2">
+                        <label>Slogani</label>
+                        <input class="input" @bind="_settings.ShopTagline" maxlength="200"
+                               placeholder="Gjithçka për të vegjlit tuaj." />
+                        <p class="hint">Shfaqet nën emrin e dyqanit në ballinë.</p>
+                    </div>
+                    <div class="field span2">
+                        <label>Emaili për porositë</label>
+                        <input class="input" @bind="_settings.ShopOrderEmail" maxlength="200"
+                               placeholder="info@enisi.tech" />
+                        <p class="hint">Këtu njoftohet dyqani për çdo porosi të re. Bosh = emaili i biznesit.</p>
+                    </div>
+                    <div class="field">
+                        <label>Transporti (€)</label>
+                        <input class="input" type="number" step="0.01" @bind="_settings.ShopShippingFee" />
+                    </div>
+                    <div class="field">
+                        <label>Transport falas mbi (€)</label>
+                        <input class="input" type="number" step="0.01" @bind="_settings.ShopFreeShippingOver" />
+                        <p class="hint">0 = transporti paguhet gjithmonë.</p>
+                    </div>
+                </div>
+            </fieldset>
+
             @* Three printers, three different papers: the thermal roll, the label stock and A4.
                They are here AND on /pajisjet, from one component — the day the two screens have
                their own copy of this is the day a shop sets its A4 printer on one and watches the

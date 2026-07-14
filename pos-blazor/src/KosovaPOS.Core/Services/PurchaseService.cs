@@ -137,7 +137,7 @@ public class PurchaseService
                     item.SalesPrice > 0 ? (double)item.SalesPrice : a.CShitjes));
         // ExecuteUpdate skips the change tracker, so stamp the catalogue version by hand,
         // exactly as MoveStockAsync does — a price the cache never refreshes is a wrong price.
-        DataVersions.Bump(db.DatabaseName, DataVersions.Catalog);
+        DataVersions.BumpCatalog(db.DatabaseName);
     }
 
     /// <summary>

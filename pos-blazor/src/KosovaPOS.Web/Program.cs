@@ -66,6 +66,36 @@ builder.Services.AddScoped<IDbContextFactory<PosDbContext>, TenantDbContextFacto
 // nothing that outlived one user's page. Invalidated by PosDbContext on save, never by a timer.
 builder.Services.AddSingleton<PosCache>();
 
+// ── Online shop ─────────────────────────────────────────────────────────
+// Product photos are files. In production POS_MEDIA_DIR is a mounted volume, so they
+// survive a redeploy; in dev it falls back under the content root.
+var mediaDir = Environment.GetEnvironmentVariable("POS_MEDIA_DIR")
+               ?? Path.Combine(builder.Environment.ContentRootPath, "media");
+builder.Services.AddSingleton(new MediaStore(mediaDir));
+
+// Credentials come from the environment, never from the database or the repo.
+builder.Services.AddSingleton(EmailOptions.FromEnvironment());
+builder.Services.AddSingleton(PayPalOptions.FromEnvironment());
+
+// Timeouts, because all three of these call hosts we do not control: a supplier's image
+// CDN, PayPal, and a public barcode database. The default HttpClient waits 100 seconds,
+// which is 100 seconds of a checkout page doing nothing.
+builder.Services.AddHttpClient(nameof(PhotoService), c => c.Timeout = TimeSpan.FromSeconds(20));
+builder.Services.AddHttpClient(nameof(PayPalService), c => c.Timeout = TimeSpan.FromSeconds(20));
+builder.Services.AddHttpClient(nameof(BarcodeImageLookup), c =>
+{
+    c.Timeout = TimeSpan.FromSeconds(10);
+    // Open Food Facts asks callers to identify themselves, and rejects the default agent.
+    c.DefaultRequestHeaders.UserAgent.ParseAdd("KosovaPOS-Shop/1.0 (+https://spacecode.tech)");
+});
+
+builder.Services.AddScoped<ShopService>();
+builder.Services.AddScoped<PhotoService>();
+builder.Services.AddScoped<BarcodeImageLookup>();
+builder.Services.AddSingleton<EmailService>();
+builder.Services.AddSingleton<PayPalService>();
+builder.Services.AddScoped<KosovaPOS.Web.Services.Cart>();
+
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<PlatformAuthService>();
 builder.Services.AddScoped<BusinessProfileService>();
@@ -172,6 +202,87 @@ if (!app.Environment.IsDevelopment())
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
 app.UseHttpsRedirection();
 
+// Product photos. Served from a mounted volume rather than wwwroot, because they are
+// data the shop creates, not an asset the build ships — a redeploy replaces wwwroot.
+{
+    var media = app.Services.GetRequiredService<MediaStore>();
+    Directory.CreateDirectory(media.Root);
+
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(media.Root),
+        RequestPath = MediaStore.UrlPrefix,
+        OnPrepareResponse = ctx =>
+        {
+            // The filename is a hash of the file's own bytes, so a given URL can never point
+            // at different bytes later. That makes it safe to cache hard and forever, which
+            // is what keeps a product grid of 40 images off the server on every visit.
+            ctx.Context.Response.Headers.CacheControl = "public,max-age=31536000,immutable";
+        }
+    });
+}
+
+// ── The public shop's domain ────────────────────────────────────────────
+// enisi.tech and pos-811274183.spacecode.tech are the same application and the same
+// database. What separates them is this: on a shop domain, the ONLY thing that answers
+// is the shop.
+//
+// Without it, the shop's own domain would also serve /login, /sale, /perdoruesit —
+// the entire till, on a hostname handed out to customers. Even though every one of
+// those pages is behind an authorization policy and would refuse to render, publishing
+// a login form on the shop's front door is an invitation to credential-stuff it, and
+// the first thing an attacker does with a new domain is walk its routes.
+//
+// So: "/" becomes the storefront, the storefront's own paths pass, static assets pass,
+// and everything else on that hostname is 404 — as far as the internet can tell, no POS
+// lives here.
+//
+// It must run BEFORE routing, and routing must therefore be called explicitly below —
+// otherwise ASP.NET inserts UseRouting at the very top of the pipeline, the endpoint for
+// "/" is chosen before this code runs, and rewriting the path here changes nothing except
+// the URL that the already-selected (authorized) Home page redirects to. That failure is
+// silent and looks exactly like a broken login loop.
+app.Use(async (ctx, next) =>
+{
+    var registry = ctx.RequestServices.GetRequiredService<BusinessRegistry>();
+    var shop = await registry.GetActiveByShopDomainAsync(ctx.Request.Host.Value);
+
+    if (shop is null)
+    {
+        await next();   // a POS host, or the apex: nothing changes
+        return;
+    }
+
+    var path = ctx.Request.Path.Value ?? "/";
+
+    if (path == "/" || path.Length == 0)
+    {
+        // Rewritten, not redirected: the shop's front page is enisi.tech/, not
+        // enisi.tech/dyqani. Customers link to the former and so do search engines.
+        ctx.Request.Path = "/dyqani";
+        await next();
+        return;
+    }
+
+    var allowed =
+        path.StartsWith("/dyqani", StringComparison.OrdinalIgnoreCase) ||
+        path.StartsWith(MediaStore.UrlPrefix, StringComparison.OrdinalIgnoreCase) ||
+        path.StartsWith("/_framework", StringComparison.OrdinalIgnoreCase) ||
+        path.StartsWith("/_content", StringComparison.OrdinalIgnoreCase) ||
+        path.StartsWith("/_blazor", StringComparison.OrdinalIgnoreCase) ||
+        // Static assets under wwwroot — app.css, favicon, the Bootstrap bundle. They all
+        // carry an extension; no page route in this application does.
+        Path.HasExtension(path);
+
+    if (!allowed)
+    {
+        ctx.Response.StatusCode = StatusCodes.Status404NotFound;
+        return;
+    }
+
+    await next();
+});
+
 // A business host that names no active business is not this application. One
 // *.<base> DNS record and one ingress rule route EVERY pos-<label> host here, so
 // without this the app answers on hosts no shop has: a retired code still serves a
@@ -199,6 +310,11 @@ app.Use(async (ctx, next) =>
     }
     await next();
 });
+
+// Explicit, and it has to be: the shop-domain middleware above rewrites "/" to "/dyqani",
+// and a rewrite is only meaningful before the endpoint is selected. Left implicit, ASP.NET
+// puts routing at the top of the pipeline and the rewrite comes too late to matter.
+app.UseRouting();
 
 app.UseAuthentication();
 
@@ -309,6 +425,194 @@ app.MapGet("/shkarko/paketa-ime.zip", async (
 
     return Results.File(bytes, "application/zip", $"agjenti-{name}.zip");
 }).RequireAuthorization("perm:settings");
+
+// ── The public shop ─────────────────────────────────────────────────────
+// Plain form posts, anonymous, no JavaScript. The storefront is static-SSR: it has no
+// Blazor circuit, so a customer costs the server one HTTP request per click rather than
+// a live WebSocket for as long as they browse, and every page is a real HTML document a
+// search engine can read.
+//
+// All of them are anonymous — a shop customer never signs in — and all of them resolve
+// their business from the shop domain, via CurrentBusiness.
+
+app.MapPost("/dyqani/shto", async (HttpContext ctx, KosovaPOS.Web.Services.Cart cart) =>
+{
+    var form = await ctx.Request.ReadFormAsync();
+
+    if (long.TryParse(form["articleId"], out var id))
+        cart.Add(id, decimal.TryParse(form["qty"], out var q) && q > 0 ? q : 1);
+
+    // Back where they were, so adding from the grid does not throw away their scroll
+    // position and adding from a product page keeps them on the product.
+    var back = form["back"].ToString();
+    return Results.Redirect(string.IsNullOrWhiteSpace(back) ? "/dyqani" : back);
+}).AllowAnonymous().DisableAntiforgery();
+
+app.MapPost("/dyqani/sasia", async (HttpContext ctx, KosovaPOS.Web.Services.Cart cart) =>
+{
+    var form = await ctx.Request.ReadFormAsync();
+
+    if (long.TryParse(form["articleId"], out var id))
+    {
+        if (decimal.TryParse(form["qty"], out var q))
+            cart.SetQuantity(id, q);
+        else
+            cart.Remove(id);
+    }
+
+    return Results.Redirect("/dyqani/shporta");
+}).AllowAnonymous().DisableAntiforgery();
+
+// Places the order. Everything the customer is charged is recomputed here from the
+// database — the form carries an address, not a price.
+app.MapPost("/dyqani/porosit", async (
+    HttpContext ctx,
+    KosovaPOS.Web.Services.Cart cart,
+    ShopService shop,
+    BusinessProfileService profile,
+    PayPalService paypal,
+    EmailService email,
+    ILoggerFactory logs) =>
+{
+    var log = logs.CreateLogger("KosovaPOS.Shop");
+    var form = await ctx.Request.ReadFormAsync();
+
+    var settings = await profile.GetSettingsAsync();
+    if (settings is null || !settings.ShopEnabled)
+        return Results.Redirect("/dyqani");
+
+    var lines = cart.Lines;
+    if (lines.Count == 0)
+        return Results.Redirect("/dyqani/shporta");
+
+    var wantsPayPal = form["payment"].ToString() == "paypal";
+    if (wantsPayPal && !(settings.ShopAcceptPayPal && paypal.Configured))
+        return Results.Redirect("/dyqani/arka?gabim=" + Uri.EscapeDataString("Pagesa me PayPal nuk është e disponueshme."));
+    if (!wantsPayPal && !settings.ShopAcceptCashOnDelivery)
+        return Results.Redirect("/dyqani/arka?gabim=" + Uri.EscapeDataString("Pagesa në dorëzim nuk është e disponueshme."));
+
+    var details = new KosovaPOS.Models.Shop.WebOrder
+    {
+        CustomerName = form["name"].ToString().Trim(),
+        Email = form["email"].ToString().Trim(),
+        Phone = form["phone"].ToString().Trim(),
+        Address = form["address"].ToString().Trim(),
+        City = form["city"].ToString().Trim(),
+        Note = form["note"].ToString().Trim(),
+        PaymentMethod = wantsPayPal
+            ? KosovaPOS.Models.Shop.WebPaymentMethod.PayPal
+            : KosovaPOS.Models.Shop.WebPaymentMethod.CashOnDelivery,
+    };
+
+    if (details.CustomerName.Length == 0 || details.Email.Length == 0 || details.Address.Length == 0)
+        return Results.Redirect("/dyqani/arka?gabim=" + Uri.EscapeDataString("Emri, emaili dhe adresa janë të detyrueshme."));
+
+    var placed = await shop.PlaceOrderAsync(lines, details, settings);
+    if (!placed.Ok)
+        return Results.Redirect("/dyqani/arka?gabim=" + Uri.EscapeDataString(placed.Error!));
+
+    var order = placed.Order;
+    var origin = $"{ctx.Request.Scheme}://{ctx.Request.Host}";
+
+    if (!wantsPayPal)
+    {
+        // Cash on delivery: nothing is paid, but the shop has committed to shipping it, so
+        // the goods come out of stock now.
+        await shop.ConfirmAsync(order.Id, KosovaPOS.Models.Shop.WebPaymentStatus.Pending);
+        cart.Clear();
+
+        await email.SendOrderConfirmationAsync(order, settings, origin);
+        await email.SendShopNotificationAsync(order, settings, origin);
+
+        return Results.Redirect($"/dyqani/faleminderit/{order.OrderNumber}");
+    }
+
+    var created = await paypal.CreateOrderAsync(
+        order,
+        returnUrl: $"{origin}/dyqani/paypal/kthim",
+        cancelUrl: $"{origin}/dyqani/paypal/anulo?porosia={order.OrderNumber}",
+        brandName: settings.BusinessName ?? "Dyqani");
+
+    if (created is null)
+    {
+        log.LogError("Could not create a PayPal order for {Order}.", order.OrderNumber);
+        return Results.Redirect("/dyqani/arka?gabim=" + Uri.EscapeDataString(
+            "Nuk u lidhëm dot me PayPal. Provoni sërish, ose zgjidhni pagesën në dorëzim."));
+    }
+
+    await shop.SetPayPalOrderIdAsync(order.Id, created.Id);
+
+    // The cart is NOT cleared here. The customer has not paid yet, and they may well come
+    // straight back by pressing Cancel — arriving at an empty basket after abandoning a
+    // payment is how you lose a sale you already had.
+    return Results.Redirect(created.ApproveUrl);
+}).AllowAnonymous().DisableAntiforgery();
+
+// PayPal sends the customer back here after they approve. Their arrival proves they
+// clicked a button — not that anyone was charged — so the money is captured server-side
+// and only PayPal's own COMPLETED is believed.
+app.MapGet("/dyqani/paypal/kthim", async (
+    HttpContext ctx,
+    KosovaPOS.Web.Services.Cart cart,
+    ShopService shop,
+    BusinessProfileService profile,
+    PayPalService paypal,
+    EmailService email,
+    ILoggerFactory logs) =>
+{
+    var log = logs.CreateLogger("KosovaPOS.Shop");
+
+    var token = ctx.Request.Query["token"].ToString();   // PayPal's order id
+    if (string.IsNullOrWhiteSpace(token))
+        return Results.Redirect("/dyqani");
+
+    var order = await shop.FindByPayPalOrderAsync(token);
+    if (order is null)
+    {
+        log.LogWarning("PayPal returned with an unknown order id {Token}.", token);
+        return Results.Redirect("/dyqani");
+    }
+
+    // Refreshing the return URL must not capture twice, and must not fail the second time.
+    if (order.PaymentStatus == KosovaPOS.Models.Shop.WebPaymentStatus.Paid)
+    {
+        cart.Clear();
+        return Results.Redirect($"/dyqani/faleminderit/{order.OrderNumber}");
+    }
+
+    var capture = await paypal.CaptureOrderAsync(token);
+    if (!capture.Completed)
+    {
+        await shop.MarkFailedAsync(order.Id);
+        log.LogError("PayPal capture did not complete for {Order}: {Error}", order.OrderNumber, capture.Error);
+        return Results.Redirect("/dyqani/arka?gabim=" + Uri.EscapeDataString(
+            "Pagesa nuk përfundoi. Nuk u tërhoq asnjë shumë. Provoni sërish."));
+    }
+
+    // Money is in. Stock comes off exactly once — ConfirmAsync is idempotent.
+    await shop.ConfirmAsync(order.Id, KosovaPOS.Models.Shop.WebPaymentStatus.Paid, capture.CaptureId);
+    cart.Clear();
+
+    var settings = await profile.GetSettingsAsync();
+    if (settings is not null)
+    {
+        var origin = $"{ctx.Request.Scheme}://{ctx.Request.Host}";
+        var paid = await shop.FindByNumberAsync(order.OrderNumber);
+        if (paid is not null)
+        {
+            await email.SendOrderConfirmationAsync(paid, settings, origin);
+            await email.SendShopNotificationAsync(paid, settings, origin);
+        }
+    }
+
+    return Results.Redirect($"/dyqani/faleminderit/{order.OrderNumber}");
+}).AllowAnonymous();
+
+// The customer pressed Cancel at PayPal. Nothing was charged and no stock moved — the
+// order row stays Pending as a record that someone got this far and did not finish.
+app.MapGet("/dyqani/paypal/anulo", () =>
+    Results.Redirect("/dyqani/arka?gabim=" + Uri.EscapeDataString("Pagesa u anulua. Shporta juaj është ende këtu.")))
+    .AllowAnonymous();
 
 // Sign-out endpoint (POST from the shell)
 app.MapPost("/auth/logout", async (HttpContext ctx) =>

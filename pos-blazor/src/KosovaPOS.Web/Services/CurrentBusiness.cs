@@ -34,11 +34,14 @@ public sealed class CurrentBusiness
 {
     private readonly AuthenticationStateProvider _authState;
     private readonly BusinessRegistry _registry;
+    private readonly IHttpContextAccessor _http;
 
-    public CurrentBusiness(AuthenticationStateProvider authState, BusinessRegistry registry)
+    public CurrentBusiness(
+        AuthenticationStateProvider authState, BusinessRegistry registry, IHttpContextAccessor http)
     {
         _authState = authState;
         _registry = registry;
+        _http = http;
     }
 
     /// <summary>
@@ -54,14 +57,48 @@ public sealed class CurrentBusiness
     public async Task<Business?> GetAsync()
     {
         var user = (await _authState.GetAuthenticationStateAsync()).User;
-        if (user.Identity?.IsAuthenticated != true)
+
+        if (user.Identity?.IsAuthenticated == true)
+        {
+            var raw = user.FindFirst(AuthService.BusinessIdClaim)?.Value;
+            if (int.TryParse(raw, out var id))
+                return await _registry.GetActiveByIdAsync(id);
+
+            // A platform admin legitimately has no business claim. Falling through to the
+            // host below would be wrong for them — but harmless, since they are never on a
+            // shop domain — so it is simply not attempted.
+            return null;
+        }
+
+        return await ShopVisitorBusinessAsync();
+    }
+
+    /// <summary>
+    /// The business whose public shop is being browsed, for a visitor who is not signed in
+    /// and never will be.
+    ///
+    /// This is the one place a business is resolved from the request host rather than from
+    /// a signed claim, and it is deliberate: a customer on enisi.tech has no cookie, and the
+    /// storefront still has to read that shop's products. It does not weaken the isolation
+    /// the rest of the design rests on. The host selects WHICH shop's public catalogue is
+    /// rendered, and nothing else — every page that shows a price list, a partner, a
+    /// receipt or a user sits behind an authorization policy, and those policies read the
+    /// DataProtection-signed <c>bizid</c> claim, never the Host header. The worst a forged
+    /// Host achieves is a look at a storefront that is already on the public internet.
+    ///
+    /// Returns null on a POS host, so nothing changes for the till.
+    /// </summary>
+    private async Task<Business?> ShopVisitorBusinessAsync()
+    {
+        // Null during an interactive Blazor circuit — there is no HTTP request behind a
+        // WebSocket. The storefront is static-SSR precisely so this is never null when it
+        // matters; the POS pages that DO run interactively all require a signed-in user and
+        // took the claim branch above.
+        var host = _http.HttpContext?.Request.Host.Value;
+        if (string.IsNullOrEmpty(host))
             return null;
 
-        var raw = user.FindFirst(AuthService.BusinessIdClaim)?.Value;
-        if (!int.TryParse(raw, out var id))
-            return null;   // platform admins legitimately have no business claim
-
-        return await _registry.GetActiveByIdAsync(id);
+        return await _registry.GetActiveByShopDomainAsync(host);
     }
 
     /// <summary>

@@ -33,6 +33,7 @@ public sealed class BusinessRegistry
     private sealed record Snapshot(
         IReadOnlyDictionary<int, Business> ById,
         IReadOnlyDictionary<string, Business> ByCode,
+        IReadOnlyDictionary<string, Business> ByShopDomain,
         DateTimeOffset LoadedAt);
 
     private volatile Snapshot? _snapshot;
@@ -68,6 +69,8 @@ public sealed class BusinessRegistry
             var snapshot = new Snapshot(
                 active.ToDictionary(b => b.Id),
                 active.ToDictionary(b => b.Code, StringComparer.Ordinal),
+                active.Where(b => !string.IsNullOrWhiteSpace(b.ShopDomain))
+                      .ToDictionary(b => b.ShopDomain!.Trim().ToLowerInvariant(), StringComparer.Ordinal),
                 _clock.GetUtcNow());
 
             _snapshot = snapshot;
@@ -93,6 +96,36 @@ public sealed class BusinessRegistry
         return (await GetSnapshotAsync(ct)).ByCode.GetValueOrDefault(code.Trim().ToLowerInvariant());
     }
 
+    /// <summary>
+    /// The active business whose public shop lives on this hostname, or null.
+    ///
+    /// The argument is a raw <c>Host</c> header, so it may carry a port and any casing,
+    /// and it is attacker-controllable. That is fine: the only thing a forged Host can
+    /// select is *which shop's public catalogue* is rendered — every page that reads
+    /// anything private is behind an authorization policy, and the policies check the
+    /// signed <c>bizid</c> claim, never the host. A lie here buys a view of a shop's
+    /// storefront, which is public by definition.
+    ///
+    /// A "www." prefix resolves to the same business, because a customer typing
+    /// www.enisi.tech is not a different customer.
+    /// </summary>
+    public async Task<Business?> GetActiveByShopDomainAsync(string? host, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(host)) return null;
+
+        host = host.Trim().ToLowerInvariant();
+        var colon = host.IndexOf(':');
+        if (colon >= 0) host = host[..colon];
+
+        var byDomain = (await GetSnapshotAsync(ct)).ByShopDomain;
+
+        if (byDomain.TryGetValue(host, out var direct)) return direct;
+        if (host.StartsWith("www.", StringComparison.Ordinal) &&
+            byDomain.TryGetValue(host[4..], out var bare)) return bare;
+
+        return null;
+    }
+
     /// <summary>Active businesses, for startup migration sweeps.</summary>
     public async Task<IReadOnlyList<Business>> ListActiveAsync(CancellationToken ct = default)
         => (await GetSnapshotAsync(ct)).ById.Values.OrderBy(b => b.Name).ToList();
@@ -105,6 +138,42 @@ public sealed class BusinessRegistry
     {
         await using var db = await _controlFactory.CreateDbContextAsync(ct);
         return await db.Businesses.AsNoTracking().OrderBy(b => b.Name).ToListAsync(ct);
+    }
+
+    /// <summary>
+    /// Point a business's public shop at a hostname, or clear it. Normalised to bare
+    /// lowercase (no scheme, no "www.", no trailing slash) so the lookup above — which
+    /// sees whatever a browser puts in the Host header — can match on equality.
+    /// </summary>
+    public async Task SetShopDomainAsync(int id, string? domain, CancellationToken ct = default)
+    {
+        var normalised = NormaliseShopDomain(domain);
+
+        await using var db = await _controlFactory.CreateDbContextAsync(ct);
+        var row = await db.Businesses.FirstOrDefaultAsync(b => b.Id == id, ct)
+                  ?? throw new InvalidOperationException($"No business with id {id}.");
+        row.ShopDomain = normalised;
+        await db.SaveChangesAsync(ct);
+        Invalidate();
+    }
+
+    public static string? NormaliseShopDomain(string? domain)
+    {
+        if (string.IsNullOrWhiteSpace(domain)) return null;
+
+        var value = domain.Trim().ToLowerInvariant();
+        foreach (var scheme in (string[])["https://", "http://"])
+            if (value.StartsWith(scheme, StringComparison.Ordinal))
+                value = value[scheme.Length..];
+
+        value = value.TrimEnd('/');
+        var slash = value.IndexOf('/');
+        if (slash >= 0) value = value[..slash];
+
+        if (value.StartsWith("www.", StringComparison.Ordinal))
+            value = value[4..];
+
+        return value.Length == 0 ? null : value;
     }
 
     public async Task SetActiveAsync(int id, bool isActive, CancellationToken ct = default)

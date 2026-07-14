@@ -3,6 +3,7 @@ using KosovaPOS.Models;
 using KosovaPOS.Models.BMDData;
 using KosovaPOS.Models.HR;
 using KosovaPOS.Models.ATK;
+using KosovaPOS.Models.Shop;
 
 namespace KosovaPOS.Core.Data;
 
@@ -42,13 +43,11 @@ public class PosDbContext : DbContext
     /// </summary>
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
-        var catalogTouched = ChangeTracker.Entries<Artikujt>().Any(e => e.State is EntityState.Added or EntityState.Modified or EntityState.Deleted);
-        var settingsTouched = ChangeTracker.Entries<BusinessSettings>().Any(e => e.State is EntityState.Added or EntityState.Modified or EntityState.Deleted);
+        var touched = WhatChanged();
 
         var written = await base.SaveChangesAsync(cancellationToken);
 
-        if (catalogTouched) DataVersions.Bump(DatabaseName, DataVersions.Catalog);
-        if (settingsTouched) DataVersions.Bump(DatabaseName, DataVersions.Settings);
+        Invalidate(touched);
 
         return written;
     }
@@ -57,15 +56,36 @@ public class PosDbContext : DbContext
     /// on one of the two save paths is a trap laid for whoever writes the first one.</summary>
     public override int SaveChanges()
     {
-        var catalogTouched = ChangeTracker.Entries<Artikujt>().Any(e => e.State is EntityState.Added or EntityState.Modified or EntityState.Deleted);
-        var settingsTouched = ChangeTracker.Entries<BusinessSettings>().Any(e => e.State is EntityState.Added or EntityState.Modified or EntityState.Deleted);
+        var touched = WhatChanged();
 
         var written = base.SaveChanges();
 
-        if (catalogTouched) DataVersions.Bump(DatabaseName, DataVersions.Catalog);
-        if (settingsTouched) DataVersions.Bump(DatabaseName, DataVersions.Settings);
+        Invalidate(touched);
 
         return written;
+    }
+
+    private readonly record struct Touched(bool Catalog, bool Settings, bool Photos);
+
+    private Touched WhatChanged()
+    {
+        bool Any<T>() where T : class =>
+            ChangeTracker.Entries<T>().Any(e => e.State is EntityState.Added or EntityState.Modified or EntityState.Deleted);
+
+        return new Touched(
+            Catalog: Any<Artikujt>(),
+            Settings: Any<BusinessSettings>(),
+            // A photo is not catalogue data, but it decides whether an article is on the
+            // website at all — so the shop's product list has to be rebuilt when one lands.
+            Photos: Any<ArticlePhoto>());
+    }
+
+    private void Invalidate(Touched touched)
+    {
+        if (touched.Catalog) DataVersions.BumpCatalog(DatabaseName);
+        else if (touched.Photos) DataVersions.Bump(DatabaseName, DataVersions.ShopCatalog);
+
+        if (touched.Settings) DataVersions.Bump(DatabaseName, DataVersions.Settings);
     }
 
     // ── BMDData (legacy accounting) models ──────────────────────────────
@@ -161,6 +181,11 @@ public class PosDbContext : DbContext
     public DbSet<PurchaseOrder> PurchaseOrders => Set<PurchaseOrder>();
     public DbSet<PurchaseOrderItem> PurchaseOrderItems => Set<PurchaseOrderItem>();
 
+    // ── Online shop ─────────────────────────────────────────────────────
+    public DbSet<ArticlePhoto> ArticlePhotos => Set<ArticlePhoto>();
+    public DbSet<WebOrder> WebOrders => Set<WebOrder>();
+    public DbSet<WebOrderItem> WebOrderItems => Set<WebOrderItem>();
+
     // ── Delivery orders & gift cards ────────────────────────────────────
     public DbSet<DeliveryOrder> DeliveryOrders => Set<DeliveryOrder>();
     public DbSet<GiftCard> GiftCards => Set<GiftCard>();
@@ -252,5 +277,36 @@ public class PosDbContext : DbContext
         modelBuilder.Entity<RentalAgreement>().ToTable("RentalAgreements");
         modelBuilder.Entity<PurchaseOrder>().ToTable("PurchaseOrders");
         modelBuilder.Entity<PurchaseOrderItem>().ToTable("PurchaseOrderItems");
+
+        // ── Online shop ─────────────────────────────────────────────────
+        modelBuilder.Entity<ArticlePhoto>(e =>
+        {
+            e.ToTable("ArticlePhotos");
+            // The storefront's hottest query is "the photos for these articles".
+            e.HasIndex(p => new { p.ArticleId, p.SortOrder });
+        });
+
+        modelBuilder.Entity<WebOrder>(e =>
+        {
+            e.ToTable("WebOrders");
+            e.HasIndex(o => o.OrderNumber).IsUnique();
+            e.HasIndex(o => o.CreatedAt);
+
+            // A partial unique index, so PayPal's id is unique among the orders that have
+            // one and the nulls (a cash-on-delivery order has no PayPal id) don't collide.
+            // This is what makes a replayed capture callback hit a row rather than make one.
+            e.HasIndex(o => o.PayPalOrderId).IsUnique().HasFilter("\"PayPalOrderId\" IS NOT NULL");
+
+            e.HasMany(o => o.Items)
+             .WithOne(i => i.Order!)
+             .HasForeignKey(i => i.WebOrderId)
+             .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<WebOrderItem>(e =>
+        {
+            e.ToTable("WebOrderItems");
+            e.Property(i => i.Quantity).HasPrecision(18, 3);
+        });
     }
 }

@@ -1,0 +1,153 @@
+@page "/dyqani/arka"
+@layout KosovaPOS.Web.Components.Layout.ShopLayout
+@using KosovaPOS.Core.Services
+@using KosovaPOS.Web.Services
+@inject ShopService Shop
+@inject BusinessProfileService Profile
+@inject PayPalService PayPal
+@inject Cart Cart
+@inject NavigationManager Nav
+
+<PageTitle>Pagesa</PageTitle>
+
+<h1 class="shop-h1">Pagesa</h1>
+
+@if (Cart.IsEmpty)
+{
+    <p class="muted shop-empty">Shporta juaj është bosh.</p>
+    <a class="shop-add" href="/dyqani">Shiko produktet</a>
+}
+else
+{
+    @if (!string.IsNullOrWhiteSpace(Error))
+    {
+        <div class="shop-error">@Error</div>
+    }
+
+    <form method="post" action="/dyqani/porosit" class="shop-checkout-form">
+        <div class="shop-fields">
+            <h2>Të dhënat tuaja</h2>
+
+            <label>Emri dhe mbiemri *</label>
+            <input name="name" required autocomplete="name" />
+
+            <label>Email *</label>
+            <input name="email" type="email" required autocomplete="email" />
+            <p class="shop-hint">Konfirmimi i porosisë ju vjen këtu.</p>
+
+            <label>Telefoni</label>
+            <input name="phone" type="tel" autocomplete="tel" />
+
+            <label>Adresa *</label>
+            <input name="address" required autocomplete="street-address" />
+
+            <label>Qyteti</label>
+            <input name="city" autocomplete="address-level2" />
+
+            <label>Shënim (opsional)</label>
+            <textarea name="note" rows="2"></textarea>
+
+            <h2>Mënyra e pagesës</h2>
+
+            @if (!_anyPayment)
+            {
+                <p class="shop-warn">Asnjë mënyrë pagese nuk është aktive. Kontaktoni dyqanin.</p>
+            }
+
+            @if (_payPal)
+            {
+                <label class="shop-radio">
+                    <input type="radio" name="payment" value="paypal" checked="@(_payPalDefault)" />
+                    <span><strong>PayPal ose kartë</strong><br />
+                        <span class="muted">Paguani tani, në mënyrë të sigurt përmes PayPal.</span></span>
+                </label>
+            }
+
+            @if (_cash)
+            {
+                <label class="shop-radio">
+                    <input type="radio" name="payment" value="cash" checked="@(!_payPalDefault)" />
+                    <span><strong>Para në dorë</strong><br />
+                        <span class="muted">Paguani kur ta merrni porosinë.</span></span>
+                </label>
+            }
+        </div>
+
+        <aside class="shop-summary">
+            <h2>Porosia juaj</h2>
+
+            @foreach (var line in _lines)
+            {
+                <div class="shop-sum-line">
+                    <span>@line.Name <span class="muted">× @line.Quantity.ToString("0.##")</span></span>
+                    <span>@line.Total.ToString("0.00") €</span>
+                </div>
+            }
+
+            <div><span>Nëntotali</span><span>@_subtotal.ToString("0.00") €</span></div>
+            <div>
+                <span>Transporti</span>
+                <span>@(_shipping == 0 ? "Falas" : _shipping.ToString("0.00") + " €")</span>
+            </div>
+            <div class="shop-summary-total">
+                <span>Totali</span><span>@((_subtotal + _shipping).ToString("0.00")) €</span>
+            </div>
+
+            <button type="submit" class="shop-add shop-checkout" disabled="@(!_anyPayment)">
+                Përfundo porosinë
+            </button>
+
+            <p class="shop-hint">
+                Duke porositur, pranoni që t'ju kontaktojmë për dërgesën.
+            </p>
+        </aside>
+    </form>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "gabim")]
+    public string? Error { get; set; }
+
+    private sealed record Line(string Name, decimal Quantity, decimal Total);
+
+    private List<Line> _lines = [];
+    private decimal _subtotal;
+    private decimal _shipping;
+
+    private bool _payPal;
+    private bool _cash;
+    private bool _anyPayment => _payPal || _cash;
+    private bool _payPalDefault => _payPal;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var settings = await Profile.GetSettingsAsync();
+        if (settings?.ShopEnabled != true)
+        {
+            Nav.NavigateTo("/dyqani");
+            return;
+        }
+
+        // PayPal is offered only if it is BOTH switched on for this shop and actually
+        // configured with credentials. Showing the option without them would send the
+        // customer to a payment that cannot be created, after they typed their address.
+        _payPal = settings.ShopAcceptPayPal && PayPal.Configured;
+        _cash = settings.ShopAcceptCashOnDelivery;
+
+        var products = (await Shop.GetProductsAsync()).ToDictionary(p => p.Id);
+
+        foreach (var entry in Cart.Lines)
+        {
+            if (!products.TryGetValue(entry.ArticleId, out var product))
+                continue;
+
+            _lines.Add(new Line(product.Name, entry.Quantity,
+                decimal.Round(product.Price * entry.Quantity, 2)));
+        }
+
+        // Shown for confidence only. Every figure is recomputed from the database when the
+        // form posts — this page is rendered from a cookie the customer can edit.
+        _subtotal = _lines.Sum(l => l.Total);
+        _shipping = ShopService.ShippingFor(_subtotal, settings);
+    }
+}

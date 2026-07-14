@@ -38,6 +38,22 @@ public class Business
     public string DatabaseName { get; set; } = "";
 
     /// <summary>
+    /// The business's own public shop domain — "enisi.tech" — or null if it has no
+    /// online shop.
+    ///
+    /// Lives here rather than in the business's own settings row because it is read
+    /// on the way *in*: a request arrives on some hostname and we must know which
+    /// database to open before we can read any business's settings. That is exactly
+    /// the job the control database exists for.
+    ///
+    /// Unlike <see cref="Code"/> this is a full hostname under someone else's zone,
+    /// so it gets no prefix and no wildcard — each one is a deliberate DNS record and
+    /// a deliberate row.
+    /// </summary>
+    [StringLength(200)]
+    public string? ShopDomain { get; set; }
+
+    /// <summary>
     /// Cleared to lock a business out. <see cref="Services.BusinessRegistry"/>
     /// only caches active rows, so revoking access takes effect within the cache
     /// TTL rather than at the next login.

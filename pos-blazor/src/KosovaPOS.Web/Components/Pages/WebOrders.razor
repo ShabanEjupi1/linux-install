@@ -1,0 +1,163 @@
+@page "/porosite"
+@rendermode @(RenderModes.Interactive)
+@attribute [Authorize(Policy = "perm:sell")]
+@using KosovaPOS.Core.Services
+@using KosovaPOS.Models.Shop
+@inject ShopService Shop
+
+<PageTitle>Porositë online</PageTitle>
+
+<h1>Porositë online</h1>
+<p class="muted">Porositë nga dyqani në internet. Gjendja e stokut është zbritur tashmë për secilën.</p>
+
+@if (_loading)
+{
+    <Skeleton />
+}
+else if (_orders.Count == 0)
+{
+    <p class="muted">Ende asnjë porosi.</p>
+}
+else
+{
+    <div class="order-list">
+        @foreach (var order in _orders)
+        {
+            <div class="order @(_open == order.Id ? "open" : null)">
+                <button class="order-head" @onclick="() => _open = _open == order.Id ? null : order.Id">
+                    <span class="order-no">@order.OrderNumber</span>
+                    <span class="order-who">
+                        @order.CustomerName
+                        <span class="muted">@order.CreatedAt.ToString("dd.MM.yyyy HH:mm")</span>
+                    </span>
+                    <span class="badge @PaymentClass(order)">@PaymentLabel(order)</span>
+                    <span class="badge @StatusClass(order.Status)">@StatusLabel(order.Status)</span>
+                    <span class="order-total">@order.Total.ToString("0.00") €</span>
+                </button>
+
+                @if (_open == order.Id)
+                {
+                    <div class="order-body">
+                        <div class="order-cols">
+                            <div>
+                                <h3>Artikujt</h3>
+                                <table class="grid-table">
+                                    <tbody>
+                                        @foreach (var item in order.Items)
+                                        {
+                                            <tr>
+                                                <td>@item.Name<br /><span class="muted small">@item.Barcode</span></td>
+                                                <td class="num">@item.Quantity.ToString("0.##")</td>
+                                                <td class="num">@item.UnitPrice.ToString("0.00") €</td>
+                                                <td class="num"><strong>@item.LineTotal.ToString("0.00") €</strong></td>
+                                            </tr>
+                                        }
+                                        <tr>
+                                            <td colspan="3">Transporti</td>
+                                            <td class="num">@(order.ShippingFee == 0 ? "Falas" : order.ShippingFee.ToString("0.00") + " €")</td>
+                                        </tr>
+                                        <tr>
+                                            <td colspan="3"><strong>Totali</strong></td>
+                                            <td class="num"><strong>@order.Total.ToString("0.00") €</strong></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <div>
+                                <h3>Klienti</h3>
+                                <p class="muted" style="line-height:1.7">
+                                    <strong>@order.CustomerName</strong><br />
+                                    <a href="mailto:@order.Email">@order.Email</a><br />
+                                    @if (!string.IsNullOrWhiteSpace(order.Phone))
+                                    {
+                                        <a href="tel:@order.Phone">@order.Phone</a>
+
+                                        <br />
+                                    }
+                                    @order.Address@(string.IsNullOrWhiteSpace(order.City) ? "" : ", " + order.City)
+                                </p>
+
+                                @if (!string.IsNullOrWhiteSpace(order.Note))
+                                {
+                                    <h3>Shënim</h3>
+                                    <p class="muted">@order.Note</p>
+                                }
+
+                                @if (order.PayPalCaptureId is not null)
+                                {
+                                    <h3>PayPal</h3>
+                                    <p class="muted small">Pagesa: @order.PayPalCaptureId</p>
+                                }
+
+                                <h3>Gjendja</h3>
+                                <div class="row" style="gap:8px;flex-wrap:wrap">
+                                    @foreach (var status in (WebOrderStatus[])[WebOrderStatus.Confirmed, WebOrderStatus.Shipped, WebOrderStatus.Delivered, WebOrderStatus.Cancelled])
+                                    {
+                                        <button class="@(order.Status == status ? "btn-primary" : "btn-ghost")"
+                                                disabled="@(order.Status == status)"
+                                                @onclick="() => SetStatusAsync(order.Id, status)">
+                                            @StatusLabel(status)
+                                        </button>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private List<WebOrder> _orders = [];
+    private int? _open;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _orders = await Shop.ListOrdersAsync();
+        _loading = false;
+    }
+
+    private async Task SetStatusAsync(int orderId, WebOrderStatus status)
+    {
+        await Shop.SetStatusAsync(orderId, status);
+        _orders = await Shop.ListOrdersAsync();
+    }
+
+    private static string PaymentLabel(WebOrder o) => (o.PaymentMethod, o.PaymentStatus) switch
+    {
+        (WebPaymentMethod.PayPal, WebPaymentStatus.Paid) => "PayPal — paguar",
+        (WebPaymentMethod.PayPal, WebPaymentStatus.Failed) => "PayPal — dështoi",
+        (WebPaymentMethod.PayPal, _) => "PayPal — në pritje",
+        (_, WebPaymentStatus.Paid) => "Paguar",
+        _ => "Në dorëzim",
+    };
+
+    private static string PaymentClass(WebOrder o) => o.PaymentStatus switch
+    {
+        WebPaymentStatus.Paid => "ok",
+        WebPaymentStatus.Failed => "bad",
+        _ => "warn",
+    };
+
+    private static string StatusLabel(WebOrderStatus s) => s switch
+    {
+        WebOrderStatus.New => "E re",
+        WebOrderStatus.Confirmed => "Konfirmuar",
+        WebOrderStatus.Shipped => "Dërguar",
+        WebOrderStatus.Delivered => "Dorëzuar",
+        WebOrderStatus.Cancelled => "Anuluar",
+        _ => s.ToString(),
+    };
+
+    private static string StatusClass(WebOrderStatus s) => s switch
+    {
+        WebOrderStatus.Delivered => "ok",
+        WebOrderStatus.Cancelled => "bad",
+        WebOrderStatus.New => "warn",
+        _ => "",
+    };
+}

@@ -40,6 +40,12 @@ public class ControlDbContext : DbContext
         b.Entity<Business>().HasIndex(x => x.Code).IsUnique();
         b.Entity<Business>().HasIndex(x => x.DatabaseName).IsUnique();
 
+        // Same reasoning for the shop domain, and the same failure to prevent: an
+        // incoming request on enisi.tech must name exactly one database. Filtered, so
+        // the businesses with no shop (all NULL) do not collide with each other.
+        b.Entity<Business>().HasIndex(x => x.ShopDomain).IsUnique()
+            .HasFilter("\"ShopDomain\" IS NOT NULL");
+
         b.Entity<PlatformAdmin>().HasIndex(x => x.Username).IsUnique();
 
         // The audit console reads newest-first, always. Without this the log is a

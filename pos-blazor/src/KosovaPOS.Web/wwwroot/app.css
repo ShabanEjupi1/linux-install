@@ -1067,3 +1067,64 @@ a.stat:hover { border-color: var(--accent); }
 
 /* The A4 printer tests sit under the pickers, not in a modal. */
 .printer-tests { justify-content: flex-start; flex-wrap: wrap; margin-top: .5rem; }
+
+/* ── Photo manager (/foto) ─────────────────────────────────────────────── */
+.photo-list { border-top: 1px solid var(--line); }
+.photo-row { border-bottom: 1px solid var(--line); }
+.photo-head {
+    display: flex; align-items: center; gap: .8rem; width: 100%;
+    padding: .7rem .4rem; border: 0; background: none; cursor: pointer; text-align: left;
+}
+.photo-head:hover { background: var(--surface-2); }
+.photo-tick {
+    width: 26px; height: 26px; border-radius: 50%; flex: none;
+    display: grid; place-items: center; font-size: .8rem;
+    background: var(--surface-2); color: var(--ink-3);
+}
+.photo-tick.on { background: #dcfce7; color: #15803d; }
+.photo-name { flex: 1; display: flex; flex-direction: column; gap: .15rem; }
+.photo-name .muted { font-size: .78rem; }
+.photo-body { padding: .4rem .4rem 1.2rem 3.2rem; display: flex; flex-direction: column; gap: .9rem; }
+.photo-add { display: flex; flex-direction: column; gap: .6rem; align-items: flex-start; }
+.photo-add .row { width: 100%; }
+
+.photo-strip { display: flex; gap: .7rem; flex-wrap: wrap; }
+.photo-strip figure { margin: 0; width: 116px; }
+.photo-strip img {
+    width: 116px; height: 116px; object-fit: cover;
+    border-radius: 8px; border: 2px solid var(--line); background: var(--surface-2);
+}
+.photo-strip figure.main img { border-color: var(--accent); }
+.photo-strip figcaption { display: flex; gap: .5rem; align-items: center; margin-top: .3rem; font-size: .75rem; }
+.photo-candidates { border-top: 1px dashed var(--line); padding-top: .8rem; }
+.photo-candidates h3 { margin: 0 0 .5rem; font-size: .9rem; }
+
+/* ── Web orders (/porosite) ────────────────────────────────────────────── */
+.order-list { border-top: 1px solid var(--line); }
+.order { border-bottom: 1px solid var(--line); }
+.order-head {
+    display: flex; align-items: center; gap: 1rem; width: 100%;
+    padding: .8rem .4rem; border: 0; background: none; cursor: pointer; text-align: left;
+}
+.order-head:hover { background: var(--surface-2); }
+.order-no { font-family: ui-monospace, monospace; font-weight: 600; min-width: 108px; }
+.order-who { flex: 1; display: flex; flex-direction: column; gap: .1rem; }
+.order-who .muted { font-size: .78rem; }
+.order-total { font-weight: 700; min-width: 84px; text-align: right; }
+.order-body { padding: .2rem .4rem 1.4rem 0; }
+.order-cols { display: grid; grid-template-columns: 1.4fr 1fr; gap: 2rem; }
+.order-cols h3 { margin: 0 0 .5rem; font-size: .9rem; }
+@media (max-width: 760px) { .order-cols { grid-template-columns: 1fr; } }
+
+/* Small utilities the shop screens lean on. */
+.row { display: flex; align-items: center; }
+.small { font-size: .78rem; }
+.link {
+    border: 0; background: none; padding: 0; cursor: pointer;
+    color: var(--accent); font-weight: 600; font-size: inherit;
+}
+.link:hover { text-decoration: underline; }
+.link.danger { color: var(--danger); }
+.badge.ok   { background: #dcfce7; color: #15803d; }
+.badge.warn { background: #fef3c7; color: #b45309; }
+.badge.bad  { background: #fee2e2; color: #b91c1c; }

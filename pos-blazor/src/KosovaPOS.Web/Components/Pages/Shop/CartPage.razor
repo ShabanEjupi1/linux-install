@@ -1,0 +1,115 @@
+@page "/dyqani/shporta"
+@layout KosovaPOS.Web.Components.Layout.ShopLayout
+@using KosovaPOS.Core.Services
+@using KosovaPOS.Web.Services
+@inject ShopService Shop
+@inject BusinessProfileService Profile
+@inject Cart Cart
+
+<PageTitle>Shporta</PageTitle>
+
+<h1 class="shop-h1">Shporta</h1>
+
+@if (_lines.Count == 0)
+{
+    <p class="muted shop-empty">Shporta juaj është bosh.</p>
+    <a class="shop-add" href="/dyqani">Shiko produktet</a>
+}
+else
+{
+    <div class="shop-cart-list">
+        @foreach (var line in _lines)
+        {
+            <div class="shop-cart-row">
+                <img src="@line.Product.MainPhoto" alt="@line.Product.Name" />
+
+                <div class="shop-cart-info">
+                    <a href="@($"/dyqani/produkti/{line.Product.Id}")">@line.Product.Name</a>
+                    <div class="muted">@line.Product.Price.ToString("0.00") € / copë</div>
+
+                    @if (line.Problem is not null)
+                    {
+                        <div class="shop-warn">@line.Problem</div>
+                    }
+                </div>
+
+                <form method="post" action="/dyqani/sasia" class="shop-qty">
+                    <input type="hidden" name="articleId" value="@line.Product.Id" />
+                    <input type="number" name="qty" value="@line.Quantity.ToString("0.##")"
+                           min="0" step="1" aria-label="Sasia" />
+                    <button type="submit" class="shop-link">Ndrysho</button>
+                </form>
+
+                <div class="shop-cart-total">@line.Total.ToString("0.00") €</div>
+
+                <form method="post" action="/dyqani/sasia">
+                    <input type="hidden" name="articleId" value="@line.Product.Id" />
+                    <input type="hidden" name="qty" value="0" />
+                    <button type="submit" class="shop-remove" aria-label="Hiq">✕</button>
+                </form>
+            </div>
+        }
+    </div>
+
+    <div class="shop-summary">
+        <div><span>Nëntotali</span><span>@_subtotal.ToString("0.00") €</span></div>
+        <div>
+            <span>Transporti</span>
+            <span>@(_shipping == 0 ? "Falas" : _shipping.ToString("0.00") + " €")</span>
+        </div>
+        <div class="shop-summary-total">
+            <span>Totali</span><span>@((_subtotal + _shipping).ToString("0.00")) €</span>
+        </div>
+
+        @if (_blocked)
+        {
+            <p class="shop-warn">Rregulloni sasitë më sipër para se të vazhdoni.</p>
+        }
+        else
+        {
+            <a class="shop-add shop-checkout" href="/dyqani/arka">Vazhdo te pagesa</a>
+        }
+    </div>
+}
+
+@code {
+    private sealed record Line(ShopProduct Product, decimal Quantity, decimal Total, string? Problem);
+
+    private List<Line> _lines = [];
+    private decimal _subtotal;
+    private decimal _shipping;
+    private bool _blocked;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var settings = await Profile.GetSettingsAsync();
+        if (settings?.ShopEnabled != true) return;
+
+        var products = (await Shop.GetProductsAsync()).ToDictionary(p => p.Id);
+
+        foreach (var entry in Cart.Lines)
+        {
+            // An article can leave the catalogue while it sits in someone's cookie — sold out
+            // is normal, deleted happens. Neither may 500 the cart page.
+            if (!products.TryGetValue(entry.ArticleId, out var product))
+                continue;
+
+            var problem = !product.InStock
+                ? "Ky produkt nuk është më në gjendje."
+                : entry.Quantity > product.Stock
+                    ? $"Vetëm {product.Stock:0.##} copë në gjendje."
+                    : null;
+
+            if (problem is not null)
+                _blocked = true;
+
+            _lines.Add(new Line(product, entry.Quantity,
+                decimal.Round(product.Price * entry.Quantity, 2), problem));
+        }
+
+        // The blocked lines are still counted, so the figure a customer sees matches what
+        // they are being asked to fix rather than quietly excluding it.
+        _subtotal = _lines.Sum(l => l.Total);
+        _shipping = ShopService.ShippingFor(_subtotal, settings);
+    }
+}

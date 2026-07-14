@@ -1,0 +1,67 @@
+@inherits LayoutComponentBase
+@using KosovaPOS.Core.Services
+@using KosovaPOS.Web.Services
+@inject BusinessProfileService Profile
+@inject Cart Cart
+
+@* The public shop's shell. Nothing from MainLayout: no nav rail, no user menu, no
+   sign-out — a customer has no account and must never be shown a way in. *@
+
+<div class="shop">
+    <header class="shop-top">
+        <div class="shop-wrap">
+            <a class="shop-logo" href="/dyqani">@(_shopName)</a>
+
+            <nav class="shop-nav">
+                <a href="/dyqani">Produktet</a>
+            </nav>
+
+            <a class="shop-cart" href="/dyqani/shporta">
+                Shporta
+                @if (_count > 0)
+                {
+                    <span class="shop-badge">@_count.ToString("0.##")</span>
+                }
+            </a>
+        </div>
+    </header>
+
+    <main class="shop-wrap shop-main">
+        @Body
+    </main>
+
+    <footer class="shop-foot">
+        <div class="shop-wrap">
+            <span>© @DateTime.Now.Year @_shopName</span>
+            @if (!string.IsNullOrWhiteSpace(_phone))
+            {
+                <span>· @_phone</span>
+            }
+            @if (!string.IsNullOrWhiteSpace(_email))
+            {
+                <span>· <a href="mailto:@_email">@_email</a></span>
+            }
+        </div>
+    </footer>
+</div>
+
+@code {
+    private string _shopName = "Dyqani";
+    private string? _phone;
+    private string? _email;
+    private decimal _count;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // The settings row is cached, so this costs nothing per page.
+        var settings = await Profile.GetSettingsAsync();
+        if (settings is not null)
+        {
+            _shopName = string.IsNullOrWhiteSpace(settings.BusinessName) ? "Dyqani" : settings.BusinessName!;
+            _phone = settings.Phone;
+            _email = settings.ShopOrderEmail ?? settings.Email;
+        }
+
+        _count = Cart.Count;
+    }
+}

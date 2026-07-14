@@ -76,7 +76,7 @@ public static class StockMovementSql
                 .SetProperty(a => a.Sasia, a => (a.Sasia ?? 0) + delta)
                 .SetProperty(a => a.SasiaHyrje, a => (a.SasiaHyrje ?? 0) + inQty)
                 .SetProperty(a => a.SasiaDalje, a => (a.SasiaDalje ?? 0) + outQty), ct);
-        DataVersions.Bump(db.DatabaseName, DataVersions.Catalog);
+        DataVersions.BumpCatalog(db.DatabaseName);
     }
 
     /// <summary>

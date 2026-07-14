@@ -89,6 +89,7 @@
                     <th>Emri</th>
                     <th>Kodi</th>
                     <th>Adresa</th>
+                    <th>Dyqani online</th>
                     <th>Baza e të dhënave</th>
                     <th>Statusi</th>
                     <th></th>
@@ -101,6 +102,18 @@
                         <td>@b.Name</td>
                         <td><code>@b.Code</code></td>
                         <td><a href="@Hosts.UrlForCode(b.Code)">@Hosts.HostForCode(b.Code)</a></td>
+                        <td>
+                            @* The public domain the shop answers on. It lives in the control database
+                               rather than the business's own settings because it is what CHOOSES the
+                               database — it must resolve before any business row can be read. *@
+                            <div class="row" style="gap:6px">
+                                <input class="input mono" style="min-width:170px"
+                                       value="@b.ShopDomain"
+                                       @onchange="e => SetDomain(b, e.Value?.ToString())"
+                                       placeholder="enisi.tech"
+                                       autocapitalize="off" spellcheck="false" disabled="@_busy" />
+                            </div>
+                        </td>
                         <td><code>@b.DatabaseName</code></td>
                         <td>@(b.IsActive ? "Aktiv" : "Joaktiv")</td>
                         <td>
@@ -116,7 +129,7 @@
                 }
                 @if (_businesses.Count == 0)
                 {
-                    <tr><td colspan="6" class="muted">Asnjë biznes.</td></tr>
+                    <tr><td colspan="7" class="muted">Asnjë biznes.</td></tr>
                 }
             </tbody>
         </table>
@@ -203,6 +216,36 @@
             await AuditLog.WritePlatformAsync(_operator, AuditAction.BusinessUpdate, b,
                 ip: Audit.IpAddress,
                 details: activating ? "Biznesi u aktivizua." : "Biznesi u çaktivizua.");
+
+            await Reload();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    /// <summary>
+    /// Points a business's public shop at a domain, or clears it. Audited like every other
+    /// write here: this one line decides which shop the whole internet sees at enisi.tech,
+    /// and a silent change to it would be indistinguishable from a hijack.
+    /// </summary>
+    private async Task SetDomain(Business b, string? domain)
+    {
+        var normalised = BusinessRegistry.NormaliseShopDomain(domain);
+        if (normalised == b.ShopDomain)
+            return;
+
+        _busy = true;
+        try
+        {
+            await Registry.SetShopDomainAsync(b.Id, normalised);
+
+            await AuditLog.WritePlatformAsync(_operator, AuditAction.BusinessUpdate, b,
+                ip: Audit.IpAddress,
+                details: normalised is null
+                    ? "Domeni i dyqanit online u hoq."
+                    : $"Dyqani online u lidh me {normalised}.");
 
             await Reload();
         }

@@ -1,0 +1,319 @@
+@page "/foto"
+@rendermode @(RenderModes.Interactive)
+@attribute [Authorize(Policy = "perm:articles")]
+@using KosovaPOS.Core.Services
+@using KosovaPOS.Models
+@using KosovaPOS.Models.Shop
+@inject CatalogService Catalog
+@inject PhotoService Library
+@inject BarcodeImageLookup Barcodes
+
+<PageTitle>Fotot e produkteve</PageTitle>
+
+<h1>Fotot e produkteve</h1>
+<p class="muted">
+    Një produkt shfaqet në dyqanin online vetëm kur ka të paktën një foto.
+    @if (_total > 0)
+    {
+        <text>@_withPhotos nga @_total artikuj kanë foto.</text>
+    }
+</p>
+
+<div class="row" style="gap:10px;margin:16px 0">
+    <input @bind="_search" @bind:event="oninput" placeholder="Kërko sipas emrit ose barkodit…" style="flex:1" />
+    <label class="row" style="gap:6px;align-items:center">
+        <input type="checkbox" @bind="_onlyMissing" />
+        Vetëm pa foto
+    </label>
+    <label class="row" style="gap:6px;align-items:center">
+        <input type="checkbox" @bind="_onlyInStock" />
+        Vetëm në gjendje
+    </label>
+</div>
+
+@if (_loading)
+{
+    <Skeleton />
+}
+else
+{
+    <div class="photo-list">
+        @foreach (var article in Filtered().Take(60))
+        {
+            var count = _counts.GetValueOrDefault(article.Id, 0);
+            <div class="photo-row @(_open == article.Id ? "open" : null)">
+                <button class="photo-head" @onclick="() => ToggleAsync(article.Id)">
+                    <span class="photo-tick @(count > 0 ? "on" : null)">@(count > 0 ? "✓" : "—")</span>
+                    <span class="photo-name">
+                        @article.Name
+                        <span class="muted">@article.Barcode · @article.SalesPrice.ToString("0.00") € ·
+                            @(article.StockQuantity > 0 ? $"{article.StockQuantity:0.##} copë" : "s'ka gjendje")</span>
+                    </span>
+                    <span class="muted">@count/@ArticlePhoto.MaxPerArticle foto</span>
+                </button>
+
+                @if (_open == article.Id)
+                {
+                    <div class="photo-body">
+                        @if (_current.Count > 0)
+                        {
+                            <div class="photo-strip">
+                                @foreach (var photo in _current)
+                                {
+                                    <figure class="@(photo.SortOrder == 0 ? "main" : null)">
+                                        <img src="@photo.Url" alt="" />
+                                        <figcaption>
+                                            @if (photo.SortOrder == 0)
+                                            {
+                                                <span class="badge">Kryesore</span>
+                                            }
+                                            else
+                                            {
+                                                <button class="link" @onclick="() => MakeMainAsync(photo.Id)">Bëje kryesore</button>
+                                            }
+                                            <button class="link danger" @onclick="() => DeleteAsync(photo.Id)">Fshij</button>
+                                        </figcaption>
+                                    </figure>
+                                }
+                            </div>
+                        }
+
+                        @if (_current.Count < ArticlePhoto.MaxPerArticle)
+                        {
+                            <div class="photo-add">
+                                <div class="row" style="gap:8px">
+                                    <input @bind="_url" placeholder="Ngjit adresën e fotos (https://…)" style="flex:1" />
+                                    <button class="btn-primary" disabled="@_busy" @onclick="() => AddUrlAsync(article.Id)">
+                                        Shto nga adresa
+                                    </button>
+                                </div>
+
+                                <InputFile OnChange="@(e => UploadAsync(article.Id, e))" accept="image/*" multiple />
+
+                                @if (BarcodeImageLookup.IsValidEan(article.Barcode))
+                                {
+                                    <button class="btn-ghost" disabled="@_busy" @onclick="() => LookupAsync(article.Barcode!)">
+                                        Kërko foto sipas barkodit
+                                    </button>
+                                }
+                                else
+                                {
+                                    @* Said plainly, because it is the whole reason this screen is
+                                       manual: without a real barcode there is nothing to look the
+                                       product up BY. The name is "Loder 0115012". *@
+                                    <p class="muted small">
+                                        Ky artikull nuk ka barkod të vlefshëm (EAN), prandaj foto nuk mund të kërkohet
+                                        automatikisht — duhet ngarkuar ose ngjitur adresa.
+                                    </p>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <p class="muted small">Ky artikull ka maksimumin e fotove.</p>
+                        }
+
+                        @if (_candidates.Count > 0)
+                        {
+                            <div class="photo-candidates">
+                                <h3>Propozime nga barkodi</h3>
+                                @foreach (var candidate in _candidates)
+                                {
+                                    <p class="muted small">@candidate.Title @(candidate.Brand is null ? "" : $"· {candidate.Brand}") · @candidate.Source</p>
+                                    <div class="photo-strip">
+                                        @foreach (var image in candidate.Images)
+                                        {
+                                            <figure>
+                                                <img src="@image" alt="" />
+                                                <figcaption>
+                                                    <button class="link" disabled="@_busy" @onclick="() => AddCandidateAsync(article.Id, image)">
+                                                        Shto këtë
+                                                    </button>
+                                                </figcaption>
+                                            </figure>
+                                        }
+                                    </div>
+                                }
+                                <p class="muted small">
+                                    Kontrollojeni foton para se ta shtoni — barkodi mund t'i përkasë një varianti tjetër.
+                                </p>
+                            </div>
+                        }
+                        else if (_searchedBarcode)
+                        {
+                            <p class="muted small">Asnjë foto nuk u gjet për këtë barkod.</p>
+                        }
+
+                        @if (_error is not null)
+                        {
+                            <p class="error">@_error</p>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </div>
+
+    @if (!Filtered().Any())
+    {
+        <p class="muted">Asnjë artikull nuk përputhet.</p>
+    }
+}
+
+@code {
+    private List<Article> _articles = [];
+    private Dictionary<long, int> _counts = [];
+    private List<ArticlePhoto> _current = [];
+    private List<BarcodeCandidate> _candidates = [];
+
+    private long? _open;
+    private string _search = "";
+    private bool _onlyMissing = true;   // the default, because this screen exists to fill the gaps
+    private bool _onlyInStock = true;   // and the in-stock ones are the only ones that can be sold today
+    private bool _loading = true;
+    private bool _busy;
+    private bool _searchedBarcode;
+    private string _url = "";
+    private string? _error;
+
+    private int _total;
+    private int _withPhotos;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _articles = await Catalog.GetAllArticlesAsync();
+        await RefreshCountsAsync();
+        _loading = false;
+    }
+
+    private async Task RefreshCountsAsync()
+    {
+        _counts = await Library.CountsAsync();
+        _total = _articles.Count;
+        _withPhotos = _counts.Count;
+    }
+
+    private IEnumerable<Article> Filtered()
+    {
+        IEnumerable<Article> query = _articles;
+
+        if (_onlyInStock)
+            query = query.Where(a => a.StockQuantity > 0);
+
+        if (_onlyMissing)
+            query = query.Where(a => !_counts.ContainsKey(a.Id));
+
+        if (!string.IsNullOrWhiteSpace(_search))
+        {
+            var needle = _search.Trim();
+            query = query.Where(a =>
+                a.Name.Contains(needle, StringComparison.OrdinalIgnoreCase) ||
+                a.Barcode.Contains(needle, StringComparison.OrdinalIgnoreCase));
+        }
+
+        return query.OrderByDescending(a => a.StockQuantity);
+    }
+
+    private async Task ToggleAsync(long id)
+    {
+        _error = null;
+        _candidates = [];
+        _searchedBarcode = false;
+        _url = "";
+
+        if (_open == id)
+        {
+            _open = null;
+            return;
+        }
+
+        _open = id;
+        _current = await Library.GetForArticleAsync(id);
+    }
+
+    private async Task ReloadAsync(long articleId)
+    {
+        _current = await Library.GetForArticleAsync(articleId);
+        await RefreshCountsAsync();
+    }
+
+    private async Task AddUrlAsync(long articleId)
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            var result = await Library.AddFromUrlAsync(articleId, _url);
+            if (!result.Ok) { _error = result.Error; return; }
+
+            _url = "";
+            await ReloadAsync(articleId);
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task AddCandidateAsync(long articleId, string imageUrl)
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            var result = await Library.AddFromUrlAsync(articleId, imageUrl);
+            if (!result.Ok) { _error = result.Error; return; }
+
+            await ReloadAsync(articleId);
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task UploadAsync(long articleId, InputFileChangeEventArgs e)
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            foreach (var file in e.GetMultipleFiles(ArticlePhoto.MaxPerArticle))
+            {
+                await using var stream = file.OpenReadStream(PhotoService.MaxBytes);
+                var result = await Library.AddFromUploadAsync(articleId, stream, file.Name, file.ContentType);
+                if (!result.Ok) { _error = result.Error; break; }
+            }
+
+            await ReloadAsync(articleId);
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task LookupAsync(string barcode)
+    {
+        _busy = true;
+        _error = null;
+        _candidates = [];
+        try
+        {
+            _candidates = (await Barcodes.LookupAsync(barcode)).ToList();
+            _searchedBarcode = true;
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task DeleteAsync(int photoId)
+    {
+        if (_open is not long articleId) return;
+
+        await Library.DeleteAsync(photoId);
+        await ReloadAsync(articleId);
+    }
+
+    private async Task MakeMainAsync(int photoId)
+    {
+        if (_open is not long articleId) return;
+
+        await Library.MakeMainAsync(photoId);
+        await ReloadAsync(articleId);
+    }
+}

@@ -1,0 +1,72 @@
+@page "/dyqani/faleminderit/{Number}"
+@layout KosovaPOS.Web.Components.Layout.ShopLayout
+@using KosovaPOS.Core.Services
+@using KosovaPOS.Models.Shop
+@inject ShopService Shop
+
+<PageTitle>Faleminderit</PageTitle>
+
+@if (_order is null)
+{
+    <div class="shop-closed">
+        <h1>Porosia nuk u gjet</h1>
+        <a class="shop-add" href="/dyqani">Kthehu te produktet</a>
+    </div>
+}
+else
+{
+    <div class="shop-done">
+        <div class="shop-tick">✓</div>
+        <h1>Faleminderit, @_order.CustomerName.Split(' ')[0]!</h1>
+        <p class="muted">Porosia juaj u regjistrua.</p>
+
+        <div class="shop-order-no">
+            Numri i porosisë<br />
+            <strong>@_order.OrderNumber</strong>
+        </div>
+
+        <p class="muted">
+            @if (_order.PaymentMethod == WebPaymentMethod.PayPal && _order.PaymentStatus == WebPaymentStatus.Paid)
+            {
+                <text>Pagesa me PayPal u krye. Konfirmimi ju erdhi në <strong>@_order.Email</strong>.</text>
+            }
+            else if (_order.PaymentMethod == WebPaymentMethod.CashOnDelivery)
+            {
+                <text>Do të paguani <strong>@_order.Total.ToString("0.00") €</strong> kur ta merrni porosinë.
+                    Konfirmimi ju erdhi në <strong>@_order.Email</strong>.</text>
+            }
+            else
+            {
+                <text>Konfirmimi ju erdhi në <strong>@_order.Email</strong>.</text>
+            }
+        </p>
+
+        <div class="shop-summary shop-summary-done">
+            @foreach (var item in _order.Items)
+            {
+                <div class="shop-sum-line">
+                    <span>@item.Name <span class="muted">× @item.Quantity.ToString("0.##")</span></span>
+                    <span>@item.LineTotal.ToString("0.00") €</span>
+                </div>
+            }
+            <div class="shop-summary-total">
+                <span>Totali</span><span>@_order.Total.ToString("0.00") €</span>
+            </div>
+        </div>
+
+        <a class="shop-add" href="/dyqani">Vazhdo blerjen</a>
+    </div>
+}
+
+@code {
+    [Parameter] public string Number { get; set; } = "";
+
+    private WebOrder? _order;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Looked up by order number, which is random rather than sequential — so this page
+        // being unauthenticated does not let anyone walk the shop's orders by counting.
+        _order = await Shop.FindByNumberAsync(Number);
+    }
+}

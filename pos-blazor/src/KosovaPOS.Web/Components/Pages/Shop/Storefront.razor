@@ -1,0 +1,116 @@
+@page "/dyqani"
+@layout KosovaPOS.Web.Components.Layout.ShopLayout
+@using KosovaPOS.Core.Services
+@inject ShopService Shop
+@inject BusinessProfileService Profile
+
+@* Static SSR on purpose — no @rendermode. A shop's product grid is exactly the kind of page
+   Blazor Server is worst at: it would open a WebSocket per browsing customer and render HTML
+   a search engine never sees. Rendered once per request, it costs a query (cached) and is a
+   real document. Every interaction below is a plain form post. *@
+
+<PageTitle>@_title</PageTitle>
+<HeadContent>
+    <meta name="description" content="@_tagline" />
+</HeadContent>
+
+@if (!_open)
+{
+    <div class="shop-closed">
+        <h1>Dyqani është i mbyllur</h1>
+        <p class="muted">Kthehuni së shpejti.</p>
+    </div>
+}
+else
+{
+    <section class="shop-hero">
+        <h1>@_title</h1>
+        @if (!string.IsNullOrWhiteSpace(_tagline))
+        {
+            <p>@_tagline</p>
+        }
+    </section>
+
+    @if (_categories.Count > 0)
+    {
+        <nav class="shop-cats">
+            <a class="@(Category is null ? "on" : null)" href="/dyqani">Të gjitha</a>
+            @foreach (var c in _categories)
+            {
+                <a class="@(string.Equals(c, Category, StringComparison.OrdinalIgnoreCase) ? "on" : null)"
+                   href="@($"/dyqani?kategoria={Uri.EscapeDataString(c)}")">@c</a>
+            }
+        </nav>
+    }
+
+    @if (_products.Count == 0)
+    {
+        <p class="muted shop-empty">Nuk ka produkte për t'u shfaqur.</p>
+    }
+    else
+    {
+        <div class="shop-grid">
+            @foreach (var p in _products)
+            {
+                <article class="shop-card @(p.InStock ? null : "out")">
+                    <a class="shop-card-img" href="@($"/dyqani/produkti/{p.Id}")">
+                        <img src="@p.MainPhoto" alt="@p.Name" loading="lazy" />
+                        @if (!p.InStock)
+                        {
+                            <span class="shop-sold">S'ka në gjendje</span>
+                        }
+                    </a>
+
+                    <div class="shop-card-body">
+                        <a class="shop-card-name" href="@($"/dyqani/produkti/{p.Id}")">@p.Name</a>
+                        <div class="shop-card-price">@p.Price.ToString("0.00") €</div>
+                    </div>
+
+                    @if (p.InStock)
+                    {
+                        <form method="post" action="/dyqani/shto">
+                            <input type="hidden" name="articleId" value="@p.Id" />
+                            <input type="hidden" name="back" value="@_backUrl" />
+                            <button type="submit" class="shop-add">Shto në shportë</button>
+                        </form>
+                    }
+                    else
+                    {
+                        <button class="shop-add" disabled>S'ka në gjendje</button>
+                    }
+                </article>
+            }
+        </div>
+    }
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "kategoria")]
+    public string? Category { get; set; }
+
+    private bool _open;
+    private string _title = "Dyqani";
+    private string? _tagline;
+    private List<ShopProduct> _products = [];
+    private List<string> _categories = [];
+    private string _backUrl = "/dyqani";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var settings = await Profile.GetSettingsAsync();
+        _open = settings?.ShopEnabled ?? false;
+        if (!_open) return;
+
+        _title = string.IsNullOrWhiteSpace(settings!.BusinessName) ? "Dyqani" : settings.BusinessName!;
+        _tagline = settings.ShopTagline;
+
+        var all = await Shop.GetProductsAsync();
+        _categories = await Shop.GetCategoriesAsync();
+
+        _products = Category is null
+            ? all
+            : all.Where(p => string.Equals(p.Category, Category, StringComparison.OrdinalIgnoreCase)).ToList();
+
+        _backUrl = Category is null ? "/dyqani" : $"/dyqani?kategoria={Uri.EscapeDataString(Category)}";
+    }
+}

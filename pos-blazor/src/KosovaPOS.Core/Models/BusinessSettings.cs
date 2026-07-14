@@ -190,6 +190,39 @@ namespace KosovaPOS.Models
         /// <summary>Hour of day (0–23) when the nightly cloud backup runs.</summary>
         public int BackupScheduleHour    { get; set; } = 2;
 
+        // ── Online shop ─────────────────────────────────────────────────
+        // The shop is served from this same app on the business's own domain. Which
+        // domain that is lives in the control database (Business.ShopDomain), because
+        // it has to be known before this row can be read; everything the shop needs
+        // *after* that point is here.
+
+        /// <summary>
+        /// Master switch. Off, the domain answers with "shop closed" rather than a
+        /// half-configured catalogue — a shop with no shipping fee set and no contact
+        /// address is worse than no shop.
+        /// </summary>
+        public bool ShopEnabled { get; set; }
+
+        [StringLength(200)]
+        public string? ShopTagline { get; set; }
+
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal ShopShippingFee { get; set; } = 2.00m;
+
+        /// <summary>Order subtotal at or above which shipping is free. Zero disables it.</summary>
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal ShopFreeShippingOver { get; set; } = 0m;
+
+        /// <summary>Where new-order notifications are sent. Falls back to <see cref="Email"/>.</summary>
+        [StringLength(200)]
+        public string? ShopOrderEmail { get; set; }
+
+        /// <summary>Offer PayPal at checkout. Requires the PayPal credentials in the environment.</summary>
+        public bool ShopAcceptPayPal { get; set; } = true;
+
+        /// <summary>Offer "pay the driver". Costs nothing to enable and is how most of Kosovo buys.</summary>
+        public bool ShopAcceptCashOnDelivery { get; set; } = true;
+
         /// <summary>
         /// A private copy. The settings row is cached and read by every screen, while the
         /// Settings form binds straight onto the object it is given — so callers must not be

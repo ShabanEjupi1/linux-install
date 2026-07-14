@@ -1,0 +1,99 @@
+@page "/dyqani/produkti/{Id:long}"
+@layout KosovaPOS.Web.Components.Layout.ShopLayout
+@using KosovaPOS.Core.Services
+@inject ShopService Shop
+@inject BusinessProfileService Profile
+
+<PageTitle>@(_product?.Name ?? "Produkti")</PageTitle>
+
+@if (_product is null)
+{
+    <div class="shop-closed">
+        <h1>Produkti nuk u gjet</h1>
+        <p class="muted">Mund të jetë hequr nga dyqani.</p>
+        <a class="shop-add" href="/dyqani">Kthehu te produktet</a>
+    </div>
+}
+else
+{
+    <a class="shop-back" href="/dyqani">← Të gjitha produktet</a>
+
+    <div class="shop-detail">
+        <div class="shop-gallery">
+            <img class="shop-gallery-main" src="@_product.Photos[_selected]" alt="@_product.Name" />
+
+            @if (_product.Photos.Count > 1)
+            {
+                @* No JS: each thumbnail is a link back to this page naming which photo is
+                   large. A gallery that needs a framework to change an image is a gallery
+                   that breaks when the framework does not load. *@
+                <div class="shop-thumbs">
+                    @for (var i = 0; i < _product.Photos.Count; i++)
+                    {
+                        var index = i;
+                        <a href="@($"/dyqani/produkti/{_product.Id}?foto={index}")"
+                           class="@(index == _selected ? "on" : null)">
+                            <img src="@_product.Photos[index]" alt="" loading="lazy" />
+                        </a>
+                    }
+                </div>
+            }
+        </div>
+
+        <div class="shop-detail-body">
+            <h1>@_product.Name</h1>
+
+            @if (!string.IsNullOrWhiteSpace(_product.Category))
+            {
+                <a class="shop-chip" href="@($"/dyqani?kategoria={Uri.EscapeDataString(_product.Category!)}")">@_product.Category</a>
+            }
+
+            <div class="shop-detail-price">@_product.Price.ToString("0.00") €</div>
+
+            @if (_product.InStock)
+            {
+                <p class="shop-stock in">Në gjendje — @_product.Stock.ToString("0.##") copë</p>
+
+                <form method="post" action="/dyqani/shto" class="shop-buy">
+                    <input type="hidden" name="articleId" value="@_product.Id" />
+                    <input type="hidden" name="back" value="@($"/dyqani/produkti/{_product.Id}")" />
+                    <input type="number" name="qty" value="1" min="1" max="@_product.Stock.ToString("0")" step="1" />
+                    <button type="submit" class="shop-add">Shto në shportë</button>
+                </form>
+            }
+            else
+            {
+                <p class="shop-stock out">S'ka në gjendje</p>
+                <button class="shop-add" disabled>S'ka në gjendje</button>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(_product.Barcode))
+            {
+                <p class="shop-meta">Kodi: @_product.Barcode</p>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    [SupplyParameterFromQuery(Name = "foto")]
+    public int? Photo { get; set; }
+
+    private ShopProduct? _product;
+    private int _selected;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var settings = await Profile.GetSettingsAsync();
+        if (settings?.ShopEnabled != true) return;
+
+        _product = await Shop.GetProductAsync(Id);
+        if (_product is null) return;
+
+        // The index comes from the query string, so it is clamped rather than trusted —
+        // ?foto=99 must show the first photo, not throw.
+        _selected = Photo is int i && i >= 0 && i < _product.Photos.Count ? i : 0;
+    }
+}
