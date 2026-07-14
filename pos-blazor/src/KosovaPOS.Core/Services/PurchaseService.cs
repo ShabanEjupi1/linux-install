@@ -127,13 +127,18 @@ public class PurchaseService
     /// totals, so the last delivery in simply wins — there is nothing to accumulate and so
     /// nothing to lose.
     /// </summary>
-    private static Task ApplyPurchasePricesAsync(PosDbContext db, PurchaseDraftItem item) =>
-        db.Artikujt
+    private static async Task ApplyPurchasePricesAsync(PosDbContext db, PurchaseDraftItem item)
+    {
+        await db.Artikujt
             .Where(a => a.Id == item.ArticleId)
             .ExecuteUpdateAsync(s => s
                 .SetProperty(a => a.CFurnizimit, _ => (double)item.PurchasePrice)
                 .SetProperty(a => a.CShitjes, a =>
                     item.SalesPrice > 0 ? (double)item.SalesPrice : a.CShitjes));
+        // ExecuteUpdate skips the change tracker, so stamp the catalogue version by hand,
+        // exactly as MoveStockAsync does — a price the cache never refreshes is a wrong price.
+        DataVersions.Bump(db.DatabaseName, DataVersions.Catalog);
+    }
 
     /// <summary>
     /// Every purchase document the shop has, newest first. The screen that shows these has a

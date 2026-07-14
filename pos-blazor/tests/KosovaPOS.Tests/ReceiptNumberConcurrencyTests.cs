@@ -14,6 +14,7 @@ namespace KosovaPOS.Tests;
 /// is not a cosmetic bug: it makes two different sales indistinguishable in the
 /// journal, and any report that groups by it silently merges them.
 /// </summary>
+[Collection("db")]
 public class ReceiptNumberConcurrencyTests
 {
     private readonly ITestOutputHelper _out;

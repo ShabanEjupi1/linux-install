@@ -59,16 +59,25 @@ public static class StockMovementSql
     /// <paramref name="outQty"/>/<paramref name="inQty"/> feed the running
     /// <c>SasiaDalje</c>/<c>SasiaHyrje</c> totals, which are accumulators too.
     /// Must run inside the caller's transaction. A zero delta writes nothing.
+    ///
+    /// This is the one catalogue write that does NOT go through the change tracker,
+    /// so it also does the tracker's job of stamping the catalogue version — otherwise
+    /// the cached stock quantity would keep the figure from before the sale. Bumping
+    /// on a transaction that later rolls back only costs a needless reload of correct
+    /// data; failing to bump on one that commits is the error that matters.
     /// </summary>
-    public static Task MoveStockAsync(
+    public static async Task MoveStockAsync(
         this PosDbContext db, long articleId, double delta,
-        double inQty = 0, double outQty = 0, CancellationToken ct = default) =>
-        db.Artikujt
+        double inQty = 0, double outQty = 0, CancellationToken ct = default)
+    {
+        await db.Artikujt
             .Where(a => a.Id == articleId)
             .ExecuteUpdateAsync(s => s
                 .SetProperty(a => a.Sasia, a => (a.Sasia ?? 0) + delta)
                 .SetProperty(a => a.SasiaHyrje, a => (a.SasiaHyrje ?? 0) + inQty)
                 .SetProperty(a => a.SasiaDalje, a => (a.SasiaDalje ?? 0) + outQty), ct);
+        DataVersions.Bump(db.DatabaseName, DataVersions.Catalog);
+    }
 
     /// <summary>
     /// Locks an article's row until the transaction ends, for the one caller that cannot
