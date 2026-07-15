@@ -41,6 +41,20 @@
 .shop-h1 { margin: 8px 0 24px; font-size: 1.7rem; }
 .muted { color: var(--muted); }
 .shop-empty { padding: 32px 0; }
+
+/* An enabled shop with nothing to list yet — the whole customer experience until the
+   first article is named + photographed in /foto. It reads as "being stocked", not
+   "broken". Mirrors the ThankYou page's soft-circle icon language. */
+.shop-empty-state { max-width: 460px; margin: 48px auto; text-align: center; padding: 0 20px; }
+.shop-empty-ico {
+    width: 76px; height: 76px; margin: 0 auto 20px; border-radius: 50%;
+    display: grid; place-items: center;
+    background: #fff0f5; color: var(--brand);
+}
+.shop-empty-ico svg { width: 36px; height: 36px; }
+.shop-empty-state h2 { margin: 0 0 8px; font-size: 1.3rem; }
+.shop-empty-state p { margin: 0 0 10px; }
+.shop-empty-state .shop-add { margin-top: 10px; }
 .shop-back { display: inline-block; margin-bottom: 18px; color: var(--muted); text-decoration: none; }
 
 /* Category filter */
@@ -60,13 +74,13 @@
 .shop-card {
     border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
     display: flex; flex-direction: column; background: #fff;
-    transition: box-shadow .15s ease;
+    transition: box-shadow .15s ease, transform .15s ease;
 }
-.shop-card:hover { box-shadow: 0 6px 24px rgba(0, 0, 0, .08); }
+.shop-card:hover { box-shadow: 0 6px 24px rgba(0, 0, 0, .08); transform: translateY(-2px); }
 .shop-card.out { opacity: .72; }
 
 .shop-card-img { position: relative; display: block; aspect-ratio: 1; background: #fafafa; }
-.shop-card-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.shop-card-thumb { width: 100%; height: 100%; object-fit: cover; display: block; }
 
 .shop-sold {
     position: absolute; inset: auto 0 0 0;
@@ -100,6 +114,21 @@ a.shop-add { display: inline-block; width: auto; border-radius: 10px; }
 .shop-thumbs a.on { border-color: var(--brand); }
 .shop-thumbs img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
+/* No-photo placeholder — see ProductThumb.razor. A monogram on a tint keyed to the
+   product name, so a mostly-photoless catalogue reads as a designed grid rather than a
+   wall of broken-image icons. Placed after .shop-gallery-main so its tint wins over that
+   rule's grey when the detail image is missing. */
+.shop-ph {
+    display: grid; place-items: center; overflow: hidden;
+    background: hsl(var(--ph-h, 330) 44% 94%);
+}
+.shop-ph svg { width: 56%; height: 56%; display: block; }
+.shop-ph text {
+    fill: hsl(var(--ph-h, 330) 42% 44%);
+    font-family: system-ui, "Segoe UI", Roboto, sans-serif;
+    font-weight: 800; font-size: 22px;
+}
+
 .shop-detail-body h1 { margin: 0 0 12px; font-size: 1.75rem; line-height: 1.25; }
 .shop-chip {
     display: inline-block; padding: 5px 12px; border-radius: 999px;
@@ -125,7 +154,7 @@ a.shop-add { display: inline-block; width: auto; border-radius: 10px; }
     gap: 16px; align-items: center;
     padding: 16px 0; border-bottom: 1px solid var(--line);
 }
-.shop-cart-row > img { width: 82px; height: 82px; object-fit: cover; border-radius: 10px; }
+.shop-cart-thumb { width: 82px; height: 82px; object-fit: cover; border-radius: 10px; }
 .shop-cart-info a { color: var(--ink); font-weight: 600; text-decoration: none; }
 .shop-qty { display: flex; align-items: center; gap: 8px; }
 .shop-qty input { width: 74px; padding: 9px; border: 1px solid var(--line); border-radius: 8px; }
@@ -197,6 +226,6 @@ a.shop-add { display: inline-block; width: auto; border-radius: 10px; }
     .shop-detail, .shop-checkout-form { grid-template-columns: 1fr; gap: 28px; }
     .shop-checkout-form .shop-summary { max-width: none; }
     .shop-cart-row { grid-template-columns: 64px 1fr auto; row-gap: 10px; }
-    .shop-cart-row > img { width: 64px; height: 64px; }
+    .shop-cart-thumb { width: 64px; height: 64px; }
     .shop-summary { margin-left: 0; max-width: none; }
 }

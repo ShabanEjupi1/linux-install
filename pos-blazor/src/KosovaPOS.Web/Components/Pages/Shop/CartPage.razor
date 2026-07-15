@@ -21,7 +21,7 @@ else
         @foreach (var line in _lines)
         {
             <div class="shop-cart-row">
-                <img src="@line.Product.MainPhoto" alt="@line.Product.Name" />
+                <ProductThumb Src="@line.Product.MainPhoto" Alt="@line.Product.Name" Class="shop-cart-thumb" />
 
                 <div class="shop-cart-info">
                     <a href="@($"/dyqani/produkti/{line.Product.Id}")">@line.Product.Name</a>

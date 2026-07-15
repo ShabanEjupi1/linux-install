@@ -1,0 +1,48 @@
+@* The picture next to a product on the public shop — or, when there is no picture,
+   a placeholder that looks deliberate instead of a broken-image glyph.
+
+   Most of the catalogue has no photo yet (that is the standing launch blocker), so
+   this is not an edge case: it is what most cards, the cart, and most detail pages
+   actually render. The placeholder is a monogram of the product's first letter on a
+   tint whose hue is derived from the name, so a wall of photoless products reads as a
+   designed grid rather than a row of identical grey boxes.
+
+   The letter is drawn as SVG <text>, not a styled character, so ONE component scales
+   from an 82px cart thumbnail to a half-page detail image without a font-size per call
+   site — the glyph is a fixed fraction of the box at every size. No JS: the shop is
+   static SSR and must render correctly before (or without) a circuit. *@
+
+@if (!string.IsNullOrEmpty(Src))
+{
+    <img class="@Class" src="@Src" alt="@Alt" loading="@Loading" />
+}
+else
+{
+    <span class="@($"shop-ph {Class}")" style="--ph-h:@_hue" role="img" aria-label="@Alt">
+        <svg viewBox="0 0 40 40" aria-hidden="true">
+            <text x="20" y="21" text-anchor="middle" dominant-baseline="central">@_initial</text>
+        </svg>
+    </span>
+}
+
+@code {
+    [Parameter] public string? Src { get; set; }
+    [Parameter] public string Alt { get; set; } = "";
+    [Parameter] public string? Class { get; set; }
+    /// Above-the-fold images (the detail page's main photo) pass "eager"; grids stay lazy.
+    [Parameter] public string Loading { get; set; } = "lazy";
+
+    private string _initial = "•";
+    private int _hue = 330;
+
+    protected override void OnParametersSet()
+    {
+        var name = (Alt ?? string.Empty).Trim();
+        _initial = name.Length > 0 ? char.ToUpperInvariant(name[0]).ToString() : "•";
+
+        // A stable hue per name: same product, same colour every render, no lookup table.
+        var h = 0;
+        foreach (var ch in name) h = (h * 31 + ch) % 360;
+        _hue = h;
+    }
+}

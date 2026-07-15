@@ -45,7 +45,33 @@ else
 
     @if (_products.Count == 0)
     {
-        <p class="muted shop-empty">Nuk ka produkte për t'u shfaqur.</p>
+        @* Until a human has named and photographed the first article in /foto, this IS the
+           shop — an open storefront with nothing to list yet. It must read as "being
+           stocked", not "broken". The category-filter miss is a different message: the shop
+           has products, just none under that tab. *@
+        <div class="shop-empty-state">
+            <div class="shop-empty-ico" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
+                     stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M6 8h12l-1 12H7L6 8Z" /><path d="M9 8V6a3 3 0 0 1 6 0v2" />
+                </svg>
+            </div>
+            @if (Category is not null)
+            {
+                <h2>Asnjë produkt në këtë kategori</h2>
+                <p class="muted">Provoni një kategori tjetër ose shikoni të gjitha produktet.</p>
+                <a class="shop-add" href="/dyqani">Të gjitha produktet</a>
+            }
+            else
+            {
+                <h2>Dyqani po mbushet</h2>
+                <p class="muted">Produktet po shtohen së shpejti — kthehuni pas pak.</p>
+                @if (!string.IsNullOrWhiteSpace(_phone))
+                {
+                    <p class="muted">Për porosi: <a href="tel:@_phone">@_phone</a></p>
+                }
+            }
+        </div>
     }
     else
     {
@@ -54,7 +80,7 @@ else
             {
                 <article class="shop-card @(p.InStock ? null : "out")">
                     <a class="shop-card-img" href="@($"/dyqani/produkti/{p.Id}")">
-                        <img src="@p.MainPhoto" alt="@p.Name" loading="lazy" />
+                        <ProductThumb Src="@p.MainPhoto" Alt="@p.Name" Class="shop-card-thumb" />
                         @if (!p.InStock)
                         {
                             <span class="shop-sold">S'ka në gjendje</span>
@@ -91,6 +117,7 @@ else
     private bool _open;
     private string _title = "Dyqani";
     private string? _tagline;
+    private string? _phone;
     private List<ShopProduct> _products = [];
     private List<string> _categories = [];
     private string _backUrl = "/dyqani";
@@ -103,6 +130,7 @@ else
 
         _title = string.IsNullOrWhiteSpace(settings!.BusinessName) ? "Dyqani" : settings.BusinessName!;
         _tagline = settings.ShopTagline;
+        _phone = settings.Phone;
 
         var all = await Shop.GetProductsAsync();
         _categories = await Shop.GetCategoriesAsync();

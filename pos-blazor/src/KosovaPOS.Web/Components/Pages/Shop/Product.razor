@@ -20,7 +20,10 @@ else
 
     <div class="shop-detail">
         <div class="shop-gallery">
-            <img class="shop-gallery-main" src="@_product.Photos[_selected]" alt="@_product.Name" />
+            @* Photos can be empty — most of the catalogue has none yet — so the source is
+               guarded here rather than indexed blindly; ProductThumb draws the placeholder. *@
+            <ProductThumb Src="@(_product.Photos.Count > 0 ? _product.Photos[_selected] : null)"
+                          Alt="@_product.Name" Class="shop-gallery-main" Loading="eager" />
 
             @if (_product.Photos.Count > 1)
             {

@@ -16,10 +16,15 @@
   --muted:  #64748b;
 
   /* Surfaces */
-  --canvas:  #f6f8fb;
-  --surface: #ffffff;
-  --line:    #e2e8f0;
-  --line-2:  #f1f5f9;
+  --canvas:    #f6f8fb;
+  --surface:   #ffffff;
+  /* A raised/hover surface, a shade off white. It was referenced (photo manager,
+     web-orders row hover, the setup command block) long before it was defined, so
+     those backgrounds were rendering transparent — this is the value they always
+     assumed, and the same near-white several rules still hard-code inline. */
+  --surface-2: #f8fafc;
+  --line:      #e2e8f0;
+  --line-2:    #f1f5f9;
 
   /* Status */
   --ok:        #16a34a;
@@ -393,7 +398,9 @@ a.stat:hover { border-color: var(--accent); }
   width: 100%; padding: .7rem; margin: .4rem 0 .8rem;
   font-size: 2.2rem; font-weight: 700; text-align: center;
   font-family: ui-monospace, Menlo, Consolas, monospace;
-  border: 2px solid var(--brand); border-radius: var(--r-md);
+  /* --brand lives only in the .shop scope; in the till this was falling back to the
+     text colour, so the amount box drew a black border instead of the accent one. */
+  border: 2px solid var(--accent); border-radius: var(--r-md);
   background: var(--surface); color: var(--ink);
 }
 .tender-quick { display: flex; flex-wrap: wrap; gap: .4rem; justify-content: center; }
@@ -1030,7 +1037,13 @@ a.stat:hover { border-color: var(--accent); }
 .shell-content  { position: relative; }
 .shell-skeleton {
   position: absolute; inset: 0; z-index: 5;
-  background: var(--bg); overflow: hidden;
+  /* MUST be opaque — this overlay's whole job is to hide the outgoing page's live
+     DOM underneath it (see the block comment above). --bg is defined only in the
+     .shop scope, so here it resolved to nothing and the overlay rendered
+     transparent: the page you were leaving shimmered through on every navigation,
+     defeating the point of the skeleton. --canvas is the content well's own
+     background, so the shapes sit on the colour the real page would. */
+  background: var(--canvas); overflow: hidden;
 }
 .shell-skeleton.is-idle { display: none; }   /* the page is up; nothing to stand in for */
 
