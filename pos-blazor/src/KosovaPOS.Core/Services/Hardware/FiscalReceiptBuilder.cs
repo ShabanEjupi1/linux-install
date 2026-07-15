@@ -23,6 +23,16 @@ public static class FiscalReceiptBuilder
 {
     private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
+    /// <summary>
+    /// F-Link's INP lines MUST end in CRLF. The desktop app wrote the file with
+    /// <c>StringBuilder.AppendLine</c>, which on its Windows host emitted <c>\r\n</c> — and
+    /// that is the only ending F-Link has ever parsed. This builder now runs server-side on
+    /// Linux, where <c>Environment.NewLine</c> (and therefore <c>AppendLine</c>) is <c>\n</c>,
+    /// so the ending is hard-coded here: a LF-only <c>Fatura.inp</c> lands in the watched
+    /// folder but F-Link silently never processes it (file appears, nothing prints).
+    /// </summary>
+    private const string Crlf = "\r\n";
+
     /// <summary>Builds the INP payload. Throws <see cref="InvalidOperationException"/> on invalid items.</summary>
     public static string Build(Receipt receipt)
     {
@@ -38,17 +48,17 @@ public static class FiscalReceiptBuilder
             var qtyStr = item.Quantity.ToString("F2", Inv);
             var name = SanitizeArticleName(item.ArticleName);
             var plu = item.PLU > 0 ? item.PLU : 0;
-            sb.Append($"S,1,______,_,__;{name};{unitPriceStr};{qtyStr};{taxGroup};{dept};{payType};0;{plu};0;0\n");
+            sb.Append($"S,1,______,_,__;{name};{unitPriceStr};{qtyStr};{taxGroup};{dept};{payType};0;{plu};0;0{Crlf}");
         }
 
         var paidStr = receipt.PaidAmount.ToString("F2", Inv);
-        sb.Append($"Q,1,______,_,__;1;Pagoi: {paidStr}\n");
+        sb.Append($"Q,1,______,_,__;1;Pagoi: {paidStr}{Crlf}");
 
         var change = receipt.PaidAmount - receipt.TotalAmount;
         if (change < 0) change = 0; // guard against partial payments
-        sb.Append($"Q,1,______,_,__;2;Kusur: {change.ToString("F2", Inv)}\n");
+        sb.Append($"Q,1,______,_,__;2;Kusur: {change.ToString("F2", Inv)}{Crlf}");
 
-        sb.Append("T,1,______,_,__;\n");
+        sb.Append($"T,1,______,_,__;{Crlf}");
         return sb.ToString();
     }
 

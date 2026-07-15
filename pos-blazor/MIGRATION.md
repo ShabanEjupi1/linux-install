@@ -1,5 +1,17 @@
 # KosovaPOS — WPF → ASP.NET Core (Blazor Server) migration
 
+## Phase 30 — the fiscal file landed but F-Link never read it ✅ (2026-07-15, deployed+live)
+Shop symptom: `Fatura.inp` appears in `C:\Temp` but the fiscal printer stays silent — no
+print, no error. Cause: F-Link only parses **CRLF** line endings. The desktop app wrote them
+by accident (`StringBuilder.AppendLine` on its Windows host → `\r\n`), but the Blazor
+`FiscalReceiptBuilder` hard-coded `\n`, and it now runs **server-side on Linux** — so every
+receipt file was LF-only. F-Link saw the file, couldn't parse a line, and left it sitting there.
+Fix: `FiscalReceiptBuilder` now emits `\r\n` (hard-coded — `Environment.NewLine`/`AppendLine`
+would be `\n` on the Linux server). **No shop-PC reinstall needed: the payload is built
+server-side and the already-installed agent writes those bytes verbatim, so this deploy alone
+fixes it.** The agent's clear-articles command got the same CRLF fix for consistency (that one
+lands on next agent reinstall). First tests for the builder lock the ending in.
+
 Converting the two WPF desktop apps (`../POS` restaurant, `../POS2` store) into
 **one shared Blazor Server web app**, both tenants, on **EF Core + Postgres (Npgsql)**.
 

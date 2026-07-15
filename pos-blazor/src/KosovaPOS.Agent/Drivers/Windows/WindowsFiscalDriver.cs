@@ -53,8 +53,12 @@ public sealed class WindowsFiscalDriver : IFiscalDriver
     /// </summary>
     private const string ClearArticleFile = "ClearArticle.inp";
 
-    /// <summary>The whole of the clear-articles command. Same bytes as the shop's Clear Article.bat.</summary>
-    private const string ClearArticlePayload = "O,1,______,_,__;ALL\n";
+    /// <summary>
+    /// The whole of the clear-articles command. F-Link parses the same CRLF line endings here as
+    /// in a receipt (see <c>FiscalReceiptBuilder</c>); a lone <c>\n</c> written from this Windows
+    /// host would be inconsistent with the receipt file and risks the same silent no-op.
+    /// </summary>
+    private const string ClearArticlePayload = "O,1,______,_,__;ALL\r\n";
 
     public Task<FiscalPrintResult> PrintAsync(FiscalPrintRequest req, CancellationToken ct = default) =>
         SendAsync(ReceiptFile, req.Payload, $"receipt #{req.ReceiptNumber}", req.TimeoutSeconds, ct);
