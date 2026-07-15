@@ -181,6 +181,10 @@
         _formError = null;
         _password = "";
         _editing = u is null ? new POSUser { Role = "Cashier", IsActive = true } : Clone(u);
+        // A brand-new user starts from its role's permission preset, not the model's
+        // permissive defaults (which quietly granted articles + reports to every
+        // cashier). Editing an existing user leaves their saved permissions untouched.
+        if (u is null) ApplyRoleDefaults();
     }
 
     private void CloseEditor() => _editing = null;
