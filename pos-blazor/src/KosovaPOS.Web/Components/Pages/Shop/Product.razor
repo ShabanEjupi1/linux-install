@@ -50,6 +50,11 @@ else
 
             <div class="shop-detail-price">@_product.Price.ToString("0.00") €</div>
 
+            @if (!string.IsNullOrWhiteSpace(_product.Description))
+            {
+                <p class="shop-detail-desc">@_product.Description</p>
+            }
+
             @if (_product.InStock)
             {
                 <p class="shop-stock in">Në gjendje — @_product.Stock.ToString("0.##") copë</p>

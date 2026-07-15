@@ -31,6 +31,11 @@ public class ShopOrderTests
         ShopFreeShippingOver = 0m,
     };
 
+    /// <summary>
+    /// An article that is actually for sale online — which means it is also NAMED. Only a
+    /// listed article can be ordered, so a seed without a <see cref="ShopListing"/> would be
+    /// seeding something the shop does not sell.
+    /// </summary>
     private static async Task<long> SeedArticleAsync(IDbContextFactory<PosDbContext> f, double qty, double price)
     {
         await using var db = await f.CreateDbContextAsync();
@@ -40,6 +45,27 @@ public class ShopOrderTests
             Barkodi = $"S{Guid.NewGuid():N}"[..18],
             Sasia = qty,
             CShitjes = price,
+            Vat = 3,
+        };
+        db.Artikujt.Add(a);
+        await db.SaveChangesAsync();
+
+        db.ShopListings.Add(new ShopListing { ArticleId = a.Id, Title = "Kamion druri, i kuq" });
+        await db.SaveChangesAsync();
+
+        return a.Id;
+    }
+
+    /// <summary>An article that exists in the accounts but was never put on the website.</summary>
+    private static async Task<long> SeedUnlistedArticleAsync(IDbContextFactory<PosDbContext> f)
+    {
+        await using var db = await f.CreateDbContextAsync();
+        var a = new Artikujt
+        {
+            Emertimi = "Loder 0115012",
+            Barkodi = $"S{Guid.NewGuid():N}"[..18],
+            Sasia = 10,
+            CShitjes = 40.00,
             Vat = 3,
         };
         db.Artikujt.Add(a);
@@ -119,6 +145,45 @@ public class ShopOrderTests
         // The replay.
         await shop.ConfirmAsync(placed.Order.Id, WebPaymentStatus.Paid, "CAP-1");
         Assert.Equal(7, await StockAsync(factory, id));
+    }
+
+    /// <summary>
+    /// The cart cookie is attacker-authored: it is a list of article ids, and nothing stops
+    /// someone putting an id in it that the shop never listed. Existing in <c>Artikujt</c> is
+    /// not the same as being for sale — 1619 articles are in that table and only the named,
+    /// photographed ones are on the website. If this check is ever dropped, a forged cookie
+    /// orders anything in the shop's accounting system.
+    /// </summary>
+    [Fact]
+    public async Task An_article_that_is_not_listed_cannot_be_ordered()
+    {
+        var factory = new TestFactory();
+        var shop = new ShopService(factory, new PosCache());
+        var id = await SeedUnlistedArticleAsync(factory);
+
+        var placed = await shop.PlaceOrderAsync([new CartLine(id, 1)], Details(), Settings);
+
+        Assert.False(placed.Ok);
+        Assert.Contains("nuk shitet më", placed.Error);
+    }
+
+    /// <summary>
+    /// The order records what the customer bought, in the words they bought it by. The
+    /// accountant's name for the same thing is "Loder 0115012", and it must not surface in an
+    /// order, a confirmation email or a thank-you page.
+    /// </summary>
+    [Fact]
+    public async Task An_order_line_carries_the_shop_name_not_the_accounting_name()
+    {
+        var factory = new TestFactory();
+        var shop = new ShopService(factory, new PosCache());
+        var id = await SeedArticleAsync(factory, qty: 4, price: 12.00);
+
+        var placed = await shop.PlaceOrderAsync([new CartLine(id, 1)], Details(), Settings);
+
+        Assert.True(placed.Ok, placed.Error);
+        Assert.Equal("Kamion druri, i kuq", placed.Order.Items[0].Name);
+        Assert.DoesNotContain("shop probe", placed.Order.Items[0].Name);
     }
 
     private static async Task<double> StockAsync(IDbContextFactory<PosDbContext> f, long id)

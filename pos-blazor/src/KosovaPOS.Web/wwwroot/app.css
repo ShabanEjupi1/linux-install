@@ -1084,7 +1084,20 @@ a.stat:hover { border-color: var(--accent); }
 .photo-tick.on { background: #dcfce7; color: #15803d; }
 .photo-name { flex: 1; display: flex; flex-direction: column; gap: .15rem; }
 .photo-name .muted { font-size: .78rem; }
+.photo-need { flex: none; display: flex; gap: .35rem; align-items: center; }
+.photo-need .muted { font-size: .78rem; }
 .photo-body { padding: .4rem .4rem 1.2rem 3.2rem; display: flex; flex-direction: column; gap: .9rem; }
+
+/* The name a customer sees. First thing in the row, because an article with a photo and no
+   name is still not on the website. */
+.photo-name-edit {
+    display: flex; flex-direction: column; gap: .6rem;
+    padding: .8rem; border-radius: 10px;
+    background: var(--surface-2); border: 1px solid var(--line);
+}
+.photo-name-edit label { display: flex; flex-direction: column; gap: .25rem; font-size: .82rem; font-weight: 600; }
+.photo-name-edit input,
+.photo-name-edit textarea { width: 100%; font-weight: 400; resize: vertical; }
 .photo-add { display: flex; flex-direction: column; gap: .6rem; align-items: flex-start; }
 .photo-add .row { width: 100%; }
 

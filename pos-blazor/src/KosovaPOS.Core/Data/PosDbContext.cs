@@ -65,7 +65,7 @@ public class PosDbContext : DbContext
         return written;
     }
 
-    private readonly record struct Touched(bool Catalog, bool Settings, bool Photos);
+    private readonly record struct Touched(bool Catalog, bool Settings, bool Listing);
 
     private Touched WhatChanged()
     {
@@ -75,15 +75,16 @@ public class PosDbContext : DbContext
         return new Touched(
             Catalog: Any<Artikujt>(),
             Settings: Any<BusinessSettings>(),
-            // A photo is not catalogue data, but it decides whether an article is on the
-            // website at all — so the shop's product list has to be rebuilt when one lands.
-            Photos: Any<ArticlePhoto>());
+            // Neither a photo nor a listing is catalogue data, but between them they decide
+            // whether an article is on the website at all and what it is called there — so
+            // the shop's product list has to be rebuilt when either one lands.
+            Listing: Any<ArticlePhoto>() || Any<ShopListing>());
     }
 
     private void Invalidate(Touched touched)
     {
         if (touched.Catalog) DataVersions.BumpCatalog(DatabaseName);
-        else if (touched.Photos) DataVersions.Bump(DatabaseName, DataVersions.ShopCatalog);
+        else if (touched.Listing) DataVersions.Bump(DatabaseName, DataVersions.ShopCatalog);
 
         if (touched.Settings) DataVersions.Bump(DatabaseName, DataVersions.Settings);
     }
@@ -183,6 +184,7 @@ public class PosDbContext : DbContext
 
     // ── Online shop ─────────────────────────────────────────────────────
     public DbSet<ArticlePhoto> ArticlePhotos => Set<ArticlePhoto>();
+    public DbSet<ShopListing> ShopListings => Set<ShopListing>();
     public DbSet<WebOrder> WebOrders => Set<WebOrder>();
     public DbSet<WebOrderItem> WebOrderItems => Set<WebOrderItem>();
 
@@ -284,6 +286,14 @@ public class PosDbContext : DbContext
             e.ToTable("ArticlePhotos");
             // The storefront's hottest query is "the photos for these articles".
             e.HasIndex(p => new { p.ArticleId, p.SortOrder });
+        });
+
+        modelBuilder.Entity<ShopListing>(e =>
+        {
+            e.ToTable("ShopListings");
+            e.HasKey(l => l.ArticleId);
+            // No identity: ArticleId is supplied, never generated.
+            e.Property(l => l.ArticleId).ValueGeneratedNever();
         });
 
         modelBuilder.Entity<WebOrder>(e =>

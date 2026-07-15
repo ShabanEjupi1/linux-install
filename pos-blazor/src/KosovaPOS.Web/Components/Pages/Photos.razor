@@ -6,16 +6,24 @@
 @using KosovaPOS.Models.Shop
 @inject CatalogService Catalog
 @inject PhotoService Library
+@inject ShopListingService Listings
 @inject BarcodeImageLookup Barcodes
 
-<PageTitle>Fotot e produkteve</PageTitle>
+@* The one screen that turns an accounting row into something a customer can buy. Photo AND
+   name, together, because both are missing for the same reason (BMD has neither) and because
+   whoever fills them in is standing in front of the item holding a phone — making them visit
+   two screens per article, 74 times, is how the job doesn't get done. *@
 
-<h1>Fotot e produkteve</h1>
+<PageTitle>Produktet në dyqan</PageTitle>
+
+<h1>Produktet në dyqan</h1>
 <p class="muted">
-    Një produkt shfaqet në dyqanin online vetëm kur ka të paktën një foto.
+    Një produkt shfaqet në dyqanin online vetëm kur ka <strong>foto</strong> dhe <strong>emër</strong>.
+    Emri nga kontabiliteti ("Loder 0115012") nuk i tregon klientit asgjë, prandaj shkruani emrin
+    e vërtetë të produktit.
     @if (_total > 0)
     {
-        <text>@_withPhotos nga @_total artikuj kanë foto.</text>
+        <text><br />@_ready nga @_total artikuj janë gati për dyqan.</text>
     }
 </p>
 
@@ -23,7 +31,7 @@
     <input @bind="_search" @bind:event="oninput" placeholder="Kërko sipas emrit ose barkodit…" style="flex:1" />
     <label class="row" style="gap:6px;align-items:center">
         <input type="checkbox" @bind="_onlyMissing" />
-        Vetëm pa foto
+        Vetëm ato që s'janë gati
     </label>
     <label class="row" style="gap:6px;align-items:center">
         <input type="checkbox" @bind="_onlyInStock" />
@@ -41,20 +49,69 @@ else
         @foreach (var article in Filtered().Take(60))
         {
             var count = _counts.GetValueOrDefault(article.Id, 0);
+            var title = _titles.GetValueOrDefault(article.Id);
+            var named = !string.IsNullOrWhiteSpace(title);
+            var ready = named && count > 0;
+
             <div class="photo-row @(_open == article.Id ? "open" : null)">
                 <button class="photo-head" @onclick="() => ToggleAsync(article.Id)">
-                    <span class="photo-tick @(count > 0 ? "on" : null)">@(count > 0 ? "✓" : "—")</span>
+                    <span class="photo-tick @(ready ? "on" : null)">@(ready ? "✓" : "—")</span>
                     <span class="photo-name">
-                        @article.Name
+                        @* The shop name when it has one; otherwise the accountant's name, so the
+                           row is still findable on the shelf while it waits to be named. *@
+                        @if (named)
+                        {
+                            @title
+                        }
+                        else
+                        {
+                            <em class="muted">@article.Name</em>
+                        }
                         <span class="muted">@article.Barcode · @article.SalesPrice.ToString("0.00") € ·
                             @(article.StockQuantity > 0 ? $"{article.StockQuantity:0.##} copë" : "s'ka gjendje")</span>
                     </span>
-                    <span class="muted">@count/@ArticlePhoto.MaxPerArticle foto</span>
+                    <span class="photo-need">
+                        @if (!named)
+                        {
+                            <span class="badge warn">pa emër</span>
+                        }
+                        @if (count == 0)
+                        {
+                            <span class="badge warn">pa foto</span>
+                        }
+                        @if (ready)
+                        {
+                            <span class="muted">@count foto</span>
+                        }
+                    </span>
                 </button>
 
                 @if (_open == article.Id)
                 {
                     <div class="photo-body">
+                        <div class="photo-name-edit">
+                            <label>
+                                Emri për klientin
+                                <input @bind="_title" maxlength="200"
+                                       placeholder="p.sh. Kamion druri, i kuq" />
+                            </label>
+                            <label>
+                                Përshkrimi <span class="muted">(opsional)</span>
+                                <textarea @bind="_description" maxlength="2000" rows="2"
+                                          placeholder="Nga çka është bërë, madhësia, për çfarë moshe…"></textarea>
+                            </label>
+                            <div class="row" style="gap:8px;align-items:center">
+                                <button class="btn-primary" disabled="@_busy" @onclick="() => SaveListingAsync(article.Id)">
+                                    Ruaj emrin
+                                </button>
+                                @if (_saved == article.Id)
+                                {
+                                    <span class="muted small">U ruajt.</span>
+                                }
+                                <span class="muted small">Emri në kontabilitet mbetet "@article.Name".</span>
+                            </div>
+                        </div>
+
                         @if (_current.Count > 0)
                         {
                             <div class="photo-strip">
@@ -88,7 +145,9 @@ else
                                     </button>
                                 </div>
 
-                                <InputFile OnChange="@(e => UploadAsync(article.Id, e))" accept="image/*" multiple />
+                                @* capture="environment" opens the rear camera straight from the phone,
+                                   which is how these 74 photos are actually going to get taken. *@
+                                <InputFile OnChange="@(e => UploadAsync(article.Id, e))" accept="image/*" capture="environment" multiple />
 
                                 @if (BarcodeImageLookup.IsValidEan(article.Barcode))
                                 {
@@ -161,12 +220,16 @@ else
 }
 
 @code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
     private List<Article> _articles = [];
     private Dictionary<long, int> _counts = [];
+    private Dictionary<long, string> _titles = [];
     private List<ArticlePhoto> _current = [];
     private List<BarcodeCandidate> _candidates = [];
 
     private long? _open;
+    private long? _saved;
     private string _search = "";
     private bool _onlyMissing = true;   // the default, because this screen exists to fill the gaps
     private bool _onlyInStock = true;   // and the in-stock ones are the only ones that can be sold today
@@ -174,13 +237,22 @@ else
     private bool _busy;
     private bool _searchedBarcode;
     private string _url = "";
+    private string _title = "";
+    private string _description = "";
+    private string _userName = "";
     private string? _error;
 
     private int _total;
-    private int _withPhotos;
+    private int _ready;
 
     protected override async Task OnInitializedAsync()
     {
+        if (AuthState is not null)
+        {
+            var user = (await AuthState).User;
+            _userName = user.FindFirst(AuthService.FullNameClaim)?.Value ?? user.Identity?.Name ?? "";
+        }
+
         _articles = await Catalog.GetAllArticlesAsync();
         await RefreshCountsAsync();
         _loading = false;
@@ -189,9 +261,13 @@ else
     private async Task RefreshCountsAsync()
     {
         _counts = await Library.CountsAsync();
+        _titles = await Listings.TitlesAsync();
         _total = _articles.Count;
-        _withPhotos = _counts.Count;
+        // Ready means "on the website": both halves, exactly as ShopService decides it.
+        _ready = _articles.Count(a => _counts.ContainsKey(a.Id) && _titles.ContainsKey(a.Id));
     }
+
+    private bool IsReady(Article a) => _counts.ContainsKey(a.Id) && _titles.ContainsKey(a.Id);
 
     private IEnumerable<Article> Filtered()
     {
@@ -201,14 +277,15 @@ else
             query = query.Where(a => a.StockQuantity > 0);
 
         if (_onlyMissing)
-            query = query.Where(a => !_counts.ContainsKey(a.Id));
+            query = query.Where(a => !IsReady(a));
 
         if (!string.IsNullOrWhiteSpace(_search))
         {
             var needle = _search.Trim();
             query = query.Where(a =>
                 a.Name.Contains(needle, StringComparison.OrdinalIgnoreCase) ||
-                a.Barcode.Contains(needle, StringComparison.OrdinalIgnoreCase));
+                a.Barcode.Contains(needle, StringComparison.OrdinalIgnoreCase) ||
+                (_titles.GetValueOrDefault(a.Id) ?? "").Contains(needle, StringComparison.OrdinalIgnoreCase));
         }
 
         return query.OrderByDescending(a => a.StockQuantity);
@@ -220,6 +297,7 @@ else
         _candidates = [];
         _searchedBarcode = false;
         _url = "";
+        _saved = null;
 
         if (_open == id)
         {
@@ -229,6 +307,27 @@ else
 
         _open = id;
         _current = await Library.GetForArticleAsync(id);
+
+        var listing = await Listings.GetAsync(id);
+        _title = listing?.Title ?? "";
+        _description = listing?.Description ?? "";
+    }
+
+    private async Task SaveListingAsync(long articleId)
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            await Listings.SaveAsync(articleId, _title, _description, _userName);
+            _saved = articleId;
+            await RefreshCountsAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally { _busy = false; }
     }
 
     private async Task ReloadAsync(long articleId)

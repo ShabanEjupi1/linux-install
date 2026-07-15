@@ -91,6 +91,7 @@ builder.Services.AddHttpClient(nameof(BarcodeImageLookup), c =>
 
 builder.Services.AddScoped<ShopService>();
 builder.Services.AddScoped<PhotoService>();
+builder.Services.AddScoped<ShopListingService>();
 builder.Services.AddScoped<BarcodeImageLookup>();
 builder.Services.AddSingleton<EmailService>();
 builder.Services.AddSingleton<PayPalService>();

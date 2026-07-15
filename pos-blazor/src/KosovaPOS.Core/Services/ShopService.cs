@@ -6,10 +6,16 @@ using KosovaPOS.Models.Shop;
 
 namespace KosovaPOS.Core.Services;
 
-/// <summary>One article as the public shop sees it.</summary>
+/// <summary>
+/// One article as the public shop sees it.
+///
+/// <see cref="Name"/> is the name from the article's <see cref="ShopListing"/>, NOT
+/// <c>Artikujt.Emertimi</c> — a customer never sees "Loder 0115012".
+/// </summary>
 public sealed record ShopProduct(
     long Id,
     string Name,
+    string? Description,
     string? Barcode,
     string? Category,
     decimal Price,
@@ -35,12 +41,17 @@ public sealed record PlacedOrder(WebOrder Order, string? Error)
 /// website says within the cache's lifetime, and a price edited in the POS is the price
 /// the customer is charged.
 ///
-/// A product is listed only if it has at least one photo. That is not a styling
-/// preference: this shop's article names are a generic noun and an internal code
-/// ("Loder 0115012" — Toy 0115012), so a listing with no picture tells a customer
-/// nothing at all about what they would be buying. The photo IS the product description.
-/// Out-of-stock products stay listed, greyed out, because the shop wants the catalogue
-/// to look like the shop.
+/// A product is listed only if it has BOTH a photo and a name — a <see cref="ShopListing"/>
+/// with a title. Neither half is a styling preference. This shop's article names are an
+/// accountant's names, a generic noun and an internal code ("Loder 0115012" — <i>Toy
+/// 0115012</i>), and its articles have no pictures at all in BMD; a listing missing either
+/// one tells a customer nothing about what they would be buying. Half a listing does not
+/// sell a product, it just makes the shop look broken, so an article stays off the website
+/// until a human has done both. <c>/foto</c> is where that happens, and it counts down what
+/// is left.
+///
+/// Out-of-stock products stay listed, greyed out, because the shop wants the catalogue to
+/// look like the shop.
 /// </summary>
 public class ShopService
 {
@@ -54,10 +65,11 @@ public class ShopService
     }
 
     /// <summary>
-    /// Everything with a photo, in-stock first. Served from the catalogue cache, which
-    /// <c>PosDbContext</c> invalidates on every write that touches <c>Artikujt</c> — so a
-    /// till sale that empties the last unit takes the "Add to cart" button off the website
-    /// without anyone rebuilding anything.
+    /// Everything a customer could actually buy — photographed AND named — in-stock first.
+    /// Served from the catalogue cache, which <c>PosDbContext</c> invalidates on every write
+    /// that touches <c>Artikujt</c>, a photo, or a listing — so a till sale that empties the
+    /// last unit takes the "Add to cart" button off the website, and naming an article puts
+    /// it on the website, without anyone rebuilding anything.
     /// </summary>
     public async Task<List<ShopProduct>> GetProductsAsync()
     {
@@ -65,7 +77,19 @@ public class ShopService
 
         return await _cache.GetOrLoadAsync(db.DatabaseName, DataVersions.ShopCatalog, async () =>
         {
+            // Named first, because it is the scarcer half: a photo without a name is not a
+            // listing, so there is no point loading photos for articles nobody has named.
+            var listings = await db.ShopListings.AsNoTracking()
+                .Where(l => l.Title != null && l.Title != "")
+                .ToDictionaryAsync(l => l.ArticleId);
+
+            if (listings.Count == 0)
+                return new List<ShopProduct>();
+
+            var named = listings.Keys.ToList();
+
             var photos = await db.ArticlePhotos.AsNoTracking()
+                .Where(p => named.Contains(p.ArticleId))
                 .OrderBy(p => p.ArticleId).ThenBy(p => p.SortOrder)
                 .Select(p => new { p.ArticleId, p.Url })
                 .ToListAsync();
@@ -76,6 +100,7 @@ public class ShopService
             var byArticle = photos.GroupBy(p => p.ArticleId)
                 .ToDictionary(g => g.Key, g => (IReadOnlyList<string>)g.Select(p => p.Url).ToList());
 
+            // Both halves present, so this is exactly the set that can go on the website.
             var ids = byArticle.Keys.ToList();
 
             var articles = await db.Artikujt.AsNoTracking()
@@ -83,7 +108,7 @@ public class ShopService
                 .ToListAsync();
 
             return articles
-                .Select(a => ToProduct(a, byArticle.GetValueOrDefault(a.Id, [])))
+                .Select(a => ToProduct(a, listings[a.Id], byArticle[a.Id]))
                 // Sellable things first; within each, the newest article the shop added.
                 .OrderByDescending(p => p.InStock)
                 .ThenByDescending(p => p.Id)
@@ -103,9 +128,12 @@ public class ShopService
             .OrderBy(c => c)
             .ToList();
 
-    private static ShopProduct ToProduct(Artikujt a, IReadOnlyList<string> photos) => new(
+    private static ShopProduct ToProduct(Artikujt a, ShopListing listing, IReadOnlyList<string> photos) => new(
         a.Id,
-        a.Emertimi,
+        // The listing title, never a.Emertimi. GetProductsAsync only reaches here for
+        // articles whose listing has one, so there is nothing to fall back to.
+        listing.Title!,
+        listing.Description,
         a.Barkodi,
         a.Kategoria,
         (decimal)(a.CShitjes ?? 0),
@@ -143,28 +171,42 @@ public class ShopService
             .Where(a => ids.Contains(a.Id))
             .ToDictionaryAsync(a => a.Id);
 
+        // What the shop actually offers online, re-checked here and not taken on trust from
+        // the cart. Existing in Artikujt is not the same as being for sale: 1619 articles are
+        // in that table and only the named, photographed ones are on the website. Since the
+        // cart cookie is attacker-authored (above), a cart that skipped this check would let
+        // anyone order any article in the shop's accounting system by editing a cookie.
+        var listings = await db.ShopListings.AsNoTracking()
+            .Where(l => ids.Contains(l.ArticleId) && l.Title != null && l.Title != "")
+            .ToDictionaryAsync(l => l.ArticleId);
+
         var items = new List<WebOrderItem>();
         foreach (var line in cart)
         {
             if (line.Quantity <= 0)
                 continue;
 
-            if (!articles.TryGetValue(line.ArticleId, out var a))
-                return new PlacedOrder(details, "Një artikull në shportë nuk ekziston më.");
+            if (!articles.TryGetValue(line.ArticleId, out var a) ||
+                !listings.TryGetValue(line.ArticleId, out var listing))
+                return new PlacedOrder(details, "Një artikull në shportë nuk shitet më.");
+
+            // The name the customer chose it by. a.Emertimi ("Loder 0115012") is the
+            // accountant's name and must never reach a customer, an order or an email.
+            var name = listing.Title!;
 
             var stock = (decimal)(a.Sasia ?? 0);
             if (stock < line.Quantity)
                 return new PlacedOrder(details,
-                    $"\"{a.Emertimi}\" — vetëm {stock:0.##} copë në gjendje.");
+                    $"\"{name}\" — vetëm {stock:0.##} copë në gjendje.");
 
             var price = (decimal)(a.CShitjes ?? 0);
             if (price <= 0)
-                return new PlacedOrder(details, $"\"{a.Emertimi}\" nuk ka çmim shitjeje.");
+                return new PlacedOrder(details, $"\"{name}\" nuk ka çmim shitjeje.");
 
             items.Add(new WebOrderItem
             {
                 ArticleId = a.Id,
-                Name = a.Emertimi,
+                Name = name,
                 Barcode = a.Barkodi,
                 UnitPrice = price,
                 Quantity = line.Quantity,

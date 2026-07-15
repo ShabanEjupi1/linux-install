@@ -106,6 +106,10 @@ a.shop-add { display: inline-block; width: auto; border-radius: 10px; }
     background: #f6f6f8; color: var(--muted); text-decoration: none; font-size: .85rem;
 }
 .shop-detail-price { margin: 18px 0 10px; font-size: 2rem; font-weight: 800; color: var(--brand); }
+.shop-detail-desc {
+    margin: 0 0 20px; max-width: 52ch; line-height: 1.6;
+    color: var(--muted); white-space: pre-wrap;
+}
 .shop-stock { margin: 0 0 20px; font-weight: 600; }
 .shop-stock.in { color: #0f7a3d; }
 .shop-stock.out { color: #b42318; }
