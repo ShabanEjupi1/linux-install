@@ -139,22 +139,26 @@ else
             .Where(a => wanted.ContainsKey(a.Id))
             .ToDictionary(a => a.Id);
 
-        // Bar height scales with the label: a 4.5mm barcode on a 25mm label is what the
-        // desktop asked TSPL for (35 dots at 8 dots/mm), and it stays legible if the shop
-        // switches to taller stock.
-        var barMm = Math.Max(4.0, _hMm * 0.18);
+        // The bars are read by a scanner an inch away, which does not care how tall or wide they
+        // are as long as they are there — so they are kept deliberately small, and the room saved
+        // goes to the price. A 3mm bar on a 25mm label scans fine and lets the price tower over it;
+        // it grows only gently on taller stock so a big label does not go back to big bars.
+        var barMm = Math.Max(3.0, _hMm * 0.11);
 
-        // The bars must fit INSIDE the label, minus its side padding. A barcode wider than
-        // the label is not a wide barcode — it is a clipped one, and a clipped barcode still
-        // looks right while scanning nowhere. Shrink the module to fit; if even the smallest
-        // scannable bar won't fit, print the number as text and say so.
+        // The bars must fit INSIDE the label, minus its side padding — but they are also actively
+        // kept narrow: a 0.28mm module (comfortably above the ~0.25mm floor most scanners manage)
+        // is a good deal thinner than the 0.33mm nominal, so an EAN-13 lands near 27mm instead of
+        // 31 and leaves the label breathing room instead of a bar wall. FitModuleMm only ever
+        // shrinks from here, never grows, so a long code on a narrow label still fits or falls
+        // back to text.
         var usableMm = _wMm - 3;
+        const double NarrowModuleMm = 0.28;
 
         foreach (var (id, copies) in wanted)
         {
             if (!articles.TryGetValue(id, out var a)) continue;
 
-            var module = BarcodeSvg.FitModuleMm(a.Barcode, usableMm);
+            var module = BarcodeSvg.FitModuleMm(a.Barcode, usableMm, NarrowModuleMm);
             var svg = module is null ? null : BarcodeSvg.Render(a.Barcode, heightMm: barMm, moduleMm: module.Value);
 
             if (svg is null && !_unencodable.Contains(a.Name))

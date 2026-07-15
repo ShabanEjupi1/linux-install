@@ -194,10 +194,17 @@
     private string? _labelPrinter;
     private KosovaPOS.Agent.Contracts.PrinterList? _printers;
 
+    /// <summary>The shop's label stock, so the browser fallback prints on the same size the agent
+    /// would — not the hard-coded 55×25 the /etiketa page defaults to.</summary>
+    private int _labelW = 55, _labelH = 25;
+
     protected override async Task OnInitializedAsync()
     {
         _all = await Catalog.GetAllArticlesAsync();
-        _labelPrinter = (await Profile.GetSettingsAsync())?.BarcodePrinter;
+        var shop = await Profile.GetSettingsAsync();
+        _labelPrinter = shop?.BarcodePrinter;
+        if (shop?.LabelWidthMm  is > 0) _labelW = shop.LabelWidthMm;
+        if (shop?.LabelHeightMm is > 0) _labelH = shop.LabelHeightMm;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -258,6 +265,15 @@
     /// </summary>
     private async Task OnSearchKey(KeyboardEventArgs e)
     {
+        // Escape wipes a half-typed name so the next scan is not appended onto it — same one-tap
+        // clear the till has, from the keyboard, without leaving the box.
+        if (e.Key == "Escape")
+        {
+            _search = "";
+            await _searchBox.FocusAsync();
+            return;
+        }
+
         if (e.Key != "Enter") return;
 
         var s = _search.Trim();
@@ -308,7 +324,7 @@
                 // No &auto=1: the hidden frame prints itself once the labels have rendered.
                 // Asking the page to print as well would raise two dialogs.
                 var q = string.Join(",", jobs.Select(j => $"{j.Article.Id}x{j.Copies}"));
-                var r = await Hw.PrintUrlAsync($"/etiketa?q={Uri.EscapeDataString(q)}");
+                var r = await Hw.PrintUrlAsync($"/etiketa?q={Uri.EscapeDataString(q)}&w={_labelW}&h={_labelH}");
                 _statusOk = r.Ok;
                 _status = r.Ok
                     ? "Etiketat u dërguan te shfletuesi për printim."

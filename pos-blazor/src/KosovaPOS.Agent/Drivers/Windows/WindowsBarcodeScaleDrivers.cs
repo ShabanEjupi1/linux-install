@@ -121,13 +121,13 @@ public sealed class WindowsBarcodeDriver : IBarcodeDriver
         var (price, showDigits, priceH) = best;
         var barTop = priceTop + priceH + Gap;
 
-        // Whatever room is left goes to the bars — but never so much that they out-tower the
-        // price, which is the whole point of sizing the price first. The floor still wins over
-        // that: on stock where no font makes the price the taller element (a four-figure price
-        // on a narrow label is too wide to enlarge), the bars keep their 5mm and stay scannable.
-        // A big price on a label nobody can scan is not a trade the till can make.
+        // The bars are kept deliberately small: a scanner reads a 5–6mm bar as happily as a 12mm
+        // one, and every dot not spent on bars is a dot the price can have. So the height sits
+        // just above the 5mm scannability floor and is capped well below the price — the label the
+        // shop asked for, with the price towering and the barcode a quiet strip at the bottom.
         var room = hDots - barTop - (showDigits ? DigitDots : 0) - Margin;
-        var barHeight = Math.Min(room, Math.Max(MinBarDots, priceH - 8));
+        const int BarCapDots = 6 * DotsPerMm;   // 6mm — small, but comfortably scannable
+        var barHeight = Math.Min(room, Math.Clamp(priceH - 8, MinBarDots, BarCapDots));
 
         var sb = new StringBuilder();
         sb.AppendLine($"SIZE {wMm} mm, {hMm} mm");
@@ -203,15 +203,16 @@ public sealed class WindowsBarcodeDriver : IBarcodeDriver
 
     /// <summary>
     /// The widest module (in dots) at which the symbol still fits <paramref name="usableDots"/>,
-    /// capped at 3 — beyond that a scanner gains nothing. Null if it cannot fit at all, or the
-    /// content is empty.
+    /// capped at 2 — a 2-dot narrow bar (0.25mm at 203dpi) is what the desktop asked TSPL for and
+    /// scans reliably, so the extra dot the old code spent widening bars is kept for the price
+    /// instead. Null if it cannot fit at all, or the content is empty.
     /// </summary>
     private static int? FitNarrowDots(string content, int usableDots)
     {
         if (string.IsNullOrWhiteSpace(content)) return null;
 
         var modules = Modules(content);
-        for (var narrow = 3; narrow >= 1; narrow--)
+        for (var narrow = 2; narrow >= 1; narrow--)
             if (modules * narrow <= usableDots) return narrow;
 
         return null;

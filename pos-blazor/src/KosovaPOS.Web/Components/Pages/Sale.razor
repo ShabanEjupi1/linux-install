@@ -12,6 +12,8 @@
 @inject HardwareBridge Hw
 @inject LocalState Local
 @inject Audit Audit
+@inject IJSRuntime JS
+@implements IAsyncDisposable
 
 <PageTitle>Shitje — KosovaPOS</PageTitle>
 
@@ -19,8 +21,18 @@
     <!-- Left: catalogue -->
     <section class="catalogue">
         <div class="search-row">
-            <input @bind="_search" @bind:event="oninput" @onkeydown="OnSearchKey"
-                   placeholder="Kërko emër ose skano barkod…" class="search-box" autofocus />
+            @* The search box is where the scanner types and where the cashier's hands live all
+               day, so it is kept focused after every action. The × wipes a half-typed name in one
+               tap — a scanner appends, and "milkPTV…" scanned onto a leftover "milk" matches
+               nothing — and Escape does the same from the keyboard without leaving the box. *@
+            <div class="search-clear-wrap">
+                <input @ref="_searchBox" @bind="_search" @bind:event="oninput" @onkeydown="OnSearchKey"
+                       placeholder="Kërko emër ose skano barkod…" class="search-box" />
+                @if (!string.IsNullOrEmpty(_search))
+                {
+                    <button type="button" class="search-clear" title="Pastro (Esc)" @onclick="ClearSearch">×</button>
+                }
+            </div>
             @if (_categories.Count > 0)
             {
                 <select value="@_activeCategory" class="cat-select"
@@ -410,6 +422,7 @@
     {
         _payment = method;
         await SavePrefs();
+        await FocusSearch();
     }
 
     private async Task SetCategory(string? category)
@@ -477,13 +490,86 @@
         _loading = false;
     }
 
+    private ElementReference _searchBox;
+    private IJSObjectReference? _keys;
+    private DotNetObjectReference<Sale>? _self;
+
+    /// <summary>The tender box was just opened and has not been focused yet — do it after it renders.</summary>
+    private bool _focusTender;
+
     // JS interop is only available after the component becomes interactive — which is also the
     // first moment the browser can be asked what was on this till when it was last left.
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender) return;
-        await RestoreAsync();
-        await RefreshAgentStatusAsync();
+        if (firstRender)
+        {
+            await RestoreAsync();
+            await RefreshAgentStatusAsync();
+
+            // Window-level shortcuts, so F12 finishes the sale from wherever focus is, and Escape
+            // clears the search. F12 is prevented here (in JS, this same tick) or the browser
+            // opens its developer tools instead of ringing up the sale.
+            _self = DotNetObjectReference.Create(this);
+            _keys = await JS.InvokeAsync<IJSObjectReference>("import", "./js/keys.js");
+            await _keys.InvokeVoidAsync("register", _self,
+                new[] { "F12", "Escape" }, new[] { "F12" });
+
+            await FocusSearch();
+        }
+
+        // The tender prompt's box gets focus the render after it appears, so the cashier can type
+        // the note handed over and press Enter without touching the mouse.
+        if (_focusTender && _tender && _keys is not null)
+        {
+            _focusTender = false;
+            try { await _keys.InvokeVoidAsync("focus", "tender-box"); } catch (Exception) { }
+        }
+    }
+
+    /// <summary>
+    /// The window shortcut fired. F12 drives the sale forward from wherever it is — the tender
+    /// prompt, the change panel, or the till itself — and Escape backs out of exactly one of them.
+    /// </summary>
+    [JSInvokable]
+    public async Task OnHotKey(string sig)
+    {
+        switch (sig)
+        {
+            case "F12":
+                if (_changeDue is not null) _changeDue = null;
+                else if (_tender) { if (_paid >= Total && !_busy) await Complete(); }
+                else await StartCheckout();
+                break;
+
+            case "Escape":
+                if (_tender) _tender = false;
+                else if (_changeDue is not null) _changeDue = null;
+                else if (!string.IsNullOrEmpty(_search)) await ClearSearch();
+                break;
+        }
+        StateHasChanged();
+    }
+
+    /// <summary>Puts the cursor back in the search box — the one place a scan or a name goes.</summary>
+    private async Task FocusSearch()
+    {
+        try { await _searchBox.FocusAsync(); } catch (Exception) { }
+    }
+
+    private async Task ClearSearch()
+    {
+        _search = "";
+        await FocusSearch();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_keys is not null)
+        {
+            try { await _keys.InvokeVoidAsync("unregister"); } catch (Exception) { }
+            try { await _keys.DisposeAsync(); } catch (Exception) { }
+        }
+        _self?.Dispose();
     }
 
     private async Task RefreshAgentStatusAsync()
@@ -531,6 +617,9 @@
         {
             await AddToCart(hit);
             _search = "";
+            // Cleared for the next scan and left focused, so the cashier can fire the whole basket
+            // through the scanner without touching the screen between items.
+            await FocusSearch();
         }
     }
 
@@ -552,6 +641,7 @@
 
         _paid = Total;              // exact money is the common case; the buttons cover the rest
         _tender = true;
+        _focusTender = true;
         _message = null;
     }
 
@@ -603,6 +693,9 @@
         _message = null;
         SyncPaid();
         await SaveDraft();
+        // Whether the article came off a tile tap or a scan, the cursor goes back to the search
+        // box: the next thing the cashier does is add another item, and it must land there.
+        await FocusSearch();
     }
 
     private async Task ChangeQty(ReceiptItem line, decimal delta)
@@ -611,6 +704,8 @@
         if (line.Quantity <= 0) _cart.Remove(line);
         SyncPaid();
         await SaveDraft();
+        // A + on a cart line steals focus to that button; hand it back, or the next scan is lost.
+        await FocusSearch();
     }
 
     private async Task Remove(ReceiptItem line)
@@ -618,6 +713,7 @@
         _cart.Remove(line);
         SyncPaid();
         await SaveDraft();
+        await FocusSearch();
     }
 
     // The cart carries the tender until the prompt sets it; nothing is defaulted behind it.
@@ -749,6 +845,8 @@
             await Local.RemoveAsync(LocalKeys.SaleDraft);
             // Refresh stock counts shown in the grid
             _articles = await Catalog.GetAllArticlesAsync();
+            // The sale is done; the next customer's first scan should land without a click.
+            await FocusSearch();
         }
         finally
         {
