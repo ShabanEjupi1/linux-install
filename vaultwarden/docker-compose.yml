@@ -9,7 +9,7 @@ services:
       SIGNUPS_ALLOWED: "true"      # set to false after creating your account
       SIGNUPS_VERIFY: "false"
       SIGNUPS_DOMAINS_WHITELIST: "student.uni-pr.edu,spacecode.tech,shabanejupi.tech,enisi.tech,halalbankkosova.me"
-      ADMIN_TOKEN: "VCZMcSpPD8lM96S1ODiDBYKT0H2KWsDZBoR8WSZ1ZVWz"
+      ADMIN_TOKEN: "${ADMIN_TOKEN:?set ADMIN_TOKEN in vaultwarden/.env (gitignored)}"
       WEBSOCKET_ENABLED: "true"
       SENDS_ALLOWED: "true"
     volumes:

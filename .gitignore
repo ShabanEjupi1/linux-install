@@ -30,3 +30,7 @@ news-portal/.env
 # Python
 __pycache__/
 *.pyc
+
+# Any *.env.local (the vaultwarden one leaked once)
+**/.env.local
+*.env.local
