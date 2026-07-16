@@ -1,0 +1,38 @@
+# Gitea self-hosted git -> git.spacecode.tech (host 127.0.0.1:8140, via CF tunnel 'ampere')
+#
+# The tunnel's `*.spacecode.tech` rule already points at nginx on :80, so this
+# needs an nginx vhost (see ../migrate-to-gitea.sh), not a tunnel edit.
+#
+# INSTALL_LOCK skips the web installer so the box can be provisioned by script
+# instead of by clicking through a form that also happens to be, until you
+# finish it, an unauthenticated admin-creation page on a public hostname.
+services:
+  gitea:
+    image: gitea/gitea:1.24
+    container_name: gitea
+    restart: unless-stopped
+    environment:
+      USER_UID: "1000"
+      USER_GID: "1000"
+      GITEA__server__ROOT_URL: "https://git.spacecode.tech/"
+      GITEA__server__DOMAIN: "git.spacecode.tech"
+      # No SSH. git-over-SSH does not traverse the Cloudflare tunnel, so this
+      # host is HTTPS-only and clone URLs should say so rather than offering an
+      # ssh:// that cannot work. Also avoids the image's own sshd fighting
+      # Gitea's builtin one for port 22 (which crash-loops the container).
+      GITEA__server__DISABLE_SSH: "true"
+      GITEA__server__LFS_START_SERVER: "true"
+      GITEA__database__DB_TYPE: "sqlite3"
+      GITEA__security__INSTALL_LOCK: "true"
+      # This repo is moving here *because* the public one leaked a token.
+      # Registration open or repos world-readable would reproduce the leak.
+      GITEA__service__DISABLE_REGISTRATION: "true"
+      GITEA__service__REQUIRE_SIGNIN_VIEW: "true"
+      GITEA__repository__DEFAULT_PRIVATE: "private"
+      GITEA__repository__FORCE_PRIVATE: "true"
+    volumes:
+      - ./data:/data
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    ports:
+      - "127.0.0.1:8140:3000"

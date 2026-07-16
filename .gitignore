@@ -25,6 +25,10 @@ credentials.local.txt
 vault-import.json
 # rotate-credentials.sh writes live secrets here before they reach Vaultwarden
 vault-additions.json
+# migrate-to-gitea.sh writes the Gitea admin password + API token here
+vault-additions-gitea.json
+# setup-cline.sh writes the code-server password here
+vault-additions-cline.json
 
 # News portal local env
 news-portal/.env
