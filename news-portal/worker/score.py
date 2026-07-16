@@ -142,7 +142,15 @@ def score_source(tier: str, domain_age_days: int | None,
 
 def score_craft(author: str | None, published_at: datetime | None,
                 body: str | None, outbound_links: int) -> Component:
-    """Normat bazë gazetareske: nënshkrim, datë, citime, gjatësi."""
+    """Normat bazë gazetareske: nënshkrim, datë, citime, gjatësi.
+
+    `body is None` do të thotë se teksti NUK U LEXUA DOT (paywall, 403,
+    anti-bot) — jo se artikulli është bosh. Dallimi ka rëndësi: NYT-ja kthen
+    403 për çdo trup artikulli. Po t'i ndëshkonim për "tekst i shkurtër" dhe
+    "pa citime", një gazetë serioze pas paywall-i do të dilte më keq se një
+    fabrikë klikimesh që na e lë tekstin të lirë — pikërisht e kundërta e së
+    vërtetës. Kur s'dimë, nuk ndëshkojmë; e themi që s'dimë.
+    """
     val, notes = 1.0, []
 
     if not author or not author.strip():
@@ -151,12 +159,17 @@ def score_craft(author: str | None, published_at: datetime | None,
     if published_at is None:
         val -= 0.20
         notes.append("pa datë botimi")
-    if not body or len(body) < 400:
-        val -= 0.20
-        notes.append("tekst shumë i shkurtër për të mbajtur një pretendim")
-    if outbound_links == 0:
-        val -= 0.15
-        notes.append("nuk citon asnjë burim primar")
+
+    if body is None:
+        # E pamatshme, jo e keqe. Asnjë ndëshkim.
+        notes.append("teksti s'u lexua dot (paywall ose bllokim) — nuk u vlerësua")
+    else:
+        if len(body) < 400:
+            val -= 0.20
+            notes.append("tekst shumë i shkurtër për të mbajtur një pretendim")
+        if outbound_links == 0:
+            val -= 0.15
+            notes.append("nuk citon asnjë burim primar")
 
     val = _clamp(val)
     reason = ("Mangësi redaktuese: " + ", ".join(notes) + ".") if notes \
