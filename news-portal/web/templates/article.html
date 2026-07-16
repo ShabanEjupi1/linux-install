@@ -21,17 +21,13 @@
   </p>
 </div>
 
-{% if a.llm_rationale %}
-  <div class="card">
-    <h2>Pse kjo notë</h2>
-    <p style="margin:0; color:var(--muted);">{{ a.llm_rationale }}</p>
-    <p class="meta" style="margin-top:12px;">
-      Shpjegimi u gjenerua nga një model lokal ({{ a.llm_model }}) mbi sinjalet
-      më poshtë. Modeli nuk e cakton notën dhe nuk verifikon fakte — vetëm i
-      përshkruan sinjalet me fjalë.
-    </p>
-  </div>
-{% endif %}
+<div class="card">
+  <h2>Pse kjo notë</h2>
+  <ul style="margin:0; padding-left:20px; color:var(--muted); font-size:14.5px;">
+    {# Renditur nga përbërësi që e dëmton më shumë notën te ai që e dëmton më pak. #}
+    {% for r in a.reasons %}<li>{{ r }}</li>{% endfor %}
+  </ul>
+</div>
 
 <div class="card">
   <h2>Sinjalet e matura</h2>

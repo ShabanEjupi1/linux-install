@@ -60,10 +60,14 @@ CREATE TABLE IF NOT EXISTS assessments (
     -- Përbërësit ruhen veçmas që nota të mos jetë kurrë një numër i pashpjegueshëm.
     components    JSONB NOT NULL,
     reasons       JSONB NOT NULL,             -- listë arsyesh të lexueshme
-    llm_rationale TEXT,                       -- narrativa; NULL nëse LLM-ja s'u përdor
-    llm_model     TEXT,
     scored_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Hequr më 2026-07-16: kolonat llm_rationale/llm_model. Modelet lokale
+-- prodhuan shqip të pakuptimtë (shih llm.py) dhe u fshinë nga faqja. Nëse
+-- ekzistojnë nga një bazë e vjetër, hidhi — përmbajtja e tyre ishte e prishur.
+ALTER TABLE assessments DROP COLUMN IF EXISTS llm_rationale;
+ALTER TABLE assessments DROP COLUMN IF EXISTS llm_model;
 
 CREATE INDEX IF NOT EXISTS assessments_score_idx ON assessments(score);
 

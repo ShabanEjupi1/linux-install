@@ -77,9 +77,11 @@ def sync_sources(conn) -> None:
     with open(os.path.join(HERE, "feeds.yml")) as f:
         cfg = yaml.safe_load(f)
 
+    domains = []
     with conn.cursor() as cur:
         for s in cfg["sources"]:
             domain = urlparse(s["url"]).netloc.lower().removeprefix("www.")
+            domains.append(domain)
             cur.execute(
                 """INSERT INTO sources (domain, name, feed_url, tier, lang)
                    VALUES (%s, %s, %s, %s, %s)
@@ -90,6 +92,21 @@ def sync_sources(conn) -> None:
                          lang = EXCLUDED.lang""",
                 (domain, s["name"], s["url"], s["tier"], s.get("lang", "en")),
             )
+
+        # Burimet e hequra nga feeds.yml duhet të NDALEN së tërhequri. Pa këtë,
+        # fshirja e një feed-i nga YAML-i s'bën asgjë: fetch_all lexon nga baza,
+        # jo nga skedari, dhe burimi i vdekur vazhdon të gjenerojë gabime përjetë.
+        #
+        # feed_url = NULL e jo DELETE: fshirja kaskadon te articles dhe do të
+        # zhdukte historikun — përfshirë artikuj që korroborojnë tregime të tjera.
+        cur.execute(
+            """UPDATE sources SET feed_url = NULL
+               WHERE feed_url IS NOT NULL AND NOT (domain = ANY(%s))
+               RETURNING domain""",
+            (domains,),
+        )
+        if retired := [r[0] for r in cur.fetchall()]:
+            log.info("U ndalën burimet e hequra nga feeds.yml: %s", ", ".join(retired))
     conn.commit()
 
 
@@ -356,7 +373,7 @@ def cluster_recent(conn) -> None:
 # Vlerësimi
 # --------------------------------------------------------------------------
 
-def score_pending(conn, use_llm: bool, errors: list) -> int:
+def score_pending(conn, errors: list) -> int:
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute(
             """SELECT a.id, a.url, a.title, a.body, a.author, a.published_at,
@@ -411,29 +428,18 @@ def score_pending(conn, use_llm: bool, errors: list) -> int:
                 lang=art["lang"] or "en",
             )
 
-            narrative, model = (None, None)
-            if use_llm:
-                narrative, model = llm.rationale(
-                    title=art["title"], source=art["source_name"], tier=art["tier"],
-                    score=result.score, label=result.label, reasons=result.reasons,
-                )
-
             with conn.cursor() as cur:
                 cur.execute(
                     """INSERT INTO assessments
-                         (article_id, score, label, components, reasons,
-                          llm_rationale, llm_model)
-                       VALUES (%s,%s,%s,%s,%s,%s,%s)
+                         (article_id, score, label, components, reasons)
+                       VALUES (%s,%s,%s,%s,%s)
                        ON CONFLICT (article_id) DO UPDATE
                          SET score = EXCLUDED.score, label = EXCLUDED.label,
                              components = EXCLUDED.components,
                              reasons = EXCLUDED.reasons,
-                             llm_rationale = EXCLUDED.llm_rationale,
-                             llm_model = EXCLUDED.llm_model,
                              scored_at = now()""",
                     (art["id"], result.score, result.label_key,
-                     json.dumps(result.components), json.dumps(result.reasons),
-                     narrative, model),
+                     json.dumps(result.components), json.dumps(result.reasons)),
                 )
             conn.commit()
             done += 1
@@ -478,11 +484,7 @@ def main() -> int:
         embed_missing(conn)
         cluster_recent(conn)
 
-        use_llm = os.getenv("USE_LLM", "1") == "1" and llm.ensure_model()
-        if not use_llm:
-            log.warning("LLM-ja nuk është e disponueshme — vlerësimi vazhdon pa narrativë.")
-
-        scored = score_pending(conn, use_llm, errors)
+        scored = score_pending(conn, errors)
         prune(conn)
     except Exception as e:
         ok = False

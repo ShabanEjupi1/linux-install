@@ -51,9 +51,8 @@
         {% endif %}
       </span>
     </div>
-    {% if a.llm_rationale %}
-      <p class="why">{{ a.llm_rationale }}</p>
-    {% elif a.reasons %}
+    {% if a.reasons %}
+      {# reasons[0] = përbërësi që e dëmton më shumë notën. #}
       <p class="why">{{ a.reasons[0] }}</p>
     {% endif %}
   </article>

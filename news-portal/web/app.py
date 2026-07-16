@@ -57,7 +57,7 @@ def index():
     rows = q(
         f"""SELECT a.id, a.url, a.title, a.published_at, a.summary,
                    s.name AS source_name, s.domain, s.tier,
-                   v.score, v.label, v.llm_rationale, v.reasons,
+                   v.score, v.label, v.reasons,
                    (SELECT COUNT(DISTINCT s2.domain)
                       FROM articles a2 JOIN sources s2 ON s2.id = a2.source_id
                      WHERE a2.cluster_id = a.cluster_id) AS corroborators
@@ -89,8 +89,7 @@ def article(aid: int):
         """SELECT a.id, a.url, a.title, a.summary, a.author, a.published_at,
                   a.cluster_id, s.name AS source_name, s.domain, s.tier,
                   s.domain_age_days, s.has_contact_page, s.has_about_page,
-                  v.score, v.label, v.components, v.reasons,
-                  v.llm_rationale, v.llm_model, v.scored_at
+                  v.score, v.label, v.components, v.reasons, v.scored_at
            FROM articles a
            JOIN sources s ON s.id = a.source_id
            JOIN assessments v ON v.article_id = a.id
