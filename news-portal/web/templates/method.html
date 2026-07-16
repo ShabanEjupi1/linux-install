@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}Si vlerësohet — SpaceNews{% endblock %}
+{% block body %}
+
+<div class="card">
+  <h2 style="font-size:22px;">Si vlerësohet një lajm</h2>
+  <p style="color:var(--muted);">
+    SpaceNews nuk vendos nëse një lajm është i vërtetë apo i rremë. Kjo duhet thënë
+    hapur në fillim, sepse është kufiri që përcakton gjithçka tjetër: asnjë sistem
+    automatik sot nuk mund ta përcaktojë të vërtetën e një pretendimi, dhe një
+    sistem që pretendon se mundet është më i rrezikshëm se asnjë sistem fare —
+    sepse gabon me autoritet dhe të bind.
+  </p>
+  <p style="color:var(--muted);">
+    Ajo që bën ky portal është më e vogël dhe më e ndershme: mat <strong>sa e
+    mbështetur me prova</strong> është një histori në momentin kur e shohim.
+  </p>
+</div>
+
+<div class="card">
+  <h2>Katër sinjalet</h2>
+
+  <p><strong>Korroborim i pavarur — 40%</strong></p>
+  <p style="color:var(--muted); font-size:14.5px;">
+    Sa <em>redaksi të pavarura</em> e raportojnë të njëjtën ngjarje. Ky është
+    sinjali më i fortë që kemi, sepse fabrikimi rrallë riprodhohet nga redaksi të
+    palidhura me njëra-tjetrën. Numërohen domain-e, jo artikuj — dhjetë ripostime
+    brenda të njëjtit portal nuk janë dhjetë dëshmi.
+  </p>
+
+  <p><strong>Transparenca e burimit — 25%</strong></p>
+  <p style="color:var(--muted); font-size:14.5px;">
+    A e dimë kush e boton këtë? Kategoria e redaksisë, mosha e domain-it (nga
+    regjistri publik RDAP), prania e faqes së kontaktit dhe e faqes "rreth nesh",
+    vlefshmëria e HTTPS-it. Mungesa e këtyre nuk e bën një faqe gënjeshtare — e bën
+    të pallogaritshme, sepse s'ka kujt t'i kërkosh korrigjim.
+  </p>
+
+  <p><strong>Normat gazetareske — 20%</strong></p>
+  <p style="color:var(--muted); font-size:14.5px;">
+    A ka autor të nënshkruar, datë botimi, gjatësi të mjaftueshme për ta mbajtur
+    pretendimin, dhe a citon burime primare.
+  </p>
+
+  <p><strong>Gjuha — 15%</strong></p>
+  <p style="color:var(--muted); font-size:14.5px;">
+    Shënjues sensacionalizmi kundrejt atribuimit të qartë ("sipas...", "raporton...").
+    Gjuha manipuluese nuk e bën një histori të rreme, por është korrelate e fortë e
+    shkrimit që synon klikimin, jo saktësinë.
+  </p>
+</div>
+
+<div class="card" style="border-color: var(--warn);">
+  <h2>Ku gabon ky sistem</h2>
+  <p style="color:var(--muted); font-size:14.5px;">
+    Këto nuk janë mangësi që do t'i rregullojmë më vonë. Janë kufij të vetë metodës,
+    dhe lexuesi duhet t'i dijë:
+  </p>
+  <ul style="color:var(--muted); font-size:14.5px; padding-left:20px;">
+    <li>
+      <strong>Ekskluzivja e vërtetë duket e dobët.</strong> Një hetim origjinal që
+      askush tjetër s'e ka ende merr notë të ulët korroborimi. Nota e ulët do të
+      thotë "s'kemi prova të pavarura", jo "është gënjeshtër".
+    </li>
+    <li>
+      <strong>Gënjeshtra e përsëritur duket e fortë.</strong> Nëse njëzet redaksi
+      kopjojnë të njëjtin njoftim të gabuar për shtyp, korroborimi ngrihet. Numri
+      i burimeve mat pavarësinë e raportimit, jo pavarësinë e origjinës.
+    </li>
+    <li>
+      <strong>Grupimi është i trashë.</strong> Ngjarjet bashkohen duke krahasuar
+      fjalët domethënëse të titujve. Dy histori të ndryshme me fjalor të ngjashëm
+      mund të përfundojnë bashkë; e njëjta ngjarje e titulluar krejt ndryshe mund
+      të ndahet.
+    </li>
+    <li>
+      <strong>Shohim vetëm atë që ndjekim.</strong> Korroborimi kërkohet brenda
+      listës sonë të burimeve. Një ngjarje e mbuluar gjerësisht jashtë saj do të
+      duket e pambështetur.
+    </li>
+    <li>
+      <strong>Peshat janë gjykim, jo shkencë.</strong> 40/25/20/15 janë zgjedhje të
+      arsyeshme, të pakalibruara kundrejt një grupi të dhënash të etiketuara.
+    </li>
+  </ul>
+</div>
+
+<div class="card">
+  <h2>Roli i modelit gjuhësor</h2>
+  <p style="color:var(--muted); font-size:14.5px;">
+    Një model lokal (Ollama, në serverin tonë — asnjë të dhënë nuk del jashtë)
+    shkruan shpjegimin me fjalë. Ai <strong>nuk e cakton notën</strong> dhe
+    <strong>nuk verifikon fakte</strong>: nuk ka qasje në internet dhe kujtesa e tij
+    është e vjetruar. Nota vjen krejtësisht nga sinjalet e matshme më lart, të cilat
+    janë deterministike dhe të auditueshme. Modeli vetëm i përkthen ato në gjuhë të
+    lexueshme. Nëse modeli bie, notat mbeten të pandryshuara — humbet vetëm shpjegimi.
+  </p>
+</div>
+
+<p class="meta"><a href="/">← Të gjitha lajmet</a></p>
+
+{% endblock %}

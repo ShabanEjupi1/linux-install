@@ -1,0 +1,103 @@
+# Burimet e lajmeve. `tier` ushqen vlerësimin e besueshmërisë së burimit.
+#
+# tier: wire      -> agjenci lajmesh, standard redaktues i dokumentuar, korrigjime publike
+# tier: mainstream-> media e themeluar me redaksi dhe pronësi të njohur
+# tier: local     -> media vendore e njohur, redaksi më e vogël
+# tier: unrated   -> e panjohur; nuk merr asnjë kredit paraprak
+#
+# `tier` NUK do të thotë "e vërtetë". Do të thotë sa shumë provë të jashtme
+# na duhet para se ta besojmë. Wire-i ende gabon; unrated-i ende ka të drejtë.
+
+# Të verifikuara si të gjalla më 2026-07-16. Reuters u hoq: RSS-ja publike e
+# tyre është ndërprerë (feeds.reuters.com s'ekziston më, endpoint-i i ri kthen
+# 401). Nëse dikur rikthehet, është kandidati i parë për t'u shtuar prapa.
+
+sources:
+  # ---------- Ndërkombëtare: shtylla e korroborimit ----------
+  - name: Associated Press
+    url: https://feedx.net/rss/ap.xml
+    tier: wire
+    lang: en
+  - name: BBC News
+    url: https://feeds.bbci.co.uk/news/world/rss.xml
+    tier: wire
+    lang: en
+  - name: The New York Times
+    url: https://rss.nytimes.com/services/xml/rss/nyt/World.xml
+    tier: wire
+    lang: en
+  - name: CBS News
+    url: https://www.cbsnews.com/latest/rss/world
+    tier: mainstream
+    lang: en
+  - name: Sky News
+    url: https://feeds.skynews.com/feeds/rss/world.xml
+    tier: mainstream
+    lang: en
+  - name: The Guardian
+    url: https://www.theguardian.com/world/rss
+    tier: mainstream
+    lang: en
+  - name: Al Jazeera
+    url: https://www.aljazeera.com/xml/rss/all.xml
+    tier: mainstream
+    lang: en
+  - name: Deutsche Welle
+    url: https://rss.dw.com/rdf/rss-en-world
+    tier: mainstream
+    lang: en
+  - name: France 24
+    url: https://www.france24.com/en/rss
+    tier: mainstream
+    lang: en
+  - name: Euronews
+    url: https://www.euronews.com/rss?level=theme&name=news
+    tier: mainstream
+    lang: en
+
+  # ---------- Ballkani / rajoni ----------
+  - name: Balkan Insight
+    url: https://balkaninsight.com/feed/
+    tier: mainstream
+    lang: en
+
+  # ---------- Kosovë / Shqipëri ----------
+  - name: Koha
+    url: https://www.koha.net/rss
+    tier: mainstream
+    lang: sq
+  - name: Telegrafi
+    url: https://telegrafi.com/feed/
+    tier: mainstream
+    lang: sq
+  - name: Kallxo (BIRN)
+    url: https://kallxo.com/feed/
+    tier: mainstream
+    lang: sq
+  - name: Klan Kosova
+    url: https://klankosova.tv/feed/
+    tier: local
+    lang: sq
+  - name: Insajderi
+    url: https://insajderi.com/feed/
+    tier: local
+    lang: sq
+  - name: Bota Sot
+    url: https://www.botasot.info/rss/
+    tier: local
+    lang: sq
+  - name: Indeksonline
+    url: https://indeksonline.net/feed/
+    tier: local
+    lang: sq
+  - name: Zëri
+    url: https://www.zeri.info/rss/
+    tier: local
+    lang: sq
+
+# Hequr më 2026-07-16 pasi u provuan e s'punojnë — mos i shto prapa pa i testuar:
+#   Gazeta Express  — s'ka RSS fare (çdo variant kthen HTML)
+#   RTK Live        — 403, mbrojtje anti-bot, edhe me UA shfletuesi
+#   Gazeta Blic     — 403, e njëjta gjë
+#   Evropa e Lirë   — endpoint-i kthen RSS të vlefshëm por krejt bosh
+

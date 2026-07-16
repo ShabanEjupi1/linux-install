@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block body %}
+
+{% if run and run.finished_at and (run.ok is false) %}
+  <div class="note" style="border-color: var(--warn);">
+    <strong>Cikli i fundit pati gabime.</strong>
+    Disa burime mund të mos jenë përditësuar. Faqja tregon ç'ka arritur të marrë.
+  </div>
+{% endif %}
+
+<div class="note">
+  <strong>Çfarë tregon nota:</strong> sa redaksi të pavarura e raportojnë ngjarjen,
+  sa transparent është burimi dhe a i plotëson artikulli normat bazë gazetareske.
+  <strong>Çfarë nuk tregon:</strong> nëse historia është e vërtetë. Një raport
+  ekskluziv dhe i saktë merr notë të ulët korroborimi — nota mat provën, jo faktin.
+</div>
+
+<div class="filters">
+  <a href="/" class="{{ 'on' if not active }}">Të gjitha</a>
+  {% for key, (text, cls) in labels.items() %}
+    <a href="/?filtri={{ key }}" class="{{ 'on' if active == key }}">{{ text }}</a>
+  {% endfor %}
+</div>
+
+{% if not articles %}
+  <div class="card">
+    <h2>Ende asgjë për të treguar</h2>
+    <p class="meta">
+      Cikli i parë mund të mos ketë përfunduar. Portali mbush vetë — nuk ka çfarë të bësh.
+    </p>
+  </div>
+{% endif %}
+
+{% for a in articles %}
+  {% set text, cls = labels.get(a.label, ('E pavlerësuar', 'warn')) %}
+  <article class="card">
+    <div class="meta" style="margin-bottom:10px;">
+      <span class="badge {{ cls }}">{{ a.score }}/100 · {{ text }}</span>
+    </div>
+    <h2><a href="/artikulli/{{ a.id }}">{{ a.title }}</a></h2>
+    <div class="meta">
+      <span>{{ a.source_name }}</span>
+      <span>·</span>
+      <span>{{ a.published_at | kur }}</span>
+      <span>·</span>
+      <span>
+        {% if a.corroborators > 1 %}
+          {{ a.corroborators }} redaksi të pavarura
+        {% else %}
+          asnjë burim tjetër
+        {% endif %}
+      </span>
+    </div>
+    {% if a.llm_rationale %}
+      <p class="why">{{ a.llm_rationale }}</p>
+    {% elif a.reasons %}
+      <p class="why">{{ a.reasons[0] }}</p>
+    {% endif %}
+  </article>
+{% endfor %}
+
+{% if run %}
+  <p class="meta" style="margin-top:24px;">
+    Përditësimi i fundit: {{ run.started_at | kur }} —
+    {{ run.fetched }} artikuj të rinj, {{ run.scored }} të vlerësuar.
+  </p>
+{% endif %}
+
+{% endblock %}

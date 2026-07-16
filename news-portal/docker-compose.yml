@@ -1,0 +1,79 @@
+name: news-portal
+
+services:
+  news-db:
+    image: postgres:16-alpine
+    container_name: news-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: news
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD mungon në .env}
+      POSTGRES_DB: news
+    volumes:
+      # Në /mnt/data: vëllimi 100GB, jo disku i nisjes që është 66% i plotë.
+      - /mnt/data/news-portal/db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U news"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    mem_limit: 1g
+    networks: [news]
+
+  news-ollama:
+    image: ollama/ollama:latest
+    container_name: news-ollama
+    restart: unless-stopped
+    volumes:
+      - /mnt/data/news-portal/ollama:/root/.ollama
+    environment:
+      # Një model në memorie, i shkarkuar pas 5 min pasiviteti: jashtë ciklit
+      # të natës kjo lë 0 RAM të zënë.
+      OLLAMA_KEEP_ALIVE: "5m"
+      OLLAMA_MAX_LOADED_MODELS: "1"
+      OLLAMA_NUM_PARALLEL: "1"
+    # KUFIJTË JANË THELBI. Ampere ka 4 core dhe mban POS-in prodhues.
+    # Këto zbatohen nga kerneli (cgroups), jo nga sjellja e mirë e Ollama-s:
+    # edhe nëse modeli tenton të marrë gjithçka, s'kalon dot 2 core / 6GB.
+    #
+    # 6GB e jo 4GB: një model 7B q4 kërkon ~5GB dhe me kufi 4GB thjesht ngec pa
+    # gabim — provuar. Ampere ka ~10GB të lira; kjo lë ~4GB rezervë, dhe
+    # OLLAMA_KEEP_ALIVE=5m e liron krejt jashtë ciklit.
+    cpus: 2.0
+    mem_limit: 6g
+    networks: [news]
+
+  news-worker:
+    build: ./worker
+    container_name: news-worker
+    restart: unless-stopped
+    depends_on:
+      news-db: {condition: service_healthy}
+    environment:
+      DATABASE_URL: postgresql://news:${DB_PASSWORD}@news-db:5432/news
+      OLLAMA_URL: http://news-ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:3b-instruct-q4_K_M}
+      USE_LLM: ${USE_LLM:-1}
+      TZ: Europe/Belgrade
+    # Kufi më i ulët: worker-i pret rrjetin, s'llogarit.
+    cpus: 1.0
+    mem_limit: 768m
+    networks: [news]
+
+  news-web:
+    build: ./web
+    container_name: news-web
+    restart: unless-stopped
+    depends_on:
+      news-db: {condition: service_healthy}
+    environment:
+      DATABASE_URL: postgresql://news:${DB_PASSWORD}@news-db:5432/news
+    # Vetëm në localhost: publiku hyn përmes tunelit Cloudflare.
+    ports:
+      - "127.0.0.1:8145:8000"
+    mem_limit: 512m
+    networks: [news]
+
+networks:
+  news:
+    driver: bridge

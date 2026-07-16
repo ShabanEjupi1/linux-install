@@ -1,0 +1,28 @@
+# Secrets — never commit
+*.key
+*.pem
+.env
+**/.env
+cloudflared.deb
+server-credentials.txt
+
+# Cloudflare tunnel credentials
+*.json
+!cloudflare/*.yml
+
+# Supabase clone
+supabase/supabase-docker/
+
+# OS/editor cruft
+.DS_Store
+
+# Saved credentials (local only)
+credentials.local.txt
+vault-import.json
+
+# News portal local env
+news-portal/.env
+
+# Python
+__pycache__/
+*.pyc

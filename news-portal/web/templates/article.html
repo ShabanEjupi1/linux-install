@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}{{ a.title }} — SpaceNews{% endblock %}
+{% block body %}
+
+{% set text, cls = labels.get(a.label, ('E pavlerësuar', 'warn')) %}
+
+<div class="card">
+  <div class="meta" style="margin-bottom:12px;">
+    <span class="badge {{ cls }}">{{ a.score }}/100 · {{ text }}</span>
+  </div>
+  <h2 style="font-size:22px;">{{ a.title }}</h2>
+  <div class="meta">
+    <span>{{ a.source_name }}</span>
+    <span>·</span>
+    <span>{{ a.author or 'pa autor të nënshkruar' }}</span>
+    <span>·</span>
+    <span>{{ a.published_at | kur }}</span>
+  </div>
+  <p style="margin-top:14px;">
+    <a href="{{ a.url }}" rel="noopener nofollow" target="_blank">Lexo artikullin origjinal ↗</a>
+  </p>
+</div>
+
+{% if a.llm_rationale %}
+  <div class="card">
+    <h2>Pse kjo notë</h2>
+    <p style="margin:0; color:var(--muted);">{{ a.llm_rationale }}</p>
+    <p class="meta" style="margin-top:12px;">
+      Shpjegimi u gjenerua nga një model lokal ({{ a.llm_model }}) mbi sinjalet
+      më poshtë. Modeli nuk e cakton notën dhe nuk verifikon fakte — vetëm i
+      përshkruan sinjalet me fjalë.
+    </p>
+  </div>
+{% endif %}
+
+<div class="card">
+  <h2>Sinjalet e matura</h2>
+  {% set names = {
+    'corroboration': 'Korroborim i pavarur',
+    'source': 'Transparenca e burimit',
+    'craft': 'Normat gazetareske',
+    'language': 'Gjuha'
+  } %}
+  {% for key, c in a.components.items() %}
+    <div style="margin:14px 0; padding-bottom:14px;
+                border-bottom:1px solid var(--line);">
+      <div style="display:flex; justify-content:space-between; gap:12px; align-items:baseline;">
+        <strong style="font-size:14.5px;">{{ names.get(key, key) }}</strong>
+        <span class="meta">{{ (c.score * 100) | round | int }}/100 · peshë {{ (c.weight * 100) | round | int }}%</span>
+      </div>
+      <div style="height:5px; border-radius:3px; background:var(--surface-2); margin:8px 0;">
+        <div style="height:5px; border-radius:3px; width:{{ (c.score * 100) | round | int }}%;
+                    background:{{ 'var(--good)' if c.score >= 0.7 else ('var(--warn)' if c.score >= 0.4 else 'var(--bad)') }};"></div>
+      </div>
+      <div class="meta">{{ c.reason }}</div>
+    </div>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <h2>Të njëjtën ngjarje e raportojnë</h2>
+  {% if others %}
+    {% for o in others %}
+      <div style="margin:12px 0; padding-bottom:12px; border-bottom:1px solid var(--line);">
+        <a href="/artikulli/{{ o.id }}" style="text-decoration:none; font-size:14.5px;">{{ o.title }}</a>
+        <div class="meta" style="margin-top:4px;">
+          <span>{{ o.source_name }}</span>
+          <span>·</span>
+          <span>{{ o.published_at | kur }}</span>
+        </div>
+      </div>
+    {% endfor %}
+  {% else %}
+    <p style="margin:0; color:var(--muted); font-size:14.5px;">
+      Asnjë redaksi tjetër në listën tonë nuk e raporton këtë. Kjo nuk do të thotë
+      se historia është e rreme — mund të jetë ekskluzive, ose shumë e re, ose
+      jashtë burimeve që ndjekim. Do të thotë vetëm se nuk kemi asnjë provë të
+      pavarur në dorë.
+    </p>
+  {% endif %}
+</div>
+
+<p class="meta"><a href="/">← Të gjitha lajmet</a></p>
+
+{% endblock %}
