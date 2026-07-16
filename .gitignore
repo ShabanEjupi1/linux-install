@@ -9,6 +9,10 @@ server-credentials.txt
 # Cloudflare tunnel credentials
 *.json
 !cloudflare/*.yml
+# targets.json është konfigurim, jo kredencial — sekretet e watchtower-it rrinë
+# te /etc/watchtower/env në kuti. Pa këtë përjashtim `git add` e kapërcen NË
+# HESHTJE dhe skedari s'hyn kurrë në commit.
+!watchtower/targets.json
 
 # Supabase clone
 supabase/supabase-docker/

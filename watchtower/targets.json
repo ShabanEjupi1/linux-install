@@ -1,0 +1,39 @@
+{
+  "_koment": "Çfarë vëzhgon watchtower-i. Vetëm sipërfaqe publike + porta që s'kalojnë dot nga tuneli. Shto këtu kur ngre shërbim të ri.",
+
+  "_pse_mungon_porta_25": [
+    "SMTP :25 nuk monitorohet dot NGA kjo kuti, dhe s'duhet shtuar përsëri.",
+    "watchtower-i rri BRENDA Oracle-it, dhe Oracle e bllokon portën 25 DALËSE",
+    "në gjithë tenancy-n — pra kontrolli dështon gjithmonë, edhe kur Mailcow-i",
+    "është krejt i shëndoshë. Verifikuar më 2026-07-16: nga JASHTË Oracle-it",
+    "porta 25 e mail.spacecode.tech është E HAPUR; nga watchtower-i bën time-out;",
+    "ndërkohë 587 hapet normalisht, pra hosti arrihet — bllokimi është i portës,",
+    "jo i shërbimit. Një alarm që bërtet përjetë për diçka të shëndetshme është",
+    "më keq se asnjë alarm. Për ta mbuluar vërtet duhet një prober jashtë Oracle-it."
+  ],
+
+  "targets": [
+    {"name": "POS (pos.spacecode.tech)",        "url": "https://pos.spacecode.tech/login",       "expect_status": 200},
+    {"name": "Dyqani enisi.tech",               "url": "https://enisi.tech/",                    "expect_status": 200},
+    {"name": "SpaceNews (lajme)",               "url": "https://lajme.spacecode.tech/healthz",   "expect_status": 200, "expect_text": "true"},
+    {"name": "Portfolio shabanejupi.tech",      "url": "https://shabanejupi.tech/",              "expect_status": 200},
+    {"name": "SpaceCode landing",               "url": "https://spacecode.tech/",                "expect_status": 200},
+    {"name": "HalalBank",                       "url": "https://halalbankkosova.me/",            "expect_status": 200},
+    {"name": "SpaceRent",                       "url": "https://rent.spacecode.tech/",           "expect_status": 200},
+    {"name": "Tokerrgjik",                      "url": "https://tokerrgjik.shabanejupi.tech/",   "expect_status": 200},
+    {"name": "Jellyfin (filma)",                "url": "https://filma.spacecode.tech/",          "expect_status": 200},
+    {"name": "SpaceSocial (Akkoma)",            "url": "https://social.spacecode.tech/",         "expect_status": 200},
+    {"name": "SpaceCode Git (Gitea)",           "url": "https://git.spacecode.tech/",            "expect_status": 200},
+    {"name": "Vaultwarden",                     "url": "https://vault.spacecode.tech/",          "expect_status": 200},
+    {"name": "Supabase (Kong)",                 "url": "https://supabase.shabanejupi.tech/",     "expect_status": 401},
+    {"name": "Meilisearch",                     "url": "https://search.shabanejupi.tech/health", "expect_status": 200},
+    {"name": "Umami (audit)",                   "url": "https://audit.spacecode.tech/",          "expect_status": 200},
+    {"name": "code-server (cline)",             "url": "https://cline.spacecode.tech/",          "expect_status": 200},
+    {"name": "Webmail (Mailcow UI)",            "url": "https://webmail.spacecode.tech/",        "expect_status": 200},
+    {"name": "SpaceMeet (Jitsi)",               "url": "https://meet.shabanejupi.tech/",         "expect_status": 200},
+
+    {"name": "Mailcow submission :587",         "type": "tcp", "host": "mail.spacecode.tech", "port": 587},
+    {"name": "Mailcow IMAP :993",               "type": "tcp", "host": "mail.spacecode.tech", "port": 993},
+    {"name": "Ampere SSH :22",                  "type": "tcp", "host": "143.47.190.37",       "port": 22}
+  ]
+}
