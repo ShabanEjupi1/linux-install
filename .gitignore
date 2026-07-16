@@ -23,6 +23,8 @@ supabase/supabase-docker/
 # Saved credentials (local only)
 credentials.local.txt
 vault-import.json
+# rotate-credentials.sh writes live secrets here before they reach Vaultwarden
+vault-additions.json
 
 # News portal local env
 news-portal/.env
