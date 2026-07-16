@@ -1,0 +1,199 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+<Layout title="Enisi — Kids' clothes, shoes & cosmetics" description="Enisi online store: children's clothes, shoes and cosmetics.">
+  <header class="top">
+    <div class="wrap bar">
+      <a href="/" class="logo">🧸 Enisi</a>
+      <nav id="catbar" class="catbar"></nav>
+      <button id="cartBtn" class="cart">🛒 Cart <span id="cartCount" class="badge">0</span></button>
+    </div>
+  </header>
+
+  <section class="hero"><div class="wrap">
+    <h1>Everything for your little ones.</h1>
+    <p>Clothes, shoes and gentle cosmetics for babies and kids — quality you can trust.</p>
+  </div></section>
+
+  <main class="wrap">
+    <div id="grid" class="grid"><p>Loading products…</p></div>
+  </main>
+
+  <!-- cart drawer -->
+  <div id="overlay" class="overlay"></div>
+  <aside id="drawer" class="drawer">
+    <div class="dhead"><strong>Your cart</strong><button id="closeCart" class="ghost">✕</button></div>
+    <div id="cartItems" class="citems"></div>
+    <div class="dfoot">
+      <div class="total"><span>Total</span><span id="cartTotal">€0.00</span></div>
+      <button id="checkoutBtn" style="width:100%">Checkout</button>
+    </div>
+  </aside>
+
+  <!-- checkout modal -->
+  <div id="coModal" class="modal">
+    <div class="card">
+      <div class="dhead"><strong>Checkout</strong><button id="closeCo" class="ghost">✕</button></div>
+      <div id="coForm">
+        <label>Full name</label><input id="c-name" />
+        <label>Email</label><input id="c-email" type="email" />
+        <label>Delivery address</label><input id="c-addr" />
+        <label>Phone</label><input id="c-phone" />
+        <div class="err" id="c-err"></div>
+        <button id="placeBtn" style="width:100%;margin-top:14px">Place order · <span id="coTotal">€0.00</span></button>
+      </div>
+      <div id="coDone" hidden class="done">
+        <div class="check">✓</div>
+        <p>Order placed! Thank you.</p>
+        <p class="muted">Order ref: <span id="orderId"></span></p>
+        <button id="coDoneClose" style="margin-top:14px">Continue shopping</button>
+      </div>
+    </div>
+  </div>
+
+  <style>
+    .top { background:#fff; border-bottom:1px solid #f3dde7; position:sticky; top:0; z-index:20; }
+    .bar { display:flex; align-items:center; gap:16px; height:66px; }
+    .logo { font-weight:800; font-size:1.3rem; color:var(--brand); }
+    .catbar { display:flex; gap:6px; flex:1; flex-wrap:wrap; }
+    .catbar button { background:#fdeef4; color:var(--muted); padding:8px 14px; }
+    .catbar button.active { background:var(--brand); color:#fff; }
+    .cart { position:relative; }
+    .badge { background:#fff; color:var(--brand); border-radius:999px; padding:1px 8px; font-size:.8rem; margin-left:4px; }
+    .hero { padding:40px 0 10px; text-align:center; }
+    .hero h1 { font-size:clamp(1.8rem,5vw,2.8rem); }
+    .hero p { color:var(--muted); margin-top:10px; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:20px; padding:28px 0 60px; }
+    .prod { background:var(--card); border:1px solid #f3dde7; border-radius:16px; overflow:hidden; display:flex; flex-direction:column; }
+    .prod img { width:100%; aspect-ratio:1; object-fit:cover; background:#f7e9f0; }
+    .prod .info { padding:14px; display:flex; flex-direction:column; gap:6px; flex:1; }
+    .prod .name { font-weight:600; }
+    .prod .desc { color:var(--muted); font-size:.85rem; flex:1; }
+    .prod .price { font-weight:800; color:var(--brand); font-size:1.1rem; }
+    .prod button { margin:0 14px 14px; }
+    .overlay { position:fixed; inset:0; background:rgba(20,10,25,.4); opacity:0; pointer-events:none; transition:.2s; z-index:30; }
+    .overlay.show { opacity:1; pointer-events:auto; }
+    .drawer { position:fixed; top:0; right:-420px; width:390px; max-width:92vw; height:100%; background:#fff; z-index:40; transition:.25s; display:flex; flex-direction:column; }
+    .drawer.show { right:0; }
+    .dhead { display:flex; justify-content:space-between; align-items:center; padding:18px; border-bottom:1px solid #f3dde7; }
+    .dhead .ghost { padding:6px 12px; }
+    .citems { flex:1; overflow:auto; padding:10px 18px; }
+    .ci { display:flex; gap:12px; padding:12px 0; border-bottom:1px solid #f7ecf1; align-items:center; }
+    .ci img { width:56px; height:56px; border-radius:10px; object-fit:cover; }
+    .ci .g { flex:1; }
+    .ci .qty { display:flex; align-items:center; gap:8px; margin-top:4px; }
+    .ci .qty button { padding:2px 10px; background:#fdeef4; color:var(--brand); }
+    .dfoot { padding:18px; border-top:1px solid #f3dde7; }
+    .total { display:flex; justify-content:space-between; font-weight:800; margin-bottom:12px; font-size:1.1rem; }
+    .modal { position:fixed; inset:0; background:rgba(20,10,25,.5); z-index:50; display:none; align-items:center; justify-content:center; padding:20px; }
+    .modal.show { display:flex; }
+    .modal .card { background:#fff; border-radius:18px; width:420px; max-width:100%; padding:22px; }
+    .muted { color:var(--muted); }
+    .done { text-align:center; padding:20px 0; }
+    .done .check { width:56px; height:56px; border-radius:50%; background:var(--brand); color:#fff; font-size:1.8rem; display:flex; align-items:center; justify-content:center; margin:0 auto 12px; }
+  </style>
+
+  <script>
+    const URL = import.meta.env.PUBLIC_SUPABASE_URL;
+    const KEY = import.meta.env.PUBLIC_SUPABASE_ANON_KEY;
+    const H = { apikey: KEY, Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' };
+    const $ = (id) => document.getElementById(id);
+    const eur = (n) => '€' + Number(n).toFixed(2);
+
+    let PRODUCTS = [], CATS = [], active = 'all';
+    let cart = JSON.parse(localStorage.getItem('enisi_cart') || '[]');
+
+    const saveCart = () => { localStorage.setItem('enisi_cart', JSON.stringify(cart)); renderCart(); };
+    const cartTotal = () => cart.reduce((s, i) => s + i.price * i.qty, 0);
+
+    async function boot() {
+      const [pc, cc] = await Promise.all([
+        fetch(`${URL}/rest/v1/products?select=id,name,price,description,image_url,category_id&order=featured.desc`, { headers: H }).then(r => r.json()),
+        fetch(`${URL}/rest/v1/categories?select=id,slug,name&order=sort.asc`, { headers: H }).then(r => r.json()),
+      ]);
+      PRODUCTS = Array.isArray(pc) ? pc : [];
+      CATS = Array.isArray(cc) ? cc : [];
+      renderCats(); renderGrid(); renderCart();
+    }
+
+    function renderCats() {
+      const bar = $('catbar');
+      const mk = (key, label) => `<button data-cat="${key}" class="${active===key?'active':''}">${label}</button>`;
+      bar.innerHTML = mk('all','All') + CATS.map(c => mk(c.id, c.name)).join('');
+      bar.querySelectorAll('button').forEach(b => b.onclick = () => { active = b.dataset.cat; renderCats(); renderGrid(); });
+    }
+
+    function renderGrid() {
+      const grid = $('grid');
+      const list = active === 'all' ? PRODUCTS : PRODUCTS.filter(p => String(p.category_id) === String(active));
+      if (!list.length) { grid.innerHTML = '<p>No products.</p>'; return; }
+      grid.innerHTML = list.map(p => `
+        <div class="prod">
+          <img src="${p.image_url}" alt="${p.name}" loading="lazy" />
+          <div class="info">
+            <div class="name">${p.name}</div>
+            <div class="desc">${p.description || ''}</div>
+            <div class="price">${eur(p.price)}</div>
+          </div>
+          <button data-add="${p.id}">Add to cart</button>
+        </div>`).join('');
+      grid.querySelectorAll('[data-add]').forEach(b => b.onclick = () => addToCart(b.dataset.add));
+    }
+
+    function addToCart(id) {
+      const p = PRODUCTS.find(x => x.id === id); if (!p) return;
+      const ex = cart.find(i => i.id === id);
+      if (ex) ex.qty++; else cart.push({ id: p.id, name: p.name, price: Number(p.price), image: p.image_url, qty: 1 });
+      saveCart(); openCart();
+    }
+    function setQty(id, d) {
+      const it = cart.find(i => i.id === id); if (!it) return;
+      it.qty += d; if (it.qty <= 0) cart = cart.filter(i => i.id !== id);
+      saveCart();
+    }
+
+    function renderCart() {
+      $('cartCount').textContent = cart.reduce((s,i)=>s+i.qty,0);
+      $('cartTotal').textContent = eur(cartTotal());
+      $('coTotal').textContent = eur(cartTotal());
+      const box = $('cartItems');
+      if (!cart.length) { box.innerHTML = '<p class="muted" style="padding:20px 0">Your cart is empty.</p>'; return; }
+      box.innerHTML = cart.map(i => `
+        <div class="ci">
+          <img src="${i.image}" alt="">
+          <div class="g"><div>${i.name}</div><div class="muted">${eur(i.price)}</div>
+            <div class="qty"><button data-dec="${i.id}">−</button><span>${i.qty}</span><button data-inc="${i.id}">+</button></div>
+          </div>
+          <strong>${eur(i.price*i.qty)}</strong>
+        </div>`).join('');
+      box.querySelectorAll('[data-inc]').forEach(b=>b.onclick=()=>setQty(b.dataset.inc,1));
+      box.querySelectorAll('[data-dec]').forEach(b=>b.onclick=()=>setQty(b.dataset.dec,-1));
+    }
+
+    const openCart = () => { $('drawer').classList.add('show'); $('overlay').classList.add('show'); };
+    const closeCart = () => { $('drawer').classList.remove('show'); $('overlay').classList.remove('show'); };
+    $('cartBtn').onclick = openCart; $('closeCart').onclick = closeCart; $('overlay').onclick = closeCart;
+
+    $('checkoutBtn').onclick = () => { if (!cart.length) return; $('coModal').classList.add('show'); };
+    $('closeCo').onclick = () => $('coModal').classList.remove('show');
+
+    $('placeBtn').onclick = async () => {
+      $('c-err').textContent = '';
+      const body = {
+        p_name: $('c-name').value.trim(), p_email: $('c-email').value.trim(),
+        p_address: $('c-addr').value.trim(), p_phone: $('c-phone').value.trim(),
+        p_items: cart.map(i => ({ id: i.id, qty: i.qty })),
+      };
+      if (!body.p_name || !body.p_email) { $('c-err').textContent = 'Name and email are required.'; return; }
+      const res = await fetch(`${URL}/rest/v1/rpc/place_order`, { method:'POST', headers: H, body: JSON.stringify(body) });
+      if (!res.ok) { $('c-err').textContent = 'Could not place order. Please try again.'; return; }
+      const orderId = await res.json();
+      cart = []; saveCart();
+      $('coForm').hidden = true; $('coDone').hidden = false;
+      $('orderId').textContent = String(orderId).slice(0, 8);
+    };
+    $('coDoneClose').onclick = () => { $('coModal').classList.remove('show'); $('coForm').hidden=false; $('coDone').hidden=true; closeCart(); };
+
+    boot();
+  </script>
+</Layout>

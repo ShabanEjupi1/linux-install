@@ -1,0 +1,66 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { SITES } from '../config';
+
+// BRAND is injected at build time (Docker build arg). Falls back for local dev.
+const brand = (import.meta.env.BRAND as string) || process.env.BRAND || 'shabanejupi';
+const site = SITES[brand] ?? SITES.shabanejupi;
+---
+<Layout title={`${site.name} — ${site.tagline}`} description={site.intro} accent={site.accent}>
+  <div class="wrap">
+    <header>
+      <span class="logo">{site.name}</span>
+      <nav>
+        <a href="#about">About</a>
+        <a href="#services">Services</a>
+        <a href="#contact">Contact</a>
+      </nav>
+    </header>
+
+    <section class="hero">
+      <h1>{site.tagline}</h1>
+      <p>{site.intro}</p>
+      <a class="btn" href="#contact">Get in touch</a>
+    </section>
+
+    <section id="services">
+      <h2>What we do</h2>
+      <div class="grid">
+        {site.services.map((s) => (
+          <article class="card">
+            <h3>{s.title}</h3>
+            <p>{s.body}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+
+    <section id="contact" class="contact">
+      <h2>Contact</h2>
+      <p>Email: <a class="accent" href={`mailto:${site.email}`}>{site.email}</a></p>
+      <p>{site.domain}</p>
+    </section>
+
+    <footer>
+      © {new Date().getFullYear()} {site.name} · {site.domain} · built with Astro
+    </footer>
+  </div>
+
+  <style>
+    .hero { padding: 80px 0 48px; }
+    .hero h1 { font-size: clamp(2rem, 6vw, 3.5rem); line-height: 1.1; letter-spacing: -0.02em; }
+    .hero p { font-size: 1.15rem; color: #555; max-width: 620px; margin-top: 20px; }
+    .btn {
+      display: inline-block; margin-top: 28px; padding: 12px 26px;
+      background: var(--accent); color: #fff; text-decoration: none;
+      border-radius: 8px; font-weight: 600;
+    }
+    h2 { font-size: 1.75rem; margin-bottom: 24px; }
+    #services { padding-top: 32px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; }
+    .card { border: 1px solid #eee; border-radius: 12px; padding: 24px; }
+    .card h3 { margin-bottom: 8px; }
+    .card p { color: #666; }
+    .contact { padding-top: 56px; }
+  </style>
+</Layout>

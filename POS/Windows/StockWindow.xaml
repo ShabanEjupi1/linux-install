@@ -1,0 +1,171 @@
+﻿<Window x:Class="KosovaPOS.Windows.StockWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Stoqet - Stock Management" Height="850" Width="1300"
+        WindowState="Maximized"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource BackgroundColor}">
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header with summary stats -->
+        <Border Grid.Row="0" Style="{StaticResource ModernCard}" Margin="0,0,0,10">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Title -->
+                <StackPanel Grid.Column="0" Margin="0,0,10,0" VerticalAlignment="Center">
+                    <TextBlock Text="&#x1F4E6; Menaxhimi i Stoqeve" FontSize="20" FontWeight="SemiBold"
+                               Foreground="{StaticResource PrimaryColor}"/>
+                    <TextBlock x:Name="LastUpdatedText" Text="P&#x00EB;rdit&#x00EB;suar: &#x2013;" FontSize="12"
+                               Foreground="{StaticResource TextSecondary}" Margin="0,4,0,0"/>
+                </StackPanel>
+
+                <Border Grid.Column="1" Background="#0284C7" CornerRadius="6" Padding="12" Margin="5,0">
+                    <StackPanel>
+                        <TextBlock Text="&#x1F4E6;" FontSize="18" HorizontalAlignment="Center"/>
+                        <TextBlock Text="Gjithsej artikuj" FontSize="12" Foreground="White"
+                                   HorizontalAlignment="Center" Margin="0,3,0,0"/>
+                        <TextBlock x:Name="TotalArticlesText" Text="0" FontSize="22" FontWeight="Bold"
+                                   Foreground="White" HorizontalAlignment="Center" Margin="0,2,0,0"/>
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Column="2" Background="#059669" CornerRadius="6" Padding="12" Margin="5,0">
+                    <StackPanel>
+                        <TextBlock Text="&#x2705;" FontSize="18" HorizontalAlignment="Center"/>
+                        <TextBlock Text="N&#x00EB; stok" FontSize="12" Foreground="White"
+                                   HorizontalAlignment="Center" Margin="0,3,0,0"/>
+                        <TextBlock x:Name="InStockText" Text="0" FontSize="22" FontWeight="Bold"
+                                   Foreground="White" HorizontalAlignment="Center" Margin="0,2,0,0"/>
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Column="3" Background="#D97706" CornerRadius="6" Padding="12" Margin="5,0">
+                    <StackPanel>
+                        <TextBlock Text="&#x26A0;" FontSize="18" HorizontalAlignment="Center"/>
+                        <TextBlock Text="Stok i ul&#x00EB;t" FontSize="12" Foreground="White"
+                                   HorizontalAlignment="Center" Margin="0,3,0,0"/>
+                        <TextBlock x:Name="LowStockText" Text="0" FontSize="22" FontWeight="Bold"
+                                   Foreground="White" HorizontalAlignment="Center" Margin="0,2,0,0"/>
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Column="4" Background="#DC2626" CornerRadius="6" Padding="12" Margin="5,0,0,0" Width="160">
+                    <StackPanel>
+                        <TextBlock Text="&#x274C;" FontSize="18" HorizontalAlignment="Center"/>
+                        <TextBlock Text="Jasht&#x00EB; stoku" FontSize="12" Foreground="White"
+                                   HorizontalAlignment="Center" Margin="0,3,0,0"/>
+                        <TextBlock x:Name="OutOfStockText" Text="0" FontSize="22" FontWeight="Bold"
+                                   Foreground="White" HorizontalAlignment="Center" Margin="0,2,0,0"/>
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Border>
+
+        <!-- Filter Bar -->
+        <Border Grid.Row="1" Style="{StaticResource ModernCard}" Margin="0,0,0,10">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="260"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="180"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="&#x1F50D; K&#x00EB;rko:" VerticalAlignment="Center"
+                           Margin="0,0,8,0" FontWeight="SemiBold"/>
+                <TextBox Grid.Column="1" x:Name="SearchTextBox" Height="36"
+                         VerticalContentAlignment="Center"
+                         TextChanged="SearchTextBox_TextChanged"
+                         ToolTip="K&#x00EB;rko sipas emrit, barkodit ose kategori&#x00EB;s"/>
+                <TextBlock Grid.Column="2" Text="Filtro:" VerticalAlignment="Center" Margin="16,0,8,0"/>
+                <ComboBox Grid.Column="3" x:Name="FilterCombo" Height="36"
+                          SelectionChanged="Filter_SelectionChanged" SelectedIndex="0">
+                    <ComboBoxItem>T&#x00EB; gjith&#x00EB; artikujt</ComboBoxItem>
+                    <ComboBoxItem>N&#x00EB; stok</ComboBoxItem>
+                    <ComboBoxItem>Jasht&#x00EB; stoku</ComboBoxItem>
+                    <ComboBoxItem>Stok i ul&#x00EB;t (&lt;10)</ComboBoxItem>
+                    <ComboBoxItem>Stok kritik (&lt;5)</ComboBoxItem>
+                </ComboBox>
+                <TextBlock Grid.Column="4" x:Name="ResultCountText" VerticalAlignment="Center"
+                           Margin="16,0,0,0" FontStyle="Italic" Foreground="Gray"/>
+                <Button Grid.Column="5" Content="&#x1F504; Rifresko" Style="{StaticResource ModernButton}"
+                        Click="Refresh_Click" Width="115" Margin="0,0,8,0"/>
+                <Button Grid.Column="6" Content="&#x1F4CA; Eksporto Excel" Style="{StaticResource ModernButton}"
+                        Click="ExportExcel_Click" Width="155" Margin="0,0,8,0" Background="#059669"/>
+                <Button Grid.Column="7" Content="&#x1F6AA; Mbyll" Style="{StaticResource ModernButton}"
+                        Click="Close_Click" Width="110"
+                        Background="{StaticResource DangerColor}"/>
+            </Grid>
+        </Border>
+
+        <!-- Stock DataGrid -->
+        <Border Grid.Row="2" Style="{StaticResource ModernCard}">
+            <DataGrid x:Name="StockDataGrid"
+                      Style="{StaticResource POSDataGrid}"
+                      AutoGenerateColumns="False"
+                      SelectionMode="Single"
+                      SelectionUnit="FullRow"
+                      MouseDoubleClick="StockDataGrid_MouseDoubleClick">
+                <DataGrid.RowStyle>
+                    <Style TargetType="DataGridRow">
+                        <Setter Property="Cursor" Value="Hand"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsOutOfStock}" Value="True">
+                                <Setter Property="Background" Value="#FEE2E2"/>
+                                <Setter Property="Foreground" Value="#991B1B"/>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding IsLowStock}" Value="True">
+                                <Setter Property="Background" Value="#FEF3C7"/>
+                                <Setter Property="Foreground" Value="#92400E"/>
+                            </DataTrigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter Property="Background" Value="#0284C7"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </Trigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsMouseOver" Value="True"/>
+                                    <Condition Property="IsSelected" Value="False"/>
+                                </MultiTrigger.Conditions>
+                                <Setter Property="Background" Value="#E0F2FE"/>
+                            </MultiTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </DataGrid.RowStyle>
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="55"/>
+                    <DataGridTextColumn Header="Barkodi" Binding="{Binding Barcode}" Width="130"/>
+                    <DataGridTextColumn Header="Emri i Artikullit" Binding="{Binding Name}" Width="*"/>
+                    <DataGridTextColumn Header="Nj&#x00EB;sia" Binding="{Binding Unit}" Width="75"/>
+                    <DataGridTextColumn Header="&#x00C7;mimi (&#x20AC;)" Binding="{Binding SalesPrice, StringFormat=N2}" Width="110"/>
+                    <DataGridTextColumn Header="Stoku" Binding="{Binding StockQuantity, StringFormat=N0}" Width="90"/>
+                    <DataGridTextColumn Header="Hyrje" Binding="{Binding StockIn, StringFormat=N0}" Width="90"/>
+                    <DataGridTextColumn Header="Dalje" Binding="{Binding StockOut, StringFormat=N0}" Width="90"/>
+                    <DataGridTextColumn Header="Kategoria" Binding="{Binding Category}" Width="130"/>
+                </DataGrid.Columns>
+            </DataGrid>
+        </Border>
+
+        <!-- Info footer -->
+        <TextBlock Grid.Row="3" Margin="0,8,0,0" FontSize="12"
+                   Foreground="{StaticResource TextSecondary}" HorizontalAlignment="Center"
+                   Text="&#x1F4A1; Klikoni dy her&#x00EB; mbi nj&#x00EB; artikull p&#x00EB;r t&#x00EB; ndryshuar stoqen   |   &#x1F534; E kuqe = jasht&#x00EB; stoku   |   &#x1F7E1; Verdh&#x00EB; = stok i ul&#x00EB;t"/>
+    </Grid>
+</Window>

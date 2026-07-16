@@ -1,0 +1,250 @@
+<Window x:Class="KosovaPOS.Windows.BarcodeWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="&#x1F3F7; Printimi i Barkodeve" Height="800" Width="1100"
+        WindowState="Maximized"
+        WindowStartupLocation="CenterScreen"
+        Background="#0F766E"
+        KeyDown="Window_KeyDown">
+    
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        
+        <!-- Header - Distinct teal design -->
+        <Border Grid.Row="0" Padding="20">
+            <Border.Background>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                    <GradientStop Color="#0F766E" Offset="0"/>
+                    <GradientStop Color="#0D9488" Offset="0.5"/>
+                    <GradientStop Color="#14B8A6" Offset="1"/>
+                </LinearGradientBrush>
+            </Border.Background>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                
+                <StackPanel Grid.Column="0" Orientation="Horizontal">
+                    <TextBlock Text="&#x1F3F7;" FontSize="40" VerticalAlignment="Center" Margin="0,0,15,0"/>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="PRINTIMI I BARKODEVE" FontSize="20" FontWeight="SemiBold" Foreground="White"/>
+                        <TextBlock Text="Zgjidhni artikujt dhe printoni etiketat" FontSize="14" Foreground="#A7F3D0"/>
+                    </StackPanel>
+                </StackPanel>
+                
+                <!-- Search in header -->
+                <Border Grid.Column="1" Background="White" CornerRadius="6" Padding="0" Margin="40,0" MaxWidth="500">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="&#x1F50D;" FontSize="20" VerticalAlignment="Center" Margin="12,0,8,0"/>
+                        <TextBox x:Name="SearchTextBox" Grid.Column="1" 
+                                 FontSize="14" BorderThickness="0"
+                                 VerticalContentAlignment="Center" Padding="0,12"
+                                 TextChanged="SearchTextBox_TextChanged"/>
+                    </Grid>
+                </Border>
+                
+                <!-- Print Queue Info & Close -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal">
+                    <Border Background="#10B981" CornerRadius="6" Padding="20,12" Margin="0,0,10,0">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#x1F5A8;" FontSize="20" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="RADHË PRINTIMI" Foreground="White" FontSize="14"/>
+                                <TextBlock x:Name="PrintQueueCountText" Text="0 artikuj" Foreground="White" FontSize="14" FontWeight="SemiBold"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                    <Button Content="&#x2715; Mbyll" Click="CloseButton_Click"
+                            Background="#475569" Foreground="White" Padding="10,0"
+                            Height="36" VerticalAlignment="Center"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+        
+        <!-- Main Content - Side by side layout -->
+        <Grid Grid.Row="1" Margin="20">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="350"/>
+            </Grid.ColumnDefinitions>
+            
+            <!-- Articles List (Left) -->
+            <Border Grid.Column="0" Background="White" CornerRadius="6" Margin="0,0,15,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    
+                    <Border Grid.Row="0" Background="#F0FDFA" Padding="15" CornerRadius="6,6,0,0">
+                        <Grid>
+                            <TextBlock Text="&#x1F4E6; Lista e Artikujve" FontSize="16" FontWeight="SemiBold" Foreground="#0F766E"/>
+                            <TextBlock x:Name="ResultCountText" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                       Foreground="#64748B" FontStyle="Italic"/>
+                        </Grid>
+                    </Border>
+                    
+                    <DataGrid x:Name="ArticlesDataGrid" Grid.Row="1" 
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True"
+                              CanUserAddRows="False"
+                              SelectionMode="Extended"
+                              BorderThickness="0"
+                              RowHeight="45"
+                              FontSize="14"
+                              Background="White"
+                              GridLinesVisibility="Horizontal"
+                              HorizontalGridLinesBrush="#E5E7EB"
+                              SelectionChanged="ArticlesDataGrid_SelectionChanged">
+                        <DataGrid.RowStyle>
+                            <Style TargetType="DataGridRow">
+                                <Setter Property="Background" Value="White"/>
+                                <Style.Triggers>
+                                    <Trigger Property="IsSelected" Value="True">
+                                        <Setter Property="Background" Value="#CCFBF1"/>
+                                    </Trigger>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter Property="Background" Value="#F0FDFA"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </DataGrid.RowStyle>
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Barkodi" Binding="{Binding Barcode}" Width="130"/>
+                            <DataGridTextColumn Header="Emërtimi" Binding="{Binding Name}" Width="*"/>
+                            <DataGridTextColumn Header="Çmimi" Binding="{Binding SalesPrice, StringFormat='€ {0:N2}'}" Width="100">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground" Value="#0F766E"/>
+                                        <Setter Property="FontWeight" Value="SemiBold"/>
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTextColumn Header="Stoku" Binding="{Binding StockQuantity, StringFormat=N0}" Width="80"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </Border>
+            
+            <!-- Print Queue (Right) -->
+            <Border Grid.Column="1" Background="White" CornerRadius="6">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    
+                    <Border Grid.Row="0" Background="#0F766E" Padding="15" CornerRadius="6,6,0,0">
+                        <StackPanel>
+                            <TextBlock Text="&#x1F5A8; RADHA E PRINTIMIT" FontSize="16" FontWeight="SemiBold" Foreground="White"/>
+                            <TextBlock Text="Artikujt për tu printuar" FontSize="14" Foreground="#A7F3D0" Margin="0,4,0,0"/>
+                        </StackPanel>
+                    </Border>
+                    
+                    <ListBox x:Name="PrintQueueListBox" Grid.Row="1" 
+                             BorderThickness="0"
+                             SelectionMode="Extended"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border Background="#F8FAFC" CornerRadius="6" Padding="12" Margin="4">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock Text="{Binding Article.Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                            <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                                <TextBlock Text="{Binding Article.Barcode}" Foreground="#64748B" FontSize="14"/>
+                                                <TextBlock Text=" • " Foreground="#64748B"/>
+                                                <TextBlock Text="{Binding Article.SalesPrice, StringFormat='€{0:N2}'}" Foreground="#0F766E" FontWeight="SemiBold" FontSize="14"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Button Content="-" Width="36" Height="36" 
+                                                    Background="#F87171" Foreground="White" FontWeight="SemiBold"
+                                                    Click="DecreasePrintQuantity_Click" Tag="{Binding}"/>
+                                            <TextBlock Text="{Binding Quantity}" Width="35" TextAlignment="Center" 
+                                                       VerticalAlignment="Center" FontWeight="SemiBold" FontSize="14"/>
+                                            <Button Content="+" Width="36" Height="36" 
+                                                    Background="#10B981" Foreground="White" FontWeight="SemiBold"
+                                                    Click="IncreasePrintQuantity_Click" Tag="{Binding}"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                    
+                    <!-- Print Actions -->
+                    <Border Grid.Row="2" Background="#F8FAFC" Padding="15" CornerRadius="0,0,6,6">
+                        <StackPanel>
+                            <Grid Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Kopje për artikull:" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                                    <Button x:Name="DecreaseCopiesButton" Content="-" Width="36" Height="36"
+                                            Background="#F87171" Foreground="White" FontSize="14" FontWeight="SemiBold"
+                                            Click="DecreaseCopiesButton_Click"/>
+                                    <TextBox x:Name="CopiesTextBox" Style="{StaticResource ModernTextBox}" Width="60" Text="1" Height="36"
+                                             VerticalContentAlignment="Center" TextAlignment="Center"
+                                             FontSize="14" Margin="5,0"/>
+                                    <Button x:Name="IncreaseCopiesButton" Content="+" Width="36" Height="36"
+                                            Background="#10B981" Foreground="White" FontSize="14" FontWeight="SemiBold"
+                                            Click="IncreaseCopiesButton_Click"/>
+                                </StackPanel>
+                            </Grid>
+
+                            <Button x:Name="AddSelectedButton" Content="&#xf560; Shto të zgjedhurat" 
+                                    Height="36" FontSize="14" FontWeight="SemiBold"
+                                    Background="#0D9488" Foreground="White" Margin="0,0,0,8"
+                                    Click="AddSelectedButton_Click"/>
+                            
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Button x:Name="ClearQueueButton" Grid.Column="0" Content="&#x1F5D1; Pastro" 
+                                        Height="36" FontSize="14" Margin="0,0,4,0"
+                                        Background="#64748B" Foreground="White"
+                                        Click="ClearQueueButton_Click"/>
+                                <Button x:Name="PrintButton" Grid.Column="1" Content="&#x1F5A8; PRINTO" 
+                                        Height="44" FontSize="14" FontWeight="SemiBold" Margin="4,0,0,0"
+                                        Background="#0F766E" Foreground="White"
+                                        Click="PrintButton_Click"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </Border>
+        </Grid>
+        
+        <!-- Footer -->
+        <Border Grid.Row="2" Background="#134E4A" Padding="15">
+            <Grid>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
+                    <TextBlock Text="&#x1F5A8; Printer: " Foreground="#99F6E4" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="PrinterNameText" Text="HPRT LPQ80" Foreground="White" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    <TextBlock Text="  |  &#x1F4D0; Madhësia: " Foreground="#99F6E4" VerticalAlignment="Center" Margin="20,0,0,0"/>
+                    <TextBlock x:Name="LabelSizeText" Text="55x25mm" Foreground="White" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

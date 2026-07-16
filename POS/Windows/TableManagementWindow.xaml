@@ -1,0 +1,308 @@
+﻿<Window x:Class="KosovaPOS.Windows.TableManagementWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="&#x1FA91; Menaxhimi i Tavolinave" 
+        Height="900" Width="1600"
+        WindowStartupLocation="CenterScreen"
+        WindowState="Maximized"
+        Background="#F8FAFC">
+
+    <Window.Resources>
+        <!-- Table Button Style -->
+        <Style x:Key="TableButton" TargetType="Button">
+            <Setter Property="Width" Value="140"/>
+            <Setter Property="Height" Value="140"/>
+            <Setter Property="Margin" Value="10"/>
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border" 
+                                Background="{TemplateBinding Background}" 
+                                CornerRadius="6"
+                                Padding="12">
+                            <Border.Effect>
+                                <DropShadowEffect Color="#000000" Opacity="0.15" BlurRadius="15" ShadowDepth="5" Direction="270"/>
+                            </Border.Effect>
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Grid.Row="0" 
+                                           Text="{TemplateBinding Tag}" 
+                                           FontSize="14" 
+                                           FontWeight="SemiBold"
+                                           HorizontalAlignment="Center"
+                                           Margin="0,0,0,8"/>
+                                
+                                <Viewbox Grid.Row="1" Stretch="Uniform" Margin="0,4">
+                                    <TextBlock Text="&#x1FA91;" FontSize="48"/>
+                                </Viewbox>
+                                
+                                <ContentPresenter Grid.Row="2" 
+                                                  HorizontalAlignment="Center" 
+                                                  VerticalAlignment="Center"/>
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="RenderTransform">
+                                    <Setter.Value>
+                                        <ScaleTransform ScaleX="1.05" ScaleY="1.05"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Status Badge -->
+        <Style x:Key="StatusBadge" TargetType="Border">
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="8,4"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Border Grid.Row="0" Padding="30,25">
+            <Border.Background>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                    <GradientStop Color="#0F766E" Offset="0"/>
+                    <GradientStop Color="#065F46" Offset="1"/>
+                </LinearGradientBrush>
+            </Border.Background>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                    <TextBlock Text="&#x1FA91; Menaxhimi i Tavolinave" 
+                               FontSize="20" FontWeight="SemiBold" 
+                               Foreground="White"/>
+                    <TextBlock Text="Menaxho tavolinat, rezervimet dhe shërbimin në restorant"
+                               FontSize="14" Foreground="White" Opacity="0.95"
+                               Margin="0,8,0,0"/>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <Button Content="&#x2795; Shto Tavolinë" 
+                            Click="AddTable_Click"
+                            Background="#22C55E"
+                            Foreground="White"
+                            BorderThickness="0"
+                            Padding="10,0"
+                            Height="44"
+                            FontSize="14"
+                            FontWeight="SemiBold"
+                            Cursor="Hand"
+                            Margin="0,0,10,0"/>
+                    <Button Content="&#x1F4C5; Rezervimet" 
+                            Click="Reservations_Click"
+                            Background="#3B82F6"
+                            Foreground="White"
+                            BorderThickness="0"
+                            Padding="10,0"
+                            Height="36"
+                            FontSize="14"
+                            FontWeight="SemiBold"
+                            Cursor="Hand"
+                            Margin="0,0,10,0"/>
+                    <Button Content="&#x2715; Mbyll" 
+                            Click="CloseButton_Click"
+                            Background="#64748B"
+                            Foreground="White"
+                            BorderThickness="0"
+                            Padding="10,0"
+                            Height="36"
+                            FontSize="14"
+                            FontWeight="SemiBold"
+                            Cursor="Hand"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Main Content -->
+        <Grid Grid.Row="1" Margin="30">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="3*"/>
+                <ColumnDefinition Width="20"/>
+                <ColumnDefinition Width="1*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Tables Grid -->
+            <Border Grid.Column="0" Background="White" CornerRadius="6" Padding="30">
+                <Border.Effect>
+                    <DropShadowEffect Color="#000000" Opacity="0.08" BlurRadius="20" ShadowDepth="5" Direction="270"/>
+                </Border.Effect>
+
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Area Tabs -->
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,20">
+                        <Button Content="&#x1F3E0; Brenda" 
+                                x:Name="btnIndoor"
+                                Click="Area_Click" Tag="Indoor"
+                                Padding="10,0" Height="36" Margin="0,0,10,0"
+                                Background="#3B82F6" Foreground="White"
+                                BorderThickness="0" FontSize="14" FontWeight="SemiBold" Cursor="Hand"/>
+                        <Button Content="&#x1F333; Jashtë" 
+                                x:Name="btnOutdoor"
+                                Click="Area_Click" Tag="Outdoor"
+                                Padding="10,0" Height="36" Margin="0,0,10,0"
+                                Background="#64748B" Foreground="White"
+                                BorderThickness="0" FontSize="14" FontWeight="SemiBold" Cursor="Hand"/>
+                        <Button Content="&#x2B50; VIP" 
+                                x:Name="btnVIP"
+                                Click="Area_Click" Tag="VIP"
+                                Padding="10,0" Height="36"
+                                Background="#64748B" Foreground="White"
+                                BorderThickness="0" FontSize="14" FontWeight="SemiBold" Cursor="Hand"/>
+                    </StackPanel>
+
+                    <!-- Tables Wrap Panel -->
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                        <WrapPanel x:Name="TablesPanel" Orientation="Horizontal"/>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+
+            <!-- Right Sidebar - Statistics & Info -->
+            <StackPanel Grid.Column="2">
+                <!-- Statistics -->
+                <Border Background="White" CornerRadius="6" Padding="20" Margin="0,0,0,20">
+                    <Border.Effect>
+                        <DropShadowEffect Color="#000000" Opacity="0.08" BlurRadius="20" ShadowDepth="5" Direction="270"/>
+                    </Border.Effect>
+
+                    <StackPanel>
+                        <TextBlock Text="&#x1F4CA; Statistikat" 
+                                   FontSize="16" FontWeight="SemiBold" 
+                                   Foreground="#1E293B" Margin="0,0,0,20"/>
+
+                        <!-- Total Tables -->
+                        <Grid Margin="0,0,0,15">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Gjithsej Tavolina" FontSize="14" Foreground="#64748B"/>
+                            <TextBlock x:Name="txtTotalTables" Text="0" Grid.Column="1" 
+                                       FontSize="20" FontWeight="SemiBold" Foreground="#1E293B"/>
+                        </Grid>
+
+                        <Separator Margin="0,0,0,15"/>
+
+                        <!-- Available -->
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Width="16" Height="16" Background="#22C55E" CornerRadius="6" Margin="0,0,8,0"/>
+                            <TextBlock Text="Të Lira" Grid.Column="1" FontSize="14" Foreground="#64748B"/>
+                            <TextBlock x:Name="txtAvailable" Text="0" Grid.Column="2" 
+                                       FontSize="16" FontWeight="SemiBold" Foreground="#22C55E"/>
+                        </Grid>
+
+                        <!-- Occupied -->
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Width="16" Height="16" Background="#64748B" CornerRadius="6" Margin="0,0,8,0"/>
+                            <TextBlock Text="Të Zëna" Grid.Column="1" FontSize="14" Foreground="#64748B"/>
+                            <TextBlock x:Name="txtOccupied" Text="0" Grid.Column="2" 
+                                       FontSize="16" FontWeight="SemiBold" Foreground="#EF4444"/>
+                        </Grid>
+
+                        <!-- Reserved -->
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Width="16" Height="16" Background="#F59E0B" CornerRadius="6" Margin="0,0,8,0"/>
+                            <TextBlock Text="Të Rezervuara" Grid.Column="1" FontSize="14" Foreground="#64748B"/>
+                            <TextBlock x:Name="txtReserved" Text="0" Grid.Column="2" 
+                                       FontSize="16" FontWeight="SemiBold" Foreground="#F59E0B"/>
+                        </Grid>
+
+                        <Separator Margin="0,15,0,15"/>
+
+                        <!-- Occupancy Rate -->
+                        <TextBlock Text="Shkalla e Zënies" FontSize="14" Foreground="#64748B" Margin="0,0,0,8"/>
+                        <ProgressBar x:Name="progressOccupancy" Height="24" Minimum="0" Maximum="100" Value="0" 
+                                     Background="#E5E7EB" Foreground="#3B82F6" BorderThickness="0"/>
+                        <TextBlock x:Name="txtOccupancyPercent" Text="0%" 
+                                   FontSize="20" FontWeight="SemiBold" Foreground="#3B82F6" 
+                                   HorizontalAlignment="Center" Margin="0,8,0,0"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Legend -->
+                <Border Background="White" CornerRadius="6" Padding="20">
+                    <Border.Effect>
+                        <DropShadowEffect Color="#000000" Opacity="0.08" BlurRadius="20" ShadowDepth="5" Direction="270"/>
+                    </Border.Effect>
+
+                    <StackPanel>
+                        <TextBlock Text="&#x2139; Legjenda" 
+                                   FontSize="16" FontWeight="SemiBold" 
+                                   Foreground="#1E293B" Margin="0,0,0,15"/>
+
+                        <StackPanel Margin="0,0,0,10">
+                            <TextBlock Text="&#x1F7E2; E GJELBËR" FontSize="14" FontWeight="SemiBold" Foreground="#22C55E"/>
+                            <TextBlock Text="Tavolina e lirë" FontSize="14" Foreground="#64748B" Margin="0,2,0,0"/>
+                        </StackPanel>
+
+                        <StackPanel Margin="0,0,0,10">
+                            <TextBlock Text="&#x1F534; E KUQE" FontSize="14" FontWeight="SemiBold" Foreground="#EF4444"/>
+                            <TextBlock Text="Tavolina e zënë" FontSize="14" Foreground="#64748B" Margin="0,2,0,0"/>
+                        </StackPanel>
+
+                        <StackPanel Margin="0,0,0,10">
+                            <TextBlock Text="&#x1F7E0; PORTOKALLI" FontSize="14" FontWeight="SemiBold" Foreground="#F59E0B"/>
+                            <TextBlock Text="Tavolina e rezervuar" FontSize="14" Foreground="#64748B" Margin="0,2,0,0"/>
+                        </StackPanel>
+
+                        <StackPanel>
+                            <TextBlock Text="&#x26AB; E HIRTË" FontSize="14" FontWeight="SemiBold" Foreground="#94A3B8"/>
+                            <TextBlock Text="Tavolina në pastrimin" FontSize="14" Foreground="#64748B" Margin="0,2,0,0"/>
+                        </StackPanel>
+
+                        <Separator Margin="0,15,0,15"/>
+
+                        <TextBlock Text="&#x1F4A1; Këshilla:" FontSize="14" FontWeight="SemiBold" Foreground="#64748B"/>
+                        <TextBlock Text="Kliko në tavolinë për të parë detajet ose për të hapur porosinë" 
+                                   FontSize="14" Foreground="#94A3B8" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>

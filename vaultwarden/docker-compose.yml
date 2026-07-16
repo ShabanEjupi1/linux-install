@@ -1,0 +1,18 @@
+# Vaultwarden secrets vault -> vault.spacecode.tech (host 127.0.0.1:8130, via CF tunnel 'ampere')
+services:
+  vaultwarden:
+    image: vaultwarden/server:latest
+    container_name: vaultwarden
+    restart: unless-stopped
+    environment:
+      DOMAIN: "https://vault.spacecode.tech"
+      SIGNUPS_ALLOWED: "true"      # set to false after creating your account
+      SIGNUPS_VERIFY: "false"
+      SIGNUPS_DOMAINS_WHITELIST: "student.uni-pr.edu,spacecode.tech,shabanejupi.tech,enisi.tech,halalbankkosova.me"
+      ADMIN_TOKEN: "VCZMcSpPD8lM96S1ODiDBYKT0H2KWsDZBoR8WSZ1ZVWz"
+      WEBSOCKET_ENABLED: "true"
+      SENDS_ALLOWED: "true"
+    volumes:
+      - ./data:/data
+    ports:
+      - "127.0.0.1:8130:80"

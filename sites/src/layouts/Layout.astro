@@ -1,0 +1,38 @@
+---
+interface Props {
+  title: string;
+  description: string;
+  accent: string;
+}
+const { title, description, accent } = Astro.props;
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content={description} />
+    <title>{title}</title>
+    <style define:vars={{ accent }}>
+      :root { --accent: var(--accent); }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        color: #1a1a2e; background: #ffffff; line-height: 1.6;
+      }
+      .wrap { max-width: 960px; margin: 0 auto; padding: 0 24px; }
+      header {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 20px 0; border-bottom: 1px solid #eee;
+      }
+      header .logo { font-weight: 800; font-size: 1.25rem; color: var(--accent); }
+      nav a { color: #444; text-decoration: none; margin-left: 20px; font-weight: 500; }
+      nav a:hover { color: var(--accent); }
+      footer { border-top: 1px solid #eee; padding: 32px 0; color: #888; font-size: 0.9rem; margin-top: 64px; }
+      a.accent { color: var(--accent); }
+    </style>
+  </head>
+  <body>
+    <slot />
+  </body>
+</html>

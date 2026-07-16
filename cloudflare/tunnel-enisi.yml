@@ -1,0 +1,9 @@
+tunnel: 8dcf0bb7-b230-42ba-9eba-cafad8ad73a2
+credentials-file: /etc/cloudflared/8dcf0bb7-b230-42ba-9eba-cafad8ad73a2.json
+
+ingress:
+  - hostname: enisi.tech
+    service: http://localhost:8085
+  - hostname: www.enisi.tech
+    service: http://localhost:8085
+  - service: http_status:404

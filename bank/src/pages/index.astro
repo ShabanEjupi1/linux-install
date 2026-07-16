@@ -1,0 +1,89 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+<Layout title="Halal Bank Kosova — Ethical, interest-free banking">
+  <section class="hero">
+    <div class="wrap grid">
+      <div class="pitch">
+        <h1>Banking without riba.</h1>
+        <p>Halal Bank Kosova offers Sharia-compliant, interest-free accounts. Open an account in seconds, hold a balance, and send money to other members — all transparent and ethical.</p>
+        <ul class="feats">
+          <li>✓ Interest-free EUR accounts</li>
+          <li>✓ Instant transfers by IBAN</li>
+          <li>✓ Full transaction history</li>
+        </ul>
+      </div>
+
+      <div class="card auth">
+        <div class="tabs">
+          <button id="tab-login" class="tab active" type="button">Sign in</button>
+          <button id="tab-signup" class="tab" type="button">Create account</button>
+        </div>
+
+        <form id="form-login">
+          <label>Email</label><input type="email" id="li-email" required />
+          <label>Password</label><input type="password" id="li-pass" required />
+          <div class="err" id="li-err"></div>
+          <button type="submit" style="width:100%;margin-top:16px">Sign in</button>
+        </form>
+
+        <form id="form-signup" hidden>
+          <label>Full name</label><input type="text" id="su-name" required />
+          <label>Email</label><input type="email" id="su-email" required />
+          <label>Password</label><input type="password" id="su-pass" minlength="6" required />
+          <div class="err" id="su-err"></div>
+          <button type="submit" style="width:100%;margin-top:16px">Open my account</button>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <style>
+    .hero { padding:56px 0; }
+    .grid { display:grid; grid-template-columns:1.1fr .9fr; gap:48px; align-items:center; }
+    .pitch h1 { font-size:clamp(2rem,5vw,3.2rem); }
+    .pitch p { color:var(--muted); font-size:1.1rem; margin-top:16px; max-width:520px; }
+    .feats { list-style:none; margin-top:22px; display:grid; gap:8px; color:var(--ink); }
+    .tabs { display:flex; gap:8px; margin-bottom:8px; }
+    .tab { flex:1; background:#eef4f0; color:var(--muted); }
+    .tab.active { background:var(--green); color:#fff; }
+    @media(max-width:820px){ .grid{ grid-template-columns:1fr; } }
+  </style>
+
+  <script>
+    import { supabase } from '../lib/supabase';
+
+    // already signed in? go to dashboard
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session) window.location.href = '/dashboard';
+    });
+
+    const $ = (id) => document.getElementById(id);
+    const showLogin = () => { $('form-login').hidden=false; $('form-signup').hidden=true; $('tab-login').classList.add('active'); $('tab-signup').classList.remove('active'); };
+    const showSignup = () => { $('form-login').hidden=true; $('form-signup').hidden=false; $('tab-signup').classList.add('active'); $('tab-login').classList.remove('active'); };
+    $('tab-login').onclick = showLogin;
+    $('tab-signup').onclick = showSignup;
+
+    $('form-login').addEventListener('submit', async (e) => {
+      e.preventDefault(); $('li-err').textContent = '';
+      const { error } = await supabase.auth.signInWithPassword({ email:$('li-email').value, password:$('li-pass').value });
+      if (error) { $('li-err').textContent = error.message; return; }
+      window.location.href = '/dashboard';
+    });
+
+    $('form-signup').addEventListener('submit', async (e) => {
+      e.preventDefault(); $('su-err').textContent = '';
+      const { data, error } = await supabase.auth.signUp({
+        email:$('su-email').value, password:$('su-pass').value,
+        options:{ data:{ full_name:$('su-name').value } }
+      });
+      if (error) { $('su-err').textContent = error.message; return; }
+      if (!data.session) {
+        // fall back to sign-in if no session returned
+        const r = await supabase.auth.signInWithPassword({ email:$('su-email').value, password:$('su-pass').value });
+        if (r.error) { $('su-err').textContent = r.error.message; return; }
+      }
+      window.location.href = '/dashboard';
+    });
+  </script>
+</Layout>

@@ -1,0 +1,92 @@
+﻿<Window x:Class="KosovaPOS.Windows.DiscountWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Zbritje - Discount" 
+        Height="352" Width="450"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="#F5F5F5">
+    
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="15"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="15"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="15"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        
+        <!-- Article Info -->
+        <StackPanel Grid.Row="0">
+            <TextBlock Text="Artikulli:" FontWeight="SemiBold" Margin="0,0,0,5"/>
+            <TextBlock x:Name="ArticleNameText" FontSize="14" TextWrapping="Wrap"/>
+        </StackPanel>
+        
+        <!-- Discount Type Selection -->
+        <StackPanel Grid.Row="2" Orientation="Horizontal">
+            <RadioButton x:Name="PercentageRadio" Content="Përqindje (%)" IsChecked="True" 
+                         Checked="DiscountType_Changed" Margin="0,0,20,0" FontWeight="SemiBold"/>
+            <RadioButton x:Name="AmountRadio" Content="Shumë (€)" 
+                         Checked="DiscountType_Changed" FontWeight="SemiBold"/>
+        </StackPanel>
+        
+        <!-- Discount Value -->
+        <StackPanel Grid.Row="4">
+            <TextBlock x:Name="DiscountLabel" Text="Zbritje (%):" FontWeight="SemiBold" Margin="0,0,0,5"/>
+            <TextBox x:Name="DiscountValueTextBox" 
+                     Style="{StaticResource ModernTextBox}"
+                     FontSize="14" 
+                     TextChanged="DiscountValue_TextChanged"/>
+        </StackPanel>
+        
+        <!-- Calculated Values -->
+        <StackPanel Grid.Row="6">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                
+                <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                    <TextBlock Text="Çmimi origjinal:" FontWeight="SemiBold" Margin="0,0,0,5"/>
+                    <TextBlock x:Name="OriginalPriceText" FontSize="14"/>
+                </StackPanel>
+                
+                <StackPanel Grid.Column="1">
+                    <TextBlock Text="Çmimi pas zbritjes:" FontWeight="SemiBold" Margin="0,0,0,5"/>
+                    <TextBlock x:Name="FinalPriceText" FontSize="14" Foreground="Green"/>
+                </StackPanel>
+            </Grid>
+        </StackPanel>
+        
+        <!-- Buttons -->
+        <StackPanel Grid.Row="8" 
+                    Orientation="Horizontal" 
+                    HorizontalAlignment="Right"
+                    Margin="0,20,0,0">
+            <Button Content="Apliko" 
+                    Width="100" 
+                    Height="36"
+                    Padding="10,0"
+                    Margin="0,0,10,0"
+                    Click="Apply_Click"
+                    Background="#4CAF50"
+                    Foreground="White"
+                    BorderThickness="0"
+                    Cursor="Hand"/>
+            <Button Content="Anulo" 
+                    Width="100" 
+                    Height="36"
+                    Padding="10,0"
+                    Click="Cancel_Click"
+                    Background="#F44336"
+                    Foreground="White"
+                    BorderThickness="0"
+                    Cursor="Hand"/>
+        </StackPanel>
+    </Grid>
+</Window>

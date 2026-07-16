@@ -1,0 +1,375 @@
+<Window x:Class="KosovaPOS.Windows.ArticleEditWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Artikulli" Height="720" Width="800"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="CanResize"
+        Background="#F8FAFC"
+        Loaded="Window_Loaded"
+        PreviewKeyDown="Window_PreviewKeyDown">
+    
+    <Window.Resources>
+        <!-- Form Input Style -->
+        <Style x:Key="FormTextBox" TargetType="TextBox">
+            <Setter Property="Height" Value="36"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="BorderBrush" Value="#E2E8F0"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border Background="{TemplateBinding Background}" 
+                                BorderBrush="{TemplateBinding BorderBrush}" 
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="6">
+                            <ScrollViewer x:Name="PART_ContentHost" 
+                                          VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                          Padding="{TemplateBinding Padding}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsFocused" Value="True">
+                                <Setter Property="BorderBrush" Value="#3B82F6"/>
+                                <Setter Property="BorderThickness" Value="2"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="BorderBrush" Value="#94A3B8"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        
+        <!-- Form ComboBox Style -->
+        <Style x:Key="FormComboBox" TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}">
+            <Setter Property="Height" Value="36"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="BorderBrush" Value="#E2E8F0"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+        
+        <!-- Label Style -->
+        <Style x:Key="FormLabel" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="#475569"/>
+            <Setter Property="Margin" Value="0,0,0,6"/>
+        </Style>
+        
+        <!-- Primary Button -->
+        <Style x:Key="PrimaryButton" TargetType="Button">
+            <Setter Property="Height" Value="44"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Background" Value="#22C55E"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" 
+                                CornerRadius="6"
+                                Padding="24,0">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#16A34A"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="Background" Value="#15803D"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        
+        <!-- Secondary Button -->
+        <Style x:Key="SecondaryButton" TargetType="Button">
+            <Setter Property="Height" Value="44"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="#64748B"/>
+            <Setter Property="Background" Value="#F1F5F9"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" 
+                                CornerRadius="6"
+                                Padding="24,0">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#E2E8F0"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="Background" Value="#CBD5E1"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+    
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        
+        <!-- Header -->
+        <Border Grid.Row="0" Padding="24,20">
+            <Border.Background>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                    <GradientStop Color="#3B82F6" Offset="0"/>
+                    <GradientStop Color="#1D4ED8" Offset="1"/>
+                </LinearGradientBrush>
+            </Border.Background>
+            <StackPanel>
+                <TextBlock x:Name="HeaderTitle" Text="? Shto artikull të ri" 
+                           FontSize="20" FontWeight="SemiBold" Foreground="White"/>
+                <TextBlock x:Name="HeaderSubtitle" Text="Plotëso të dhënat dhe ruaj artikullin" 
+                           FontSize="14" Foreground="#DBEAFE" Margin="0,4,0,0"/>
+            </StackPanel>
+        </Border>
+        
+        <!-- Main Form -->
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="24">
+            <Border Background="White" CornerRadius="6" Padding="24">
+                <Border.Effect>
+                    <DropShadowEffect ShadowDepth="2" Direction="270" BlurRadius="8" Opacity="0.08"/>
+                </Border.Effect>
+                
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="32"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    
+                    <!-- ===== LEFT COLUMN ===== -->
+                    
+                    <!-- Barcode -->
+                    <StackPanel Grid.Row="0" Grid.Column="0" Margin="0,0,0,16">
+                        <TextBlock Style="{StaticResource FormLabel}" Text="&#x1F4E6; Barkodi *"/>
+                        <TextBox x:Name="txtBarcode" Style="{StaticResource FormTextBox}" 
+                                 TabIndex="0"
+                                 PreviewTextInput="BarcodeTextBox_PreviewTextInput"
+                                 ToolTip="Skano ose shkruaj barkodën e artikullit (vetëm numra)"/>
+                    </StackPanel>
+                    
+                    <!-- Name -->
+                    <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,0,0,16">
+                        <TextBlock Style="{StaticResource FormLabel}" Text="&#x1F4DD; Emri i Artikullit *"/>
+                        <TextBox x:Name="txtName" Style="{StaticResource FormTextBox}" 
+                                 TabIndex="1"
+                                 ToolTip="Shkruaj emrin e artikullit"/>
+                    </StackPanel>
+                    
+                    <!-- Sales Price -->
+                    <StackPanel Grid.Row="2" Grid.Column="0" Margin="0,0,0,16">
+                        <TextBlock Style="{StaticResource FormLabel}" Text="&#x1F4B0; Çmimi i Shitjes (&#xf0d6;) *" Foreground="#22C55E"/>
+                        <TextBox x:Name="txtSalesPrice" Style="{StaticResource FormTextBox}" 
+                                 Text="0.00" TextAlignment="Right"
+                                 TabIndex="2"
+                                 Foreground="#22C55E"
+                                 PreviewTextInput="NumericTextBox_PreviewTextInput"
+                                 ToolTip="Çmimi i shitjes për klientët"/>
+                    </StackPanel>
+                    
+                    <!-- Purchase Price -->
+                    <StackPanel Grid.Row="3" Grid.Column="0" Margin="0,0,0,16">
+                        <TextBlock Style="{StaticResource FormLabel}" Text="&#x1F3F7; Çmimi i Blerjes (&#xf07a;)"/>
+                        <TextBox x:Name="txtPurchasePrice" Style="{StaticResource FormTextBox}" 
+                                 Text="0.00" TextAlignment="Right"
+                                 TabIndex="3"
+                                 PreviewTextInput="NumericTextBox_PreviewTextInput"
+                                 ToolTip="Çmimi i blerjes nga furnitori (opsionale)"/>
+                    </StackPanel>
+                    
+                    <!-- Category -->
+                    <StackPanel Grid.Row="4" Grid.Column="0" Margin="0,0,0,16">
+                        <TextBlock Style="{StaticResource FormLabel}" Text="&#x1F5C2; Kategoria"/>
+                        <ComboBox x:Name="cmbCategory" Style="{StaticResource FormComboBox}" 
+                                  IsEditable="True"
+                                  TabIndex="4"
+                                  ToolTip="Zgjidh ose shkruaj kategorinë">
+                            <ComboBoxItem Content="Veshje"/>
+                            <ComboBoxItem Content="Kozmetikë"/>
+                            <ComboBoxItem Content="Lodra"/>
+                            <ComboBoxItem Content="Shtëpi"/>
+                            <ComboBoxItem Content="Kuzhine"/>
+                            <ComboBoxItem Content="Elektronikë"/>
+                            <ComboBoxItem Content="Plazh &amp; Verë"/>
+                            <ComboBoxItem Content="Bebe &amp; Fëmijë"/>
+                            <ComboBoxItem Content="Aksesorë"/>
+                            <ComboBoxItem Content="Pastrim"/>
+                            <ComboBoxItem Content="Shkollë &amp; Zyrë"/>
+                            <ComboBoxItem Content="Dekorime"/>
+                            <ComboBoxItem Content="Të tjera"/>
+                        </ComboBox>
+                    </StackPanel>
+                    
+                    <!-- Supplier -->
+                    <StackPanel Grid.Row="5" Grid.Column="0" Margin="0,0,0,16">
+                        <TextBlock Style="{StaticResource FormLabel}" Text="&#x1F3EA; Furnitori"/>
+                        <TextBox x:Name="txtSupplier" Style="{StaticResource FormTextBox}" 
+                                 TabIndex="5"
+                                 ToolTip="Emri i furnitorit (opsionale)"/>
+                    </StackPanel>
+                    
+                    <!-- Brand -->
+                    <StackPanel Grid.Row="6" Grid.Column="0" Margin="0,0,0,0">
+                        <TextBlock Style="{StaticResource FormLabel}" Text="&#x1F3F7; Marka"/>
+                        <TextBox x:Name="txtBrand" Style="{StaticResource FormTextBox}" 
+                                 TabIndex="6"
+                                 ToolTip="Marka e produktit (opsionale)"/>
+                    </StackPanel>
+                    <!-- ===== RIGHT COLUMN ===== -->
+                    
+                    <!-- Unit -->
+                    <StackPanel Grid.Row="0" Grid.Column="2" Margin="0,0,0,16">
+                        <TextBlock Style="{StaticResource FormLabel}" Text="&#x1F4CF; Njësia"/>
+                        <ComboBox x:Name="cmbUnit" Style="{StaticResource FormComboBox}" 
+                                  IsEditable="True" Text="Copë"
+                                  TabIndex="7"
+                                  ToolTip="Njësia e matjes">
+                            <ComboBoxItem Content="Copë" IsSelected="True"/>
+                            <ComboBoxItem Content="KG"/>
+                            <ComboBoxItem Content="Litër"/>
+                            <ComboBoxItem Content="Metër"/>
+                            <ComboBoxItem Content="Pako"/>
+                            <ComboBoxItem Content="Kuti"/>
+                        </ComboBox>
+                    </StackPanel>
+                    
+                    <!-- Pack -->
+                    <StackPanel Grid.Row="1" Grid.Column="2" Margin="0,0,0,16">
+                        <TextBlock Style="{StaticResource FormLabel}" Text="&#x1F4E6; Pakoja"/>
+                        <TextBox x:Name="txtPack" Style="{StaticResource FormTextBox}" 
+                                 Text="1" TextAlignment="Right"
+                                 TabIndex="8"
+                                 PreviewTextInput="NumericTextBox_PreviewTextInput"
+                                 ToolTip="Sa copë në pako (1 = pa pako)"/>
+                    </StackPanel>
+                    
+                    <!-- VAT Rate -->
+                    <StackPanel Grid.Row="2" Grid.Column="2" Margin="0,0,0,16">
+                        <TextBlock Style="{StaticResource FormLabel}" Text="&#x1F4B5; TVSH"/>
+                        <ComboBox x:Name="cmbVATRate" Style="{StaticResource FormComboBox}" 
+                                  TabIndex="9"
+                                  SelectedIndex="0">
+                            <ComboBoxItem Content="18% (Standard)"/>
+                            <ComboBoxItem Content="8% (I Reduktuar)"/>
+                        </ComboBox>
+                    </StackPanel>
+                    
+                    <!-- Stock Quantity -->
+                    <StackPanel Grid.Row="3" Grid.Column="2" Margin="0,0,0,16">
+                        <TextBlock Style="{StaticResource FormLabel}" Text="&#x1F4CA; Sasia në Stok" Foreground="#3B82F6"/>
+                        <TextBox x:Name="txtStockQuantity" Style="{StaticResource FormTextBox}" 
+                                 Text="0" TextAlignment="Right"
+                                 TabIndex="10"
+                                 Foreground="#3B82F6"
+                                 PreviewTextInput="NumericTextBox_PreviewTextInput"
+                                 ToolTip="Sasia aktuale në stok"/>
+                    </StackPanel>
+                    
+                    <!-- Minimum Stock -->
+                    <StackPanel Grid.Row="4" Grid.Column="2" Margin="0,0,0,16">
+                        <TextBlock Style="{StaticResource FormLabel}" Text="? Stoku Minimal"/>
+                        <TextBox x:Name="txtMinimumStock" Style="{StaticResource FormTextBox}" 
+                                 Text="0" TextAlignment="Right"
+                                 TabIndex="11"
+                                 PreviewTextInput="NumericTextBox_PreviewTextInput"
+                                 ToolTip="Sinjalizim kur stoku bie nën këtë vlerë"/>
+                    </StackPanel>
+                    
+                    <!-- Size -->
+                    <StackPanel Grid.Row="5" Grid.Column="2" Margin="0,0,0,16">
+                        <TextBlock Style="{StaticResource FormLabel}" Text="&#x1F4D0; Madhësia"/>
+                        <TextBox x:Name="txtSize" Style="{StaticResource FormTextBox}" 
+                                 TabIndex="12"
+                                 ToolTip="Madhësia e produktit (opsionale)"/>
+                    </StackPanel>
+                    
+                    <!-- Color -->
+                    <StackPanel Grid.Row="6" Grid.Column="2" Margin="0,0,0,0">
+                        <TextBlock Style="{StaticResource FormLabel}" Text="&#x1F3A8; Ngjyra"/>
+                        <TextBox x:Name="txtColor" Style="{StaticResource FormTextBox}" 
+                                 TabIndex="13"
+                                 ToolTip="Ngjyra e produktit (opsionale)"/>
+                    </StackPanel>
+
+                    <!-- IsActive Checkbox ë Row 7, full width -->
+                    <Border Grid.Row="7" Grid.Column="0" Grid.ColumnSpan="3"
+                            Background="#F0FDF4" CornerRadius="6" Padding="16,12"
+                            BorderBrush="#BBF7D0" BorderThickness="1"
+                            Margin="0,16,0,0">
+                        <StackPanel Orientation="Horizontal">
+                            <CheckBox x:Name="chkIsActive" IsChecked="True"
+                                      VerticalAlignment="Center" Margin="0,0,10,0"
+                                      TabIndex="16"/>
+                            <StackPanel>
+                                <TextBlock Text="&#x2705; Artikulli është Aktiv"
+                                           FontWeight="SemiBold" FontSize="14" Foreground="#166534"/>
+                                <TextBlock Text="Kur aktiv, artikulli shfaqet në kasa dhe është i disponueshëm për shitje."
+                                           FontSize="14" Foreground="#15803D" Margin="0,2,0,0"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </Border>
+        </ScrollViewer>
+        
+        <!-- Action Buttons -->
+        <Border Grid.Row="2" Background="#F8FAFC" Padding="24,16" BorderBrush="#E2E8F0" BorderThickness="0,1,0,0">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                
+                <Button x:Name="btnCancel" Grid.Column="0"
+                        Style="{StaticResource SecondaryButton}"
+                        Content="✗ Anulo (Esc)" 
+                        Width="150"
+                        Click="btnCancel_Click"
+                        TabIndex="15"
+                        ToolTip="Esc - Anulo dhe mbyll"/>
+                
+                <Button x:Name="btnSave" Grid.Column="2"
+                        Style="{StaticResource PrimaryButton}"
+                        Content="? Ruaj (Ctrl+S)" 
+                        Width="170"
+                        Click="btnSave_Click"
+                        TabIndex="14"
+                        ToolTip="Ctrl+S - Ruaj artikullin"/>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

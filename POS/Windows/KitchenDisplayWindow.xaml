@@ -1,0 +1,135 @@
+<Window x:Class="KosovaPOS.Windows.KitchenDisplayWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="&#x1F373; Kitchen Display System - Sistemi i Kuzhines" 
+        Height="1000" Width="1920"
+        WindowStartupLocation="CenterScreen"
+        WindowState="Maximized"
+        Background="#1E293B">
+
+    <Window.Resources>
+        <!-- Order Card Style -->
+        <Style x:Key="OrderCard" TargetType="Border">
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="20"/>
+            <Setter Property="Margin" Value="10"/>
+            <Setter Property="Width" Value="320"/>
+            <Setter Property="MinHeight" Value="250"/>
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <DropShadowEffect Color="#000000" Opacity="0.3" BlurRadius="15" ShadowDepth="5"/>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Action Button Style -->
+        <Style x:Key="ActionButton" TargetType="Button">
+            <Setter Property="Padding" Value="15,10"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Margin" Value="5,0"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Border Grid.Row="0" Padding="30,20">
+            <Border.Background>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                    <GradientStop Color="#0F766E" Offset="0"/>
+                    <GradientStop Color="#065F46" Offset="1"/>
+                </LinearGradientBrush>
+            </Border.Background>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="&#x1F373; KITCHEN DISPLAY SYSTEM" 
+                               FontSize="20" FontWeight="SemiBold" Foreground="White"/>
+                    <TextBlock x:Name="txtCurrentTime" Text="" 
+                               FontSize="16" Foreground="White" Opacity="0.95" Margin="0,8,0,0"/>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <Button Content="&#x2795; Shto Porosi" Click="AddKitchenOrder_Click"
+                            Background="#22C55E" Foreground="White"
+                            Padding="10,0" Height="44" FontSize="14" FontWeight="SemiBold"
+                            BorderThickness="0" Cursor="Hand" Margin="0,0,12,0"/>
+                    <Button Content="&#x2715; Mbyll" Click="Close_Click"
+                            Background="#64748B" Foreground="White"
+                            Padding="10,0" Height="36" FontSize="14" FontWeight="SemiBold"
+                            BorderThickness="0" Cursor="Hand"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Station Filters -->
+        <Border Grid.Row="1" Background="#334155" Padding="20,15">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                <Button x:Name="btnAllStations" Content="&#x1F3EA; TË GJITHA" Click="Station_Click" Tag="All"
+                        Background="#3B82F6" Foreground="White" Padding="10,0" Height="36" Margin="5"
+                        FontSize="14" FontWeight="SemiBold" BorderThickness="0" Cursor="Hand"/>
+                <Button Content="&#x1F355; PIZZA" Click="Station_Click" Tag="Pizza"
+                        Background="#64748B" Foreground="White" Padding="10,0" Height="36" Margin="5"
+                        FontSize="14" FontWeight="SemiBold" BorderThickness="0" Cursor="Hand"/>
+                <Button Content="&#x1F354; GRILL" Click="Station_Click" Tag="Grill"
+                        Background="#64748B" Foreground="White" Padding="10,0" Height="36" Margin="5"
+                        FontSize="14" FontWeight="SemiBold" BorderThickness="0" Cursor="Hand"/>
+                <Button Content="&#x1F957; SALAD" Click="Station_Click" Tag="Salad"
+                        Background="#64748B" Foreground="White" Padding="10,0" Height="36" Margin="5"
+                        FontSize="14" FontWeight="SemiBold" BorderThickness="0" Cursor="Hand"/>
+                <Button Content="&#x1F964; DRINKS" Click="Station_Click" Tag="Drinks"
+                        Background="#64748B" Foreground="White" Padding="10,0" Height="36" Margin="5"
+                        FontSize="14" FontWeight="SemiBold" BorderThickness="0" Cursor="Hand"/>
+                <Button Content="&#x1F370; DESSERT" Click="Station_Click" Tag="Dessert"
+                        Background="#64748B" Foreground="White" Padding="10,0" Height="36" Margin="5"
+                        FontSize="14" FontWeight="SemiBold" BorderThickness="0" Cursor="Hand"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Orders Grid -->
+        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Padding="20">
+            <StackPanel>
+                <!-- New Orders Section -->
+                <Border Background="#334155" CornerRadius="6" Padding="15" Margin="0,0,0,20">
+                    <StackPanel>
+                        <TextBlock Text="&#x1F525; POROSI TË REJA" FontSize="16" FontWeight="SemiBold" 
+                                   Foreground="#FFF" Margin="0,0,0,15"/>
+                        <WrapPanel x:Name="panelNewOrders" Orientation="Horizontal"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Preparing Orders Section -->
+                <Border Background="#334155" CornerRadius="6" Padding="15" Margin="0,0,0,20">
+                    <StackPanel>
+                        <TextBlock Text="&#x23F3; NË PËRGATITJE" FontSize="16" FontWeight="SemiBold" 
+                                   Foreground="#FFF" Margin="0,0,0,15"/>
+                        <WrapPanel x:Name="panelPreparingOrders" Orientation="Horizontal"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Ready Orders Section -->
+                <Border Background="#334155" CornerRadius="6" Padding="15">
+                    <StackPanel>
+                        <TextBlock Text="&#x2705; GATI" FontSize="16" FontWeight="SemiBold" 
+                                   Foreground="#FFF" Margin="0,0,0,15"/>
+                        <WrapPanel x:Name="panelReadyOrders" Orientation="Horizontal"/>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Window>

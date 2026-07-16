@@ -1,0 +1,320 @@
+<Window x:Class="KosovaPOS.Windows.PizzaManagementWindow"
+xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+Title="&#x1F355; Menaxhimi i picave dhe shtesave" 
+Height="800" Width="1400"
+WindowStartupLocation="CenterScreen"
+WindowState="Maximized"
+Background="{DynamicResource BackgroundBrush}">
+
+    <Window.Resources>
+        <!-- Modern Button Style -->
+        <Style x:Key="ModernButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="{DynamicResource PrimaryColor}"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="10,0"/>
+            <Setter Property="Height" Value="36"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border" 
+                                Background="{TemplateBinding Background}" 
+                                CornerRadius="6" 
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Opacity" Value="0.9"/>
+                                <Setter TargetName="border" Property="RenderTransform">
+                                    <Setter.Value>
+                                        <ScaleTransform ScaleX="1.02" ScaleY="1.02"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="RenderTransform">
+                                    <Setter.Value>
+                                        <ScaleTransform ScaleX="0.98" ScaleY="0.98"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- DataGrid Style -->
+        <Style x:Key="ModernDataGridStyle" TargetType="DataGrid">
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="RowBackground" Value="White"/>
+            <Setter Property="AlternatingRowBackground" Value="#F9FAFB"/>
+            <Setter Property="GridLinesVisibility" Value="None"/>
+            <Setter Property="HeadersVisibility" Value="Column"/>
+            <Setter Property="AutoGenerateColumns" Value="False"/>
+            <Setter Property="IsReadOnly" Value="True"/>
+            <Setter Property="CanUserAddRows" Value="False"/>
+            <Setter Property="SelectionMode" Value="Single"/>
+            <Setter Property="RowHeight" Value="50"/>
+            <Setter Property="FontSize" Value="14"/>
+        </Style>
+
+        <!-- DataGrid Header Style -->
+        <Style TargetType="DataGridColumnHeader">
+            <Setter Property="Background" Value="#F3F4F6"/>
+            <Setter Property="Foreground" Value="#1F2937"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Padding" Value="15,12"/>
+            <Setter Property="BorderThickness" Value="0,0,0,2"/>
+            <Setter Property="BorderBrush" Value="#E5E7EB"/>
+        </Style>
+
+        <!-- Tab Control Style -->
+        <Style x:Key="ModernTabControlStyle" TargetType="TabControl">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+        </Style>
+
+        <Style x:Key="ModernTabItemStyle" TargetType="TabItem">
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Padding" Value="10,0"/>
+            <Setter Property="Height" Value="36"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabItem">
+                        <Border x:Name="Border" 
+                                Background="Transparent" 
+                                BorderThickness="0,0,0,3" 
+                                BorderBrush="Transparent"
+                                Padding="{TemplateBinding Padding}"
+                                Margin="0,0,5,0">
+                            <ContentPresenter ContentSource="Header" 
+                                            HorizontalAlignment="Center" 
+                                            VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Border" Property="BorderBrush" Value="{DynamicResource PrimaryColor}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource PrimaryColor}"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Border" Property="Background" Value="#F3F4F6"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Professional Header -->
+        <Border Grid.Row="0" Background="{DynamicResource HeaderGradient}" Padding="30,25">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                    <TextBlock Text="&#x1F355; Menaxhimi i Picave dhe Shtesave" 
+                               FontSize="20" FontWeight="SemiBold" 
+                               Foreground="White"/>
+                    <TextBlock Text="Menaxhoni pica, shtesa, kategori dhe cmime per biznesin tuaj"
+                               FontSize="14" Foreground="White" Opacity="0.95"
+                               Margin="0,8,0,0"/>
+                </StackPanel>
+
+                <Button Grid.Column="1" Content="&#x2716; Mbyll" 
+                        Click="CloseButton_Click"
+                        Style="{StaticResource ModernButtonStyle}"
+                        Background="#64748B"
+                        Height="36" 
+                        VerticalAlignment="Center"
+                        Padding="10,0"/>
+            </Grid>
+        </Border>
+
+        <!-- Main Content with Modern Tabs -->
+        <TabControl Grid.Row="1" 
+                    Style="{StaticResource ModernTabControlStyle}"
+                    Margin="30,20,30,30">
+
+            <!-- Tab 1: Pizzas ? redirects to ArticlesWindow for full management -->
+            <TabItem Header="&#x1F355; Picat" Style="{StaticResource ModernTabItemStyle}">
+                <Border Background="White" CornerRadius="6" Padding="30" Margin="0,10,0,0">
+                    <Border.Effect>
+                        <DropShadowEffect Color="#000000" Opacity="0.08" BlurRadius="20" ShadowDepth="5" Direction="270"/>
+                    </Border.Effect>
+
+                    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="600">
+                        <TextBlock Text="&#x1F355;" FontSize="72" HorizontalAlignment="Center" Margin="0,0,0,20"/>
+                        <TextBlock Text="Menaxhimi i artikujve (Picave)"
+                                   FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center"
+                                   Foreground="#1E3A5F" Margin="0,0,0,12"/>
+                        <TextBlock TextWrapping="Wrap" TextAlignment="Center" FontSize="14"
+                                   Foreground="#6B7280" Margin="0,0,0,32"
+                                   Text="Menaxhimi i plote i picave si artikuj (shtim, modifikim, fshirje, stoku, cmimet, barkodi dhe eksporti) gjendet ne faqen e Artikujve - me funksionalitete dhe mundesi shume me te plota."/>
+
+                        <Button Content="&#x1F6D2; Hap menaxhimin e artikujve" 
+                                Click="OpenArticlesWindow_Click"
+                                Height="44" FontSize="14" FontWeight="SemiBold"
+                                Background="#22C55E" Foreground="White" BorderThickness="0" Cursor="Hand"
+                                HorizontalAlignment="Center" Padding="36,0">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="btn" Background="{TemplateBinding Background}"
+                                            CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="btn" Property="Background" Value="#16A34A"/>
+                                        </Trigger>
+                                        <Trigger Property="IsPressed" Value="True">
+                                            <Setter TargetName="btn" Property="Background" Value="#15803D"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+
+                        <TextBlock Text="Nga faqja e Artikujve mund te filtroni sipas kategorise se picave."
+                                   FontSize="14" Foreground="#9CA3AF" HorizontalAlignment="Center"
+                                   Margin="0,18,0,0" TextWrapping="Wrap" TextAlignment="Center"/>
+                    </StackPanel>
+                </Border>
+            </TabItem>
+
+            <!-- Tab 2: Toppings -->
+            <TabItem Header="&#x1F9C2; Shtesat" Style="{StaticResource ModernTabItemStyle}">
+                <Border Background="White" CornerRadius="6" Padding="25" Margin="0,10,0,0">
+                    <Border.Effect>
+                        <DropShadowEffect Color="#000000" Opacity="0.08" BlurRadius="20" ShadowDepth="5" Direction="270"/>
+                    </Border.Effect>
+
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Toolbar -->
+                        <Border Grid.Row="0" 
+                                Background="{DynamicResource SurfaceColor}" 
+                                CornerRadius="6" 
+                                Padding="15" 
+                                Margin="0,0,0,20">
+                            <StackPanel Orientation="Horizontal">
+                                <Button Content="&#x2795; Shto Shtese te Re" 
+                                        Click="AddTopping_Click"
+                                        Style="{StaticResource ModernButtonStyle}"
+                                        Background="#10B981"/>
+                                <Button Content="&#x270F; Modifiko" 
+                                        Click="EditTopping_Click"
+                                        Style="{StaticResource ModernButtonStyle}"
+                                        Background="#3B82F6"
+                                        Margin="10,0,0,0"/>
+                                <Button Content="&#x1F5D1; Fshij" 
+                                        Click="DeleteTopping_Click"
+                                        Style="{StaticResource ModernButtonStyle}"
+                                        Background="#64748B"
+                                        Margin="10,0,0,0"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- DataGrid for Toppings -->
+                        <Border Grid.Row="1" 
+                                BorderThickness="1" 
+                                BorderBrush="#E5E7EB" 
+                                CornerRadius="6">
+                            <DataGrid x:Name="ToppingsDataGrid" 
+                                      Style="{StaticResource ModernDataGridStyle}">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="70"/>
+                                    <DataGridTextColumn Header="Emri i Shteses" Binding="{Binding Name}" Width="*"/>
+                                    <DataGridTextColumn Header="Kategoria" Binding="{Binding Category}" Width="200"/>
+                                    <DataGridTextColumn Header="Cmimi" Binding="{Binding Price, StringFormat='{}{0:N2} EUR'}" Width="150"/>
+                                    <DataGridTextColumn Header="Ikona" Binding="{Binding Icon}" Width="100"/>
+                                    <DataGridCheckBoxColumn Header="I Disponueshem" Binding="{Binding IsAvailable}" Width="150"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Border>
+                    </Grid>
+                </Border>
+            </TabItem>
+
+            <!-- Tab 3: Categories -->
+            <TabItem Header="&#x1F4C1; Kategorite" Style="{StaticResource ModernTabItemStyle}">
+                <Border Background="White" CornerRadius="6" Padding="25" Margin="0,10,0,0">
+                    <Border.Effect>
+                        <DropShadowEffect Color="#000000" Opacity="0.08" BlurRadius="20" ShadowDepth="5" Direction="270"/>
+                    </Border.Effect>
+
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Toolbar -->
+                        <Border Grid.Row="0" 
+                                Background="{DynamicResource SurfaceColor}" 
+                                CornerRadius="6" 
+                                Padding="15" 
+                                Margin="0,0,0,20">
+                            <StackPanel Orientation="Horizontal">
+                                <Button Content="&#x2795; Shto Kategori te Re" 
+                                        Click="AddCategory_Click"
+                                        Style="{StaticResource ModernButtonStyle}"
+                                        Background="#10B981"/>
+                                <Button Content="&#x270F; Modifiko" 
+                                        Click="EditCategory_Click"
+                                        Style="{StaticResource ModernButtonStyle}"
+                                        Background="#3B82F6"
+                                        Margin="10,0,0,0"/>
+                                <Button Content="&#x1F5D1; Fshij" 
+                                        Click="DeleteCategory_Click"
+                                        Style="{StaticResource ModernButtonStyle}"
+                                        Background="#64748B"
+                                        Margin="10,0,0,0"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- DataGrid for Categories -->
+                        <Border Grid.Row="1" 
+                                BorderThickness="1" 
+                                BorderBrush="#E5E7EB" 
+                                CornerRadius="6">
+                            <DataGrid x:Name="CategoriesDataGrid" 
+                                      Style="{StaticResource ModernDataGridStyle}">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="70"/>
+                                    <DataGridTextColumn Header="Emri i Kategorise" Binding="{Binding Name}" Width="*"/>
+                                    <DataGridTextColumn Header="Pershkrimi" Binding="{Binding Description}" Width="350"/>
+                                    <DataGridTextColumn Header="Ikona" Binding="{Binding Icon}" Width="100"/>
+                                    <DataGridTextColumn Header="Renditja" Binding="{Binding DisplayOrder}" Width="100"/>
+                                    <DataGridCheckBoxColumn Header="Aktiv" Binding="{Binding IsActive}" Width="100"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Border>
+                    </Grid>
+                </Border>
+            </TabItem>
+
+        </TabControl>
+    </Grid>
+</Window>

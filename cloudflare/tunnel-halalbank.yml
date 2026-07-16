@@ -1,0 +1,9 @@
+tunnel: 3ffa8e8e-939e-4976-8556-3ba5869dff6c
+credentials-file: /etc/cloudflared/3ffa8e8e-939e-4976-8556-3ba5869dff6c.json
+
+ingress:
+  - hostname: halalbankkosova.me
+    service: http://localhost:8090
+  - hostname: www.halalbankkosova.me
+    service: http://localhost:8090
+  - service: http_status:404

@@ -1,0 +1,22 @@
+services:
+  code-server:
+    build: .
+    container_name: code-server
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8100:8080"
+    environment:
+      PASSWORD: ${PASSWORD:-admin}
+    volumes:
+      # Same data dir as the original ad-hoc container: keeps settings,
+      # Cline + Continue extensions, and auth state across the swap.
+      - /opt/code-server/data:/home/coder/.local/share/code-server
+      - /home/shabanejupi/linux-install:/home/coder/project
+    command:
+      [
+        "--bind-addr", "0.0.0.0:8080",
+        "--auth", "password",
+        "--app-name", "SpaceCode",
+        "--welcome-text", "Welcome to SpaceCode — Shaban's cloud IDE",
+        "/home/coder/project"
+      ]

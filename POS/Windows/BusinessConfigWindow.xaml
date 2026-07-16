@@ -1,0 +1,195 @@
+<Window x:Class="KosovaPOS.Windows.BusinessConfigWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="? Konfigurimet e Biznesit" 
+        Height="700" Width="900"
+        WindowStartupLocation="CenterScreen"
+        Background="#F8FAFC"
+        ResizeMode="CanResize">
+
+    <Window.Resources>
+        <!-- Form Input Style -->
+        <Style x:Key="FormTextBox" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+            <Setter Property="Height" Value="36"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="BorderBrush" Value="#E2E8F0"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+
+        <!-- Label Style -->
+        <Style x:Key="FormLabel" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="#475569"/>
+            <Setter Property="Margin" Value="0,0,0,6"/>
+        </Style>
+
+        <!-- Button Style -->
+        <Style x:Key="PrimaryButton" TargetType="Button">
+            <Setter Property="Height" Value="44"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Background" Value="#3B82F6"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Padding" Value="24,0"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Border Grid.Row="0" Padding="30,25">
+            <Border.Background>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                    <GradientStop Color="#3B82F6" Offset="0"/>
+                    <GradientStop Color="#1D4ED8" Offset="1"/>
+                </LinearGradientBrush>
+            </Border.Background>
+            <StackPanel>
+                <TextBlock Text="? Konfigurimet e Biznesit" 
+                           FontSize="20" FontWeight="SemiBold" Foreground="White"/>
+                <TextBlock Text="Menaxho informatat e biznesit tuaj" 
+                           FontSize="14" Foreground="#DBEAFE" Margin="0,6,0,0"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Form Content -->
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="30,20">
+            <StackPanel>
+                <!-- Business Information Section -->
+                <Border Background="White" CornerRadius="6" Padding="24" Margin="0,0,0,16">
+                    <Border.Effect>
+                        <DropShadowEffect ShadowDepth="2" Direction="270" BlurRadius="8" Opacity="0.08"/>
+                    </Border.Effect>
+
+                    <StackPanel>
+                        <TextBlock Text="&#x1F4CB; Informata e Biznesit" 
+                                   FontSize="16" FontWeight="SemiBold" 
+                                   Foreground="#1E293B" Margin="0,0,0,20"/>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="20"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Style="{StaticResource FormLabel}" Text="&#x1F3E2; Emri i Biznesit *"/>
+                                <TextBox x:Name="txtBusinessName" Style="{StaticResource FormTextBox}" Margin="0,0,0,16"/>
+
+                                <TextBlock Style="{StaticResource FormLabel}" Text="&#x1F4CD; Adresa"/>
+                                <TextBox x:Name="txtBusinessAddress" Style="{StaticResource FormTextBox}" Margin="0,0,0,16"/>
+
+                                <TextBlock Style="{StaticResource FormLabel}" Text="&#x1F4DE; Telefoni"/>
+                                <TextBox x:Name="txtBusinessPhone" Style="{StaticResource FormTextBox}"/>
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Style="{StaticResource FormLabel}" Text="&#x1F4E7; Email"/>
+                                <TextBox x:Name="txtBusinessEmail" Style="{StaticResource FormTextBox}" Margin="0,0,0,16"/>
+
+                                <TextBlock Style="{StaticResource FormLabel}" Text="&#x1F194; Numri Fiskal (NIPT)"/>
+                                <TextBox x:Name="txtTaxNumber" Style="{StaticResource FormTextBox}" Margin="0,0,0,16"/>
+
+                                <TextBlock Style="{StaticResource FormLabel}" Text="&#x1F3E2; Numri i Biznesit"/>
+                                <TextBox x:Name="txtBusinessNumber" Style="{StaticResource FormTextBox}"/>
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- Currency & Tax Section -->
+                <Border Background="White" CornerRadius="6" Padding="24" Margin="0,0,0,16">
+                    <Border.Effect>
+                        <DropShadowEffect ShadowDepth="2" Direction="270" BlurRadius="8" Opacity="0.08"/>
+                    </Border.Effect>
+
+                    <StackPanel>
+                        <TextBlock Text="&#x1F4B0; Monedha dhe Taksat" 
+                                   FontSize="16" FontWeight="SemiBold" 
+                                   Foreground="#1E293B" Margin="0,0,0,20"/>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="20"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Style="{StaticResource FormLabel}" Text="&#x1F4B5; Monedha"/>
+                                <TextBox x:Name="txtCurrency" Style="{StaticResource FormTextBox}" Text="EUR"/>
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Style="{StaticResource FormLabel}" Text="&#x1F4CA; Norma e TVSH-së (%)"/>
+                                <TextBox x:Name="txtTaxRate" Style="{StaticResource FormTextBox}" Text="18"/>
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- Receipt Settings -->
+                <Border Background="White" CornerRadius="6" Padding="24">
+                    <Border.Effect>
+                        <DropShadowEffect ShadowDepth="2" Direction="270" BlurRadius="8" Opacity="0.08"/>
+                    </Border.Effect>
+
+                    <StackPanel>
+                        <TextBlock Text="&#x1F9FE; Cilësimet e Faturës" 
+                                   FontSize="16" FontWeight="SemiBold" 
+                                   Foreground="#1E293B" Margin="0,0,0,20"/>
+
+                        <TextBlock Style="{StaticResource FormLabel}" Text="&#x1F4AC; Mesazhi i Footer-it të Faturës"/>
+                        <TextBox x:Name="txtReceiptFooter" 
+                                 Style="{StaticResource FormTextBox}" 
+                                 Height="60" 
+                                 TextWrapping="Wrap" 
+                                 AcceptsReturn="True"
+                                 VerticalContentAlignment="Top"
+                                 Text="Faleminderit për blerjen!"/>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Footer Buttons -->
+        <Border Grid.Row="2" Background="White" BorderBrush="#E5E7EB" BorderThickness="0,1,0,0" Padding="30,20">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="10"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="?" FontSize="16" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <TextBlock Text="Ndryshimet do të ruhen menjëherë" 
+                               FontSize="14" Foreground="#64748B" VerticalAlignment="Center"/>
+                </StackPanel>
+
+                <Button Grid.Column="1" Content="&#x1F4BE; Ruaj Ndryshimet" 
+                        Click="SaveButton_Click"
+                        Style="{StaticResource PrimaryButton}"
+                        Background="#22C55E"/>
+
+                <Button Grid.Column="3" Content="&#xf00d; Mbyll" 
+                        Click="CancelButton_Click"
+                        Style="{StaticResource PrimaryButton}"
+                        Background="#64748B"/>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

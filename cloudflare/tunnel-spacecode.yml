@@ -1,0 +1,22 @@
+tunnel: 42286711-64b9-42c4-8e51-fe9d00a51c2c
+credentials-file: /etc/cloudflared/42286711-64b9-42c4-8e51-fe9d00a51c2c.json
+
+ingress:
+  # Specific infra hostnames FIRST — cloudflared matches top-to-bottom, first wins,
+  # so these must precede the *.spacecode.tech catch-all below or it would swallow them.
+  - hostname: audit.spacecode.tech
+    service: http://localhost:8002
+  - hostname: ssh.spacecode.tech
+    service: ssh://localhost:22
+
+  # KosovaPOS multi-business: the apex plus every pos-<code>.spacecode.tech shop.
+  # cloudflared only wildcards a rule that starts with "*.", so `pos-*` isn't
+  # expressible here — the `pos-` scoping is enforced in the app + nginx server_name.
+  # See pos-blazor/deploy/subdomains.md. Needs a proxied `*` CNAME on the zone.
+  - hostname: pos.spacecode.tech
+    service: http://localhost:80
+  - hostname: "*.spacecode.tech"
+    service: http://localhost:80
+
+  # Catch-all — must stay last.
+  - service: http_status:404

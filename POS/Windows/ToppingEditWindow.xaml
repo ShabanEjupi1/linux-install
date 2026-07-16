@@ -1,0 +1,81 @@
+<Window x:Class="KosovaPOS.Windows.ToppingEditWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Shto/Modifiko Shtesën"
+        Height="560" Width="560"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource BackgroundBrush}">
+
+    <Border CornerRadius="6" Background="White">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0" Background="{DynamicResource HeaderGradient}" Padding="25,20">
+                <StackPanel>
+                    <TextBlock Text="&#x1F355; Menaxhimi i Shtesave"
+                               FontSize="20" FontWeight="SemiBold"
+                               Foreground="White"/>
+                    <TextBlock Text="Plotëso të dhënat e shtesës dhe ruaj"
+                               FontSize="14" Foreground="White" Opacity="0.9"
+                               Margin="0,4,0,0"/>
+                </StackPanel>
+            </Border>
+
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="28,22">
+                <StackPanel>
+                    <TextBlock Text="Emri *" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,6"
+                               Foreground="{DynamicResource TextPrimaryBrush}"/>
+                    <TextBox x:Name="NameTextBox" Style="{StaticResource ModernTextBox}" Margin="0,0,0,16"/>
+
+                    <TextBlock Text="Përshkrimi" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,6"
+                               Foreground="{DynamicResource TextPrimaryBrush}"/>
+                    <TextBox x:Name="DescriptionTextBox" Style="{StaticResource ModernTextBox}"
+                             TextWrapping="Wrap" AcceptsReturn="True" MinLines="2" MaxHeight="80"
+                             Margin="0,0,0,16"/>
+
+                    <TextBlock Text="Çmimi (€) *" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,6"
+                               Foreground="{DynamicResource TextPrimaryBrush}"/>
+                    <TextBox x:Name="PriceTextBox" Style="{StaticResource ModernTextBox}" Margin="0,0,0,16"/>
+
+                    <TextBlock Text="Kategoria" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,6"
+                               Foreground="{DynamicResource TextPrimaryBrush}"/>
+                    <TextBox x:Name="CategoryTextBox" Style="{StaticResource ModernTextBox}" Margin="0,0,0,16"/>
+
+                    <TextBlock Text="Ikona (Emoji)" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,6"
+                               Foreground="{DynamicResource TextPrimaryBrush}"/>
+                    <TextBox x:Name="IconTextBox" Style="{StaticResource ModernTextBox}" Margin="0,0,0,16"/>
+
+                    <TextBlock Text="Renditja" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,6"
+                               Foreground="{DynamicResource TextPrimaryBrush}"/>
+                    <TextBox x:Name="DisplayOrderTextBox" Style="{StaticResource ModernTextBox}"
+                             Text="0" Margin="0,0,0,16"/>
+
+                    <CheckBox x:Name="IsAvailableCheckBox"
+                              Content="E disponueshme"
+                              IsChecked="True"
+                              FontSize="14"
+                              Margin="0,4,0,0"
+                              Foreground="{DynamicResource TextPrimaryBrush}"/>
+                </StackPanel>
+            </ScrollViewer>
+
+            <Border Grid.Row="2" Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="0,1,0,0"
+                    Padding="28,16">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button Content="✕ Anulo" Click="CancelButton_Click"
+                            Background="#64748B" Foreground="White"
+                            Height="36" Padding="10,0" FontSize="14" FontWeight="SemiBold"
+                            BorderThickness="0" Margin="0,0,12,0"/>
+                    <Button Content="&#x1F4BE; Ruaj" Click="SaveButton_Click"
+                            Background="#22C55E" Foreground="White"
+                            Height="44" Padding="10,0" FontSize="14" FontWeight="SemiBold"
+                            BorderThickness="0"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Border>
+</Window>

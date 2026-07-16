@@ -1,0 +1,22 @@
+# Custom Astro sites replacing the old WordPress stacks.
+# Same host ports (8080/8085/8090) so the Cloudflare tunnels need no changes.
+services:
+  site-shabanejupi:
+    build:
+      context: .
+      args: { BRAND: shabanejupi }
+    image: site-shabanejupi
+    container_name: site_shabanejupi
+    restart: unless-stopped
+    ports: ["8080:80"]
+
+  site-enisi:
+    build:
+      context: .
+      args: { BRAND: enisi }
+    image: site-enisi
+    container_name: site_enisi
+    restart: unless-stopped
+    ports: ["8085:80"]
+
+  # halalbankkosova.me (port 8090) is now the full banking app in ../bank

@@ -1,0 +1,13 @@
+# Halal Bank Kosova banking app -> halalbankkosova.me (port 8090).
+# The anon key is public by design (Row-Level Security protects the data).
+services:
+  bank:
+    build:
+      context: .
+      args:
+        PUBLIC_SUPABASE_URL: "https://supabase.shabanejupi.tech"
+        PUBLIC_SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzgyOTc2Njk3LCJleHAiOjIwOTgzMzY2OTd9.EOuDpESKK-h3ByFPvfTzG5FjATx6W16vZoP6vyI8r94"
+    image: halalbank
+    container_name: halalbank
+    restart: unless-stopped
+    ports: ["8090:80"]

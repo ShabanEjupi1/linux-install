@@ -1,0 +1,65 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+<Layout title="Shaban Ejupi — Software engineer & builder" description="Projects and work by Shaban Ejupi — web, cloud, and self-hosted infrastructure.">
+  <section class="hero">
+    <h1>I build software<br/>and the infrastructure it runs on.</h1>
+    <p class="muted lead">Software engineer focused on web apps, cloud, and self-hosted systems. Everything here — including this site — runs on infrastructure I set up and operate myself.</p>
+    <a class="btn" href="#projects">See my work</a>
+  </section>
+
+  <section id="about">
+    <h2>About</h2>
+    <p class="muted">I design and ship full products end-to-end: front-end, back-end, databases, and the servers/tunnels that host them. I like turning limitations into clean, owned solutions — from replacing page-builders with real code to running my own bank, video server, and search engine on free-tier and bare-metal hardware.</p>
+    <div class="skills">
+      <span>Astro</span><span>TypeScript</span><span>Supabase / Postgres</span><span>Docker</span>
+      <span>Cloudflare</span><span>Linux</span><span>Oracle Cloud</span><span>Nginx</span>
+    </div>
+  </section>
+
+  <section id="projects">
+    <h2>Projects</h2>
+    <div id="projects-grid" class="grid"><p class="muted">Loading projects…</p></div>
+  </section>
+
+  <section id="contact">
+    <h2>Contact</h2>
+    <p class="muted">Email: <a href="mailto:shaban.ejupi@student.uni-pr.edu">shaban.ejupi@student.uni-pr.edu</a></p>
+  </section>
+
+  <style>
+    .hero { padding:56px 0 32px; }
+    .lead { font-size:1.15rem; max-width:640px; margin:20px 0 28px; }
+    .skills { display:flex; flex-wrap:wrap; gap:10px; margin-top:22px; }
+    .skills span { background:#141c33; border:1px solid #24304f; color:#c7cfe0; padding:6px 14px; border-radius:999px; font-size:.9rem; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:18px; }
+    .proj { background:var(--card); border:1px solid #24304f; border-radius:14px; padding:22px; transition:transform .12s,border-color .12s; }
+    .proj:hover { transform:translateY(-3px); border-color:var(--accent); }
+    .proj h3 { margin-bottom:8px; }
+    .proj p { color:#9aa6bd; font-size:.95rem; }
+    .proj .tags { margin-top:14px; display:flex; flex-wrap:wrap; gap:6px; }
+    .proj .tags span { font-size:.75rem; color:#8fa0ff; background:#1a2444; padding:3px 9px; border-radius:6px; }
+    .proj a.link { display:inline-block; margin-top:14px; font-size:.9rem; }
+  </style>
+
+  <script>
+    const URL = import.meta.env.PUBLIC_SUPABASE_URL;
+    const KEY = import.meta.env.PUBLIC_SUPABASE_ANON_KEY;
+    const grid = document.getElementById('projects-grid');
+    fetch(`${URL}/rest/v1/projects?select=title,blurb,url,tags&order=sort.asc`, {
+      headers: { apikey: KEY, Authorization: `Bearer ${KEY}` }
+    })
+      .then(r => r.json())
+      .then((rows) => {
+        if (!Array.isArray(rows) || !rows.length) { grid.innerHTML = '<p class="muted">No projects yet.</p>'; return; }
+        grid.innerHTML = rows.map((p) => `
+          <article class="proj">
+            <h3>${p.title}</h3>
+            <p>${p.blurb || ''}</p>
+            <div class="tags">${(p.tags||[]).map(t=>`<span>${t}</span>`).join('')}</div>
+            ${p.url ? `<a class="link" href="${p.url}" target="_blank" rel="noopener">Visit →</a>` : ''}
+          </article>`).join('');
+      })
+      .catch(() => { grid.innerHTML = '<p class="muted">Could not load projects.</p>'; });
+  </script>
+</Layout>

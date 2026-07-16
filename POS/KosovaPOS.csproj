@@ -1,0 +1,112 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <AssemblyName>KosovaPOS</AssemblyName>
+    <RootNamespace>KosovaPOS</RootNamespace>
+    <StartupObject>KosovaPOS.App</StartupObject>
+    <ApplicationIcon>Resources\KosovaPOS.ico</ApplicationIcon>
+  </PropertyGroup>
+  
+  <!-- Production Publishing Configuration - only applied during publish -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <PublishSingleFile>false</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <PublishTrimmed>false</PublishTrimmed>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Exclude sub-project files -->
+    <Compile Remove="ImportUtility\**" />
+    <Compile Remove="DbfReader\**" />
+    <Compile Remove="Tools\**" />
+    <Compile Remove="PLUMapper\**" />
+    <Compile Remove="FixPLUTool\**" />
+    <Compile Remove="ModernPOS\**" />
+    <Compile Remove="DirectTest\**" />
+    <Compile Remove="SQLiteQuery\**" />
+    <Compile Remove="Migrations\**" />
+    <Compile Remove="publish\**" />
+    <Compile Remove="Users\**" />
+    <Compile Remove="ReadDbfFile.cs" />
+    <Compile Remove="AddPLUColumn.cs" />
+    <EmbeddedResource Remove="ImportUtility\**" />
+    <EmbeddedResource Remove="DbfReader\**" />
+    <EmbeddedResource Remove="Tools\**" />
+    <EmbeddedResource Remove="PLUMapper\**" />
+    <EmbeddedResource Remove="FixPLUTool\**" />
+    <EmbeddedResource Remove="ModernPOS\**" />
+    <EmbeddedResource Remove="DirectTest\**" />
+    <EmbeddedResource Remove="SQLiteQuery\**" />
+    <EmbeddedResource Remove="Migrations\**" />
+    <EmbeddedResource Remove="publish\**" />
+    <EmbeddedResource Remove="Users\**" />
+    <None Remove="ImportUtility\**" />
+    <None Remove="DbfReader\**" />
+    <None Remove="Tools\**" />
+    <None Remove="PLUMapper\**" />
+    <None Remove="FixPLUTool\**" />
+    <None Remove="ModernPOS\**" />
+    <None Remove="DirectTest\**" />
+    <None Remove="SQLiteQuery\**" />
+    <None Remove="Migrations\**" />
+    <None Remove="publish\**" />
+    <None Remove="Users\**" />
+    
+    <!-- Include PLUMapper for PLU mapping functionality in the main app -->
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="DotNetEnv" Version="3.0.0" />
+    <PackageReference Include="ClosedXML" Version="0.102.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.0" />
+    <PackageReference Include="System.Data.OleDb" Version="8.0.0" />
+    <PackageReference Include="System.IO.Ports" Version="8.0.0" />
+    <PackageReference Include="ZXing.Net" Version="0.16.11" />
+    <PackageReference Include="MaterialDesignThemes" Version="5.0.0" />
+    <PackageReference Include="System.Drawing.Common" Version="9.0.10" />
+    <PackageReference Include="LiveChartsCore.SkiaSharpView.WPF" Version="2.0.0-rc2" />
+    <PackageReference Include="ZXing.Net.Bindings.Windows.Compatibility" Version="0.16.14" />
+    <PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update=".env">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
+    <None Update="Database\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Resources\**\*.xaml">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
+    <Resource Include="Resources\KosovaPOS.ico"/>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Helpers\" />
+    <Folder Include="Tools\" />
+  </ItemGroup>
+
+</Project>

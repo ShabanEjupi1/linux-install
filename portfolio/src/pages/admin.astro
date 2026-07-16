@@ -1,0 +1,186 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+<Layout title="Admin — Shaban Ejupi" description="Private admin panel.">
+  <section id="admin">
+    <h1 style="font-size:2rem;margin-bottom:6px;">Admin panel</h1>
+    <p class="muted" style="margin-bottom:24px;">Manage the projects shown on the homepage. Secrets live in the vault, not here.</p>
+
+    <!-- LOGIN -->
+    <div id="login-box" class="panel" style="max-width:420px;">
+      <h2 style="font-size:1.2rem;margin-bottom:14px;">Sign in</h2>
+      <input id="email" type="email" placeholder="Email" autocomplete="username" />
+      <input id="password" type="password" placeholder="Password" autocomplete="current-password" />
+      <button id="login-btn" class="btn" style="width:100%;margin-top:6px;">Sign in</button>
+      <p id="login-err" class="err"></p>
+    </div>
+
+    <!-- APP -->
+    <div id="app" style="display:none;">
+      <div class="bar">
+        <span class="muted">Signed in as <b id="who"></b></span>
+        <span>
+          <a href="#" id="vault-link" class="quiet" target="_blank" rel="noopener">🔐 Vault</a>
+          <a href="#" id="logout" class="quiet">Log out</a>
+        </span>
+      </div>
+
+      <h2 style="font-size:1.2rem;margin:20px 0 12px;">Quick links</h2>
+      <div id="quicklinks" class="chips"></div>
+
+      <div class="bar" style="margin-top:28px;">
+        <h2 style="font-size:1.2rem;">Projects (<span id="count">0</span>)</h2>
+        <button id="add-btn" class="btn small">+ Add project</button>
+      </div>
+      <p id="app-err" class="err"></p>
+      <div id="rows"></div>
+    </div>
+  </section>
+
+  <style>
+    .panel { background:var(--card); border:1px solid #24304f; border-radius:14px; padding:22px; }
+    input, textarea { width:100%; background:#0e1526; border:1px solid #2a3760; color:#e8ecf6; border-radius:9px; padding:10px 12px; margin-bottom:12px; font-size:.95rem; font-family:inherit; }
+    input:focus, textarea:focus { outline:none; border-color:var(--accent); }
+    .btn.small { padding:8px 16px; font-size:.9rem; }
+    .bar { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
+    .quiet { color:#9aa6bd; margin-left:18px; font-size:.9rem; }
+    .quiet:hover { color:#fff; }
+    .err { color:#ff8080; font-size:.88rem; min-height:1.2em; margin-top:6px; }
+    .chips { display:flex; flex-wrap:wrap; gap:8px; }
+    .chips a { background:#141c33; border:1px solid #24304f; color:#c7cfe0; padding:6px 12px; border-radius:999px; font-size:.85rem; }
+    .chips a:hover { border-color:var(--accent); color:#fff; }
+    .card { background:var(--card); border:1px solid #24304f; border-radius:12px; padding:16px; margin-bottom:12px; }
+    .card .top { display:flex; justify-content:space-between; align-items:center; gap:10px; }
+    .card .top b { font-size:1.05rem; }
+    .card .actions button { background:none; border:1px solid #2a3760; color:#c7cfe0; border-radius:8px; padding:5px 12px; margin-left:8px; cursor:pointer; font-size:.85rem; }
+    .card .actions button:hover { border-color:var(--accent); color:#fff; }
+    .card .actions button.del:hover { border-color:#ff6b6b; color:#ff6b6b; }
+    .card .edit { margin-top:14px; display:none; }
+    .card .edit.open { display:block; }
+    .card small { color:#8fa0ff; }
+    .status { font-size:.75rem; padding:2px 8px; border-radius:6px; margin-left:8px; }
+    .status.up { background:#123524; color:#4ade80; } .status.dn { background:#3a1520; color:#ff8080; } .status.unk { background:#222c46; color:#9aa6bd; }
+  </style>
+
+  <script>
+    const URL = import.meta.env.PUBLIC_SUPABASE_URL;
+    const ANON = import.meta.env.PUBLIC_SUPABASE_ANON_KEY;
+    const VAULT_URL = 'https://vault.spacecode.tech';
+    const $ = (id) => document.getElementById(id);
+    let token = sessionStorage.getItem('sb_token') || '';
+
+    const QUICK = [
+      ['Webmail','https://webmail.spacecode.tech'],['SpaceCode Git','https://git.spacecode.tech'],
+      ['Supabase','https://supabase.shabanejupi.tech'],['Analytics','https://audit.spacecode.tech'],
+      ['Search dash','https://dashboard.shabanejupi.tech'],['Meilisearch','https://search.shabanejupi.tech'],
+      ['Cloud IDE','https://cline.spacecode.tech'],['Meet','https://meet.shabanejupi.tech'],
+      ['POS','https://pos.spacecode.tech'],['SpaceRent','https://rent.spacecode.tech'],
+    ];
+
+    const api = (path, opts={}) => fetch(`${URL}/rest/v1/${path}`, {
+      ...opts,
+      headers: { apikey: ANON, Authorization: `Bearer ${token}`, 'Content-Type':'application/json', Prefer:'return=representation', ...(opts.headers||{}) }
+    });
+
+    function esc(s){ return (s||'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+    async function login() {
+      $('login-err').textContent = '';
+      const r = await fetch(`${URL}/auth/v1/token?grant_type=password`, {
+        method:'POST', headers:{ apikey:ANON, 'Content-Type':'application/json' },
+        body: JSON.stringify({ email:$('email').value.trim(), password:$('password').value })
+      });
+      const d = await r.json();
+      if (!r.ok || !d.access_token) { $('login-err').textContent = d.error_description || d.msg || 'Login failed'; return; }
+      token = d.access_token; sessionStorage.setItem('sb_token', token);
+      showApp(d.user?.email || $('email').value);
+    }
+
+    function showApp(email) {
+      $('login-box').style.display='none'; $('app').style.display='block';
+      $('who').textContent = email || '';
+      $('vault-link').href = VAULT_URL;
+      $('quicklinks').innerHTML = QUICK.map(([n,u])=>`<a href="${u}" target="_blank" rel="noopener">${n} ↗</a>`).join('');
+      load();
+    }
+
+    function logout(){ token=''; sessionStorage.removeItem('sb_token'); location.reload(); }
+
+    async function load() {
+      $('app-err').textContent='';
+      const r = await api('projects?select=*&order=sort.asc');
+      if (r.status===401){ logout(); return; }
+      const rows = await r.json();
+      $('count').textContent = rows.length;
+      $('rows').innerHTML = rows.map(cardHTML).join('');
+      rows.forEach(p => { if(p.url) checkStatus(p.id, p.url); });
+      wire();
+    }
+
+    function cardHTML(p){
+      const tags=(p.tags||[]).join(', ');
+      return `<div class="card" data-id="${p.id}">
+        <div class="top">
+          <div><b>${esc(p.title)}</b><span class="status unk" id="st-${p.id}">…</span><br/>
+            <small>${esc(p.url||'—')}</small></div>
+          <div class="actions">
+            <button class="edit-toggle">Edit</button>
+            ${p.url?`<a href="${esc(p.url)}" target="_blank" rel="noopener"><button>Open ↗</button></a>`:''}
+            <button class="del">Delete</button>
+          </div>
+        </div>
+        <div class="edit">
+          <input class="f-title" value="${esc(p.title)}" placeholder="Title"/>
+          <input class="f-url" value="${esc(p.url||'')}" placeholder="URL"/>
+          <textarea class="f-blurb" rows="2" placeholder="Blurb">${esc(p.blurb||'')}</textarea>
+          <input class="f-tags" value="${esc(tags)}" placeholder="Tags (comma separated)"/>
+          <input class="f-sort" type="number" value="${p.sort??0}" placeholder="Sort"/>
+          <button class="btn small save">Save</button>
+        </div>
+      </div>`;
+    }
+
+    function wire(){
+      document.querySelectorAll('.edit-toggle').forEach(b=>b.onclick=e=>{
+        e.target.closest('.card').querySelector('.edit').classList.toggle('open'); });
+      document.querySelectorAll('.del').forEach(b=>b.onclick=async e=>{
+        const card=e.target.closest('.card'); if(!confirm('Delete this project?'))return;
+        const r=await api(`projects?id=eq.${card.dataset.id}`,{method:'DELETE'});
+        if(r.ok) load(); else $('app-err').textContent='Delete failed (check permissions).'; });
+      document.querySelectorAll('.save').forEach(b=>b.onclick=async e=>{
+        const card=e.target.closest('.card'), id=card.dataset.id;
+        const body={ title:card.querySelector('.f-title').value.trim(),
+          url:card.querySelector('.f-url').value.trim()||null,
+          blurb:card.querySelector('.f-blurb').value.trim()||null,
+          tags:card.querySelector('.f-tags').value.split(',').map(t=>t.trim()).filter(Boolean),
+          sort:parseInt(card.querySelector('.f-sort').value)||0 };
+        const r=await api(`projects?id=eq.${id}`,{method:'PATCH',body:JSON.stringify(body)});
+        if(r.ok) load(); else $('app-err').textContent='Save failed (check permissions).'; });
+    }
+
+    async function addProject(){
+      const body={ title:'New project', url:null, blurb:'', tags:[], sort:99 };
+      const r=await api('projects',{method:'POST',body:JSON.stringify(body)});
+      if(r.ok) load(); else $('app-err').textContent='Add failed (check permissions).';
+    }
+
+    // best-effort reachability (opaque no-cors): resolves => up, errors => down
+    function checkStatus(id,url){
+      const el=$('st-'+id); if(!el)return;
+      const ctrl=new AbortController(); const t=setTimeout(()=>ctrl.abort(),6000);
+      fetch(url,{mode:'no-cors',signal:ctrl.signal}).then(()=>{clearTimeout(t);el.className='status up';el.textContent='up';})
+        .catch(()=>{clearTimeout(t);el.className='status dn';el.textContent='down?';});
+    }
+
+    $('login-btn').onclick=login;
+    $('password').addEventListener('keydown',e=>{ if(e.key==='Enter') login(); });
+    $('logout').onclick=e=>{e.preventDefault();logout();};
+    $('add-btn').onclick=addProject;
+
+    // auto-resume session
+    if (token) {
+      fetch(`${URL}/auth/v1/user`,{headers:{apikey:ANON,Authorization:`Bearer ${token}`}})
+        .then(r=>r.ok?r.json():Promise.reject()).then(u=>showApp(u.email)).catch(()=>{token='';sessionStorage.removeItem('sb_token');});
+    }
+  </script>
+</Layout>

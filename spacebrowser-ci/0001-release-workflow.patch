@@ -1,0 +1,143 @@
+From 231d79619de9d0545dbc8bb284251dc3a462d2e7 Mon Sep 17 00:00:00 2001
+From: Shaban Ejupi <shaban.ejupi@student.uni-pr.edu>
+Date: Fri, 3 Jul 2026 13:50:49 +0000
+Subject: [PATCH] Add cross-platform release workflow; fix electron-builder
+ publish repo
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ .github/workflows/release.yml | 81 +++++++++++++++++++++++++++++++++++
+ package.json                  | 10 ++---
+ 2 files changed, 86 insertions(+), 5 deletions(-)
+ create mode 100644 .github/workflows/release.yml
+
+diff --git a/.github/workflows/release.yml b/.github/workflows/release.yml
+new file mode 100644
+index 0000000..d0b8b78
+--- /dev/null
++++ b/.github/workflows/release.yml
+@@ -0,0 +1,81 @@
++name: Build & Release
++
++on:
++  workflow_dispatch:
++  push:
++    tags:
++      - "v*"
++
++permissions:
++  contents: write
++
++jobs:
++  build:
++    strategy:
++      fail-fast: false
++      matrix:
++        include:
++          - os: windows-latest
++            args: --win
++          - os: ubuntu-latest
++            args: --linux
++          - os: macos-14
++            args: --mac
++    runs-on: ${{ matrix.os }}
++    steps:
++      - uses: actions/checkout@v4
++
++      - uses: actions/setup-node@v4
++        with:
++          node-version: 20
++
++      - name: Clone llama.cpp (native inference engine)
++        run: git clone --depth=1 https://github.com/ggerganov/llama.cpp.git native/include/llama.cpp
++
++      - name: Install dependencies
++        run: npm ci
++
++      - name: Build native addon
++        run: node scripts/build-native.js
++
++      - name: Build app (main + renderer)
++        run: npm run build:all
++
++      - name: Package with electron-builder
++        run: npx electron-builder ${{ matrix.args }} --publish never
++        env:
++          CSC_IDENTITY_AUTO_DISCOVERY: "false"
++
++      - name: Upload artifacts
++        uses: actions/upload-artifact@v4
++        with:
++          name: space-browser-${{ matrix.os }}
++          path: |
++            release/*.exe
++            release/*.AppImage
++            release/*.dmg
++          if-no-files-found: warn
++
++  release:
++    needs: build
++    runs-on: ubuntu-latest
++    steps:
++      - uses: actions/checkout@v4
++
++      - name: Read version
++        id: ver
++        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
++
++      - uses: actions/download-artifact@v4
++        with:
++          path: artifacts
++          merge-multiple: true
++
++      - name: Publish GitHub Release
++        uses: softprops/action-gh-release@v2
++        with:
++          tag_name: v${{ steps.ver.outputs.version }}
++          name: Space Browser v${{ steps.ver.outputs.version }}
++          files: artifacts/**
++          fail_on_unmatched_files: false
++          draft: false
+diff --git a/package.json b/package.json
+index 409ba4d..6828138 100644
+--- a/package.json
++++ b/package.json
+@@ -1,7 +1,7 @@
+ {
+   "name": "space-browser",
+   "version": "2.0.0",
+-  "description": "Space – A next-generation browser with built-in local AI inference. No cloud. No Ollama. Pure GGUF.",
++  "description": "Space \u2013 A next-generation browser with built-in local AI inference. No cloud. No Ollama. Pure GGUF.",
+   "productName": "Space",
+   "main": "dist/main/main.js",
+   "scripts": {
+@@ -77,7 +77,7 @@
+   "build": {
+     "appId": "com.space.browser",
+     "productName": "Space",
+-    "copyright": "Copyright © 2026 Space Browser",
++    "copyright": "Copyright \u00a9 2026 Space Browser",
+     "directories": {
+       "output": "release",
+       "buildResources": "assets"
+@@ -215,8 +215,8 @@
+     },
+     "publish": {
+       "provider": "github",
+-      "owner": "ggerganov",
+-      "repo": "llama.cpp",
++      "owner": "ShabanEjupi1",
++      "repo": "SpaceBrowser",
+       "releaseType": "release"
+     }
+   },
+@@ -226,4 +226,4 @@
+     "host": "https://github.com/space-browser/space/releases/download/",
+     "remote_path": "{version}"
+   }
+-}
++}
+\ No newline at end of file
+-- 
+2.53.0
+

@@ -1,0 +1,22 @@
+tunnel: e4215fb1-5f61-42f3-89a1-1d17f9b6fb72
+credentials-file: /etc/cloudflared/e4215fb1-5f61-42f3-89a1-1d17f9b6fb72.json
+
+ingress:
+  - hostname: shabanejupi.tech
+    service: http://localhost:8080
+  - hostname: www.shabanejupi.tech
+    service: http://localhost:8080
+  - hostname: supabase.shabanejupi.tech
+    service: http://localhost:8000
+  # meet.shabanejupi.tech is served by Jitsi on the Oracle VM (direct public IP,
+  # DNS-only A record). It is intentionally NOT routed through this tunnel because
+  # Jitsi's WebRTC media (UDP/10000) cannot traverse an HTTP Cloudflare tunnel.
+  - hostname: dashboard.shabanejupi.tech
+    service: http://localhost:5601
+  - hostname: os.shabanejupi.tech
+    service: https://localhost:9200
+    originRequest:
+      noTLSVerify: true
+  - hostname: search.shabanejupi.tech
+    service: http://localhost:8097
+  - service: http_status:404

@@ -1,0 +1,32 @@
+---
+interface Props { title: string; description: string; }
+const { title, description } = Astro.props;
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content={description} />
+    <title>{title}</title>
+    <style is:global>
+      :root { --brand:#ff5e8a; --brand-d:#e04371; --ink:#2b2340; --muted:#7a7291; --bg:#fff7fb; --card:#fff; }
+      * { box-sizing:border-box; margin:0; padding:0; }
+      body { font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; color:var(--ink); background:var(--bg); line-height:1.6; }
+      a { color:var(--brand); text-decoration:none; }
+      .wrap { max-width:1100px; margin:0 auto; padding:0 20px; }
+      button { font:inherit; cursor:pointer; border:none; border-radius:10px; padding:11px 18px; background:var(--brand); color:#fff; font-weight:600; }
+      button:hover { background:var(--brand-d); }
+      button.ghost { background:#fff; color:var(--brand); border:1px solid var(--brand); }
+      input, textarea { font:inherit; width:100%; padding:11px 13px; border:1px solid #f0d6e2; border-radius:10px; }
+      label { display:block; font-size:.85rem; color:var(--muted); margin:12px 0 5px; }
+      .err { color:#c0392b; font-size:.9rem; min-height:1.1em; margin-top:8px; }
+      footer { text-align:center; color:var(--muted); font-size:.9rem; padding:44px 0; }
+      h1,h2 { letter-spacing:-.02em; }
+    </style>
+  </head>
+  <body>
+    <slot />
+    <footer>© {new Date().getFullYear()} Enisi · Kids' clothes, shoes & cosmetics · enisi.tech</footer>
+  </body>
+</html>

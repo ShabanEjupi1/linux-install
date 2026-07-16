@@ -1,0 +1,12 @@
+# shabanejupi.tech portfolio -> port 8080
+services:
+  portfolio:
+    build:
+      context: .
+      args:
+        PUBLIC_SUPABASE_URL: "https://supabase.shabanejupi.tech"
+        PUBLIC_SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzgyOTc2Njk3LCJleHAiOjIwOTgzMzY2OTd9.EOuDpESKK-h3ByFPvfTzG5FjATx6W16vZoP6vyI8r94"
+    image: portfolio
+    container_name: portfolio
+    restart: unless-stopped
+    ports: ["8080:80"]

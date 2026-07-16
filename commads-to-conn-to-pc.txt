@@ -1,0 +1,59 @@
+@ShabanEjupi1 ➜ /workspaces/linux-install (main) $ # For # For Ubuntu/Debian based systems:
+curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+sudo dpkg -i cloudflared.deb# For Ubuntu/Debian based systems:
+curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64sudo dpkg -i cloudflared.deb^Clinux-amd64
+@ShabanEjupi1 ➜ /workspaces/linux-install (main) $ # For Ubuntu/Debian based systems:
+curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+sudo dpkg -i cloudflared.deb
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0     0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+100 18.0M  100 18.0M    0     0  28.9M      0 --:--:-- --:--:-- --:--:-- 28.9M
+(Reading database ... 58634 files and directories currently installed.)
+Preparing to unpack cloudflared.deb ...
+Unpacking cloudflared (2026.6.1) over (2026.6.1) ...
+Setting up cloudflared (2026.6.1) ...
+Processing triggers for man-db (2.12.0-4build2) ...
+@ShabanEjupi1 ➜ /workspaces/linux-install (main) $ # 1. Create the missing .ssh directory
+mkdir -p /home/codespace/.ssh
+
+# 2. Set the correct secure permissions for the directory
+chmod 700 /home/codespace/.ssh
+
+# 3. Open the file again with nano (it will work now!)
+nano /home/codespace/.ssh/config
+@ShabanEjupi1 ➜ /workspaces/linux-install (main) $ ssh shabanejupi@ssh.shabanejupi.tech
+The authenticity of host 'ssh.shabanejupi.tech (<no hostip for proxy command>)' can't be established.
+ED25519 key fingerprint is SHA256:1MKpDpAHz2deWXO6mArzeXbDsOKALXWiF/fFiZSsfTc.
+This key is not known by any other names.
+Are you sure you want to continue connecting (yes/no/[fingerprint])? yes
+Warning: Permanently added 'ssh.shabanejupi.tech' (ED25519) to the list of known hosts.
+shabanejupi@ssh.shabanejupi.tech's password: 
+Welcome to Ubuntu 26.04 LTS (GNU/Linux 7.0.0-27-generic x86_64)
+
+ * Documentation:  https://docs.ubuntu.com
+ * Management:     https://landscape.canonical.com
+ * Support:        https://ubuntu.com/pro
+
+ System information as of Tue Jun 30 10:10:58 PM UTC 2026
+
+  System load:  0.03              Temperature:           52.0 C
+  Usage of /:   7.5% of 97.87GB   Processes:             151
+  Memory usage: 4%                Users logged in:       0
+  Swap usage:   0%                IPv4 address for eno1: 192.168.1.5
+
+
+Expanded Security Maintenance for Applications is not enabled.
+
+12 updates can be applied immediately.
+To see these additional updates run: apt list --upgradable
+
+Enable ESM Apps to receive additional future security updates.
+See https://ubuntu.com/esm or run: sudo pro status
+
+
+Last login: Tue Jun 30 22:08:15 2026 from 127.0.0.1
+
+and used Host ssh.shabanejupi.tech
+    ProxyCommand /usr/local/bin/cloudflared access ssh --hostname %h
