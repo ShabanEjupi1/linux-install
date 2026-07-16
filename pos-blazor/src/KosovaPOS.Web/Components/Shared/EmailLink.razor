@@ -1,0 +1,33 @@
+@* A mailto that survives Cloudflare.
+
+   Scrape Shield's Email Address Obfuscation is ON for these zones, and it rewrites every
+   mailto in the HTML into "[email protected]" plus a JS decoder. On a shop's contact page that
+   is actively harmful: with JavaScript off — a crawler, a bank or a credit agency checking
+   that the business is reachable — the address is not hidden from spammers, it is simply
+   gone. Cloudflare's documented opt-out is to bracket the section in <!--email_off--> ...
+   <!--email_on-->.
+
+   Those have to be written as MarkupString: the Razor compiler strips HTML comments from
+   component output, so a literal <!--email_off--> in a .razor file never reaches the browser
+   and the obfuscation happens anyway. This was found by grepping the live page, not the
+   source — the source looked correct. *@
+
+@if (!string.IsNullOrWhiteSpace(Address))
+{
+    @EmailOff
+    <a href="mailto:@Address" class="@Class">@(Text ?? Address)</a>
+    @EmailOn
+}
+
+@code {
+    /// <summary>The address. Blank renders nothing at all — a shop may not have set one.</summary>
+    [Parameter] public string? Address { get; set; }
+
+    /// <summary>Link text. Defaults to the address itself.</summary>
+    [Parameter] public string? Text { get; set; }
+
+    [Parameter] public string? Class { get; set; }
+
+    private static readonly MarkupString EmailOff = new("<!--email_off-->");
+    private static readonly MarkupString EmailOn = new("<!--email_on-->");
+}

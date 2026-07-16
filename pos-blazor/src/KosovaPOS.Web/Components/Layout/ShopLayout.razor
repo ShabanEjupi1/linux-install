@@ -14,6 +14,7 @@
 
             <nav class="shop-nav">
                 <a href="/dyqani">Produktet</a>
+                <a href="/dyqani/kontakti">Kontakti</a>
             </nav>
 
             <a class="shop-cart" href="/dyqani/shporta">
@@ -30,17 +31,34 @@
         @Body
     </main>
 
+    @* The footer identifies the company, on every page. A storefront that names only a shop
+       sign is indistinguishable from a dropshipping page; the registration number, the seat
+       and a reachable human are what make it a business anyone (a customer, a bank, a credit
+       agency) can verify. Each line renders only if the shop has actually filled it in. *@
     <footer class="shop-foot">
         <div class="shop-wrap">
-            <span>© @DateTime.Now.Year @_shopName</span>
-            @if (!string.IsNullOrWhiteSpace(_phone))
-            {
-                <span>· @_phone</span>
-            }
-            @if (!string.IsNullOrWhiteSpace(_email))
-            {
-                <span>· <a href="mailto:@_email">@_email</a></span>
-            }
+            <div class="shop-foot-id">
+                <strong>@_shopName</strong>
+                @if (!string.IsNullOrWhiteSpace(_registration))
+                {
+                    <span>NUI / Nr. fiskal: @_registration</span>
+                }
+                @if (!string.IsNullOrWhiteSpace(_address))
+                {
+                    <span>@_address</span>
+                }
+            </div>
+
+            <div class="shop-foot-contact">
+                @if (!string.IsNullOrWhiteSpace(_phone))
+                {
+                    <a href="tel:@_telHref">@_phone</a>
+                }
+                <EmailLink Address="@_email" />
+                <a href="/dyqani/kontakti">Kontakti</a>
+            </div>
+
+            <div class="shop-foot-copy">© @DateTime.Now.Year @_shopName</div>
         </div>
     </footer>
 </div>
@@ -48,7 +66,10 @@
 @code {
     private string _shopName = "Dyqani";
     private string? _phone;
+    private string? _telHref;
     private string? _email;
+    private string? _address;
+    private string? _registration;
     private decimal _count;
 
     protected override async Task OnInitializedAsync()
@@ -60,8 +81,11 @@
             _shopName = string.IsNullOrWhiteSpace(settings.BusinessName) ? "Dyqani" : settings.BusinessName!;
             _phone = settings.Phone;
             _email = settings.ShopOrderEmail ?? settings.Email;
+            _address = settings.Address;
+            _registration = settings.FiscalNumber;
         }
 
+        _telHref = new string((_phone ?? "").Where(c => char.IsDigit(c) || c == '+').ToArray());
         _count = Cart.Count;
     }
 }

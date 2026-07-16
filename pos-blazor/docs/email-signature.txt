@@ -1,0 +1,16 @@
+ENISI CENTER SH.P.K. — plain-text signature.
+
+Use this where the HTML one cannot go: a client set to plain text, a webform, or the
+plain-text alternative part of the mail. Keep the two saying the same thing — a signature
+that contradicts itself between formats is a thing verifiers notice.
+
+--
+ENISI CENTER SH.P.K.
+Rroba, lodra dhe gjithçka për të vegjlit
+
+Rr. Zahir Pajaziti 126, Podujevë, Kosovë
+Tel: +383 45 594 549
+Email: info@enisi.tech
+Web: https://enisi.tech
+
+NUI / Nr. fiskal: 811274183 · Republika e Kosovës

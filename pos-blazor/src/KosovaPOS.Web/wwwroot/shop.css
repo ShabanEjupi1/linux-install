@@ -216,11 +216,56 @@ a.shop-add { display: inline-block; width: auto; border-radius: 10px; }
 .shop-summary-done { margin: 26px auto; max-width: none; text-align: left; }
 .shop-closed { text-align: center; padding: 60px 20px; }
 
+/* Contact / legal identity */
+.shop-contact { max-width: 860px; }
+.shop-contact-cards {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px; margin-bottom: 40px;
+}
+.shop-contact-card {
+    border: 1px solid var(--line); border-radius: 12px; padding: 18px;
+}
+.shop-contact-card h2 {
+    margin: 0 0 8px; font-size: .78rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .06em; color: var(--muted);
+}
+.shop-contact-card p { margin: 0; line-height: 1.5; }
+.shop-contact-card a { color: var(--brand); text-decoration: none; font-weight: 600; }
+.shop-contact-card a:hover { text-decoration: underline; }
+
+.shop-legal { border-top: 1px solid var(--line); padding-top: 28px; }
+.shop-legal h2 { margin: 0 0 18px; font-size: 1.15rem; }
+.shop-legal dl {
+    margin: 0; display: grid; grid-template-columns: minmax(180px, 260px) 1fr;
+    gap: 0;
+}
+.shop-legal dt {
+    padding: 11px 16px 11px 0; border-top: 1px solid var(--line);
+    color: var(--muted); font-size: .9rem;
+}
+.shop-legal dd {
+    margin: 0; padding: 11px 0; border-top: 1px solid var(--line);
+    font-weight: 600;
+}
+.shop-legal dd a { color: var(--brand); text-decoration: none; }
+.shop-legal dd a:hover { text-decoration: underline; }
+.shop-legal-note { margin: 20px 0 0; font-size: .88rem; line-height: 1.6; }
+
 .shop-foot {
-    border-top: 1px solid var(--line); padding: 22px 0;
+    border-top: 1px solid var(--line); padding: 24px 0 32px;
     color: var(--muted); font-size: .88rem;
 }
 .shop-foot a { color: var(--muted); }
+.shop-foot .shop-wrap {
+    display: flex; flex-wrap: wrap; align-items: flex-start;
+    gap: 12px 32px;
+}
+.shop-foot-id { display: flex; flex-direction: column; gap: 3px; }
+.shop-foot-id strong { color: var(--ink); font-size: .95rem; }
+.shop-foot-contact { display: flex; flex-direction: column; gap: 3px; }
+.shop-foot-contact a { text-decoration: none; }
+.shop-foot-contact a:hover { color: var(--ink); text-decoration: underline; }
+.shop-foot-copy { margin-left: auto; }
 
 @media (max-width: 860px) {
     .shop-detail, .shop-checkout-form { grid-template-columns: 1fr; gap: 28px; }
@@ -228,4 +273,11 @@ a.shop-add { display: inline-block; width: auto; border-radius: 10px; }
     .shop-cart-row { grid-template-columns: 64px 1fr auto; row-gap: 10px; }
     .shop-cart-thumb { width: 64px; height: 64px; }
     .shop-summary { margin-left: 0; max-width: none; }
+
+    /* A two-column <dl> at 360px puts one word per line. Stack it: the label sits above
+       its value and the borders keep the rows apart. */
+    .shop-legal dl { grid-template-columns: 1fr; }
+    .shop-legal dt { padding-bottom: 0; border-top: 1px solid var(--line); }
+    .shop-legal dd { padding-top: 4px; border-top: 0; }
+    .shop-foot-copy { margin-left: 0; }
 }

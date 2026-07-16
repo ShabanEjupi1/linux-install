@@ -1,0 +1,190 @@
+@page "/dyqani/kontakti"
+@layout KosovaPOS.Web.Components.Layout.ShopLayout
+@using System.Text.Json
+@using KosovaPOS.Core.Services
+@inject BusinessProfileService Profile
+@inject NavigationManager Nav
+
+@* Static SSR on purpose, like the storefront — this page exists to be READ, by customers and
+   by anyone verifying that the company behind the domain is a real registered business (a
+   bank, a payment processor, D&B). Both audiences arrive without a WebSocket, and one of them
+   is a crawler. Everything below is a plain document.
+
+   Every value comes from BusinessSettings. Nothing here is hard-coded to one shop: another
+   business on this platform gets its own identity from its own row, and a field it never
+   filled in is simply not rendered rather than shown blank. *@
+
+<PageTitle>Kontakti · @_name</PageTitle>
+<HeadContent>
+    <meta name="description" content="@_metaDescription" />
+    @* Organization schema: the machine-readable copy of the same facts printed below, so a
+       verifier's crawler reads the legal identity rather than guessing it from prose. *@
+    <script type="application/ld+json">@((MarkupString)_jsonLd)</script>
+</HeadContent>
+
+<section class="shop-hero">
+    <h1>Kontakti</h1>
+    <p>Na shkruani ose na telefononi — përgjigjemi brenda ditës së punës.</p>
+</section>
+
+<div class="shop-contact">
+    <div class="shop-contact-cards">
+        @if (!string.IsNullOrWhiteSpace(_address))
+        {
+            <div class="shop-contact-card">
+                <h2>Adresa</h2>
+                <p>@_address</p>
+            </div>
+        }
+        @if (!string.IsNullOrWhiteSpace(_phone))
+        {
+            <div class="shop-contact-card">
+                <h2>Telefoni</h2>
+                <p><a href="tel:@_telHref">@_phone</a></p>
+            </div>
+        }
+        @if (!string.IsNullOrWhiteSpace(_email))
+        {
+            <div class="shop-contact-card">
+                <h2>Email</h2>
+                <p><EmailLink Address="@_email" /></p>
+            </div>
+        }
+    </div>
+
+    @* The legal block. A registered company is identified by its registration number, not by
+       its shop sign, so the number is given the same weight as the name. *@
+    <section class="shop-legal">
+        <h2>Të dhënat e biznesit</h2>
+        <dl>
+            <dt>Emri ligjor</dt>
+            <dd>@_legalName</dd>
+
+            @if (!string.IsNullOrWhiteSpace(_registration))
+            {
+                <dt>Numri unik identifikues (NUI) / Numri fiskal</dt>
+                <dd>@_registration</dd>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(_address))
+            {
+                <dt>Selia / Adresa e biznesit</dt>
+                <dd>@_address</dd>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(_phone))
+            {
+                <dt>Telefoni</dt>
+                <dd><a href="tel:@_telHref">@_phone</a></dd>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(_email))
+            {
+                <dt>Email</dt>
+                <dd><EmailLink Address="@_email" /></dd>
+            }
+
+            <dt>Ueb-faqja</dt>
+            <dd><a href="@_site">@_siteLabel</a></dd>
+
+            <dt>Vendi i regjistrimit</dt>
+            <dd>Republika e Kosovës</dd>
+        </dl>
+        <p class="muted shop-legal-note">
+            @_legalName është biznes i regjistruar në Republikën e Kosovës dhe operon këtë ueb-faqe
+            si dyqanin e vet online.
+        </p>
+    </section>
+</div>
+
+@code {
+    private string _name = "Dyqani";
+    private string _legalName = "Dyqani";
+    private string? _address;
+    private string? _phone;
+    private string? _telHref;
+    private string? _email;
+    private string? _registration;
+    private string _site = "/";
+    private string _siteLabel = "";
+    private string _metaDescription = "";
+    private string _jsonLd = "{}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var settings = await Profile.GetSettingsAsync();
+
+        _name = string.IsNullOrWhiteSpace(settings?.BusinessName) ? "Dyqani" : settings!.BusinessName!;
+        _legalName = _name;
+        _address = settings?.Address;
+        _phone = settings?.Phone;
+        _email = settings?.ShopOrderEmail ?? settings?.Email;
+
+        // The NUI and the fiscal number are the same number in Kosovo, and it is the one that
+        // identifies the company on every official document. The VAT number is deliberately NOT
+        // shown: it is a different number issued separately, and publishing the wrong one is
+        // worse for a business than publishing none.
+        _registration = settings?.FiscalNumber;
+
+        // tel: cannot carry spaces or punctuation; the printed form should keep them.
+        _telHref = new string((_phone ?? "").Where(c => char.IsDigit(c) || c == '+').ToArray());
+
+        var origin = new Uri(Nav.BaseUri);
+        _site = origin.GetLeftPart(UriPartial.Authority);
+        _siteLabel = origin.Host;
+
+        _metaDescription = $"Kontaktoni {_legalName}"
+            + (string.IsNullOrWhiteSpace(_address) ? "" : $" — {_address}")
+            + (string.IsNullOrWhiteSpace(_phone) ? "" : $", tel. {_phone}")
+            + ".";
+
+        _jsonLd = BuildJsonLd();
+    }
+
+    /// <summary>
+    /// Serialised rather than string-built: a legal name with a quote or a backslash in it would
+    /// otherwise produce invalid JSON-LD, and the failure is silent — the crawler just reads
+    /// nothing. JsonSerializer also escapes the characters that would let a value break out of
+    /// the surrounding &lt;script&gt; element.
+    /// </summary>
+    private string BuildJsonLd()
+    {
+        var org = new Dictionary<string, object?>
+        {
+            ["@context"] = "https://schema.org",
+            ["@type"] = "Store",
+            ["name"] = _legalName,
+            ["legalName"] = _legalName,
+            ["url"] = _site,
+        };
+
+        if (!string.IsNullOrWhiteSpace(_registration))
+        {
+            org["taxID"] = _registration;
+            org["identifier"] = new Dictionary<string, object?>
+            {
+                ["@type"] = "PropertyValue",
+                ["name"] = "NUI",
+                ["value"] = _registration,
+            };
+        }
+
+        if (!string.IsNullOrWhiteSpace(_phone)) org["telephone"] = _phone;
+        if (!string.IsNullOrWhiteSpace(_email)) org["email"] = _email;
+
+        if (!string.IsNullOrWhiteSpace(_address))
+        {
+            org["address"] = new Dictionary<string, object?>
+            {
+                ["@type"] = "PostalAddress",
+                ["streetAddress"] = _address,
+                ["addressCountry"] = "XK",
+            };
+        }
+
+        // The default encoder is kept deliberately: it escapes < > and &, which is what stops a
+        // settings value from closing the <script> element it is rendered into. Non-ASCII comes
+        // out as ë — valid JSON, and every consumer of JSON-LD decodes it.
+        return JsonSerializer.Serialize(org);
+    }
+}
