@@ -34,27 +34,51 @@
 {% for a in articles %}
   {% set text, cls = labels.get(a.label, ('E pavlerësuar', 'warn')) %}
   <article class="card">
-    <div class="meta" style="margin-bottom:10px;">
-      <span class="badge {{ cls }}">{{ a.score }}/100 · {{ text }}</span>
-    </div>
-    <h2><a href="/artikulli/{{ a.id }}">{{ a.title }}</a></h2>
-    <div class="meta">
-      <span>{{ a.source_name }}</span>
-      <span>·</span>
-      <span>{{ a.published_at | kur }}</span>
-      <span>·</span>
-      <span>
-        {% if a.corroborators > 1 %}
-          {{ a.corroborators }} redaksi të pavarura
-        {% else %}
-          asnjë burim tjetër
+    <div class="item">
+      <div class="avatar" style="--h: {{ a.source_name | ngjyra }}" aria-hidden="true"
+           title="{{ a.source_name }}">{{ a.source_name | inicialet }}</div>
+
+      <div class="item-body">
+        <div class="meta" style="margin-bottom:8px;">
+          <span class="badge {{ cls }}">{{ a.score }}/100 · {{ text }}</span>
+        </div>
+        <h2><a href="/artikulli/{{ a.id }}">{{ a.title }}</a></h2>
+        <div class="meta">
+          <span>{{ a.source_name }}</span>
+          <span>·</span>
+          <span>{{ a.published_at | kur }}</span>
+          <span>·</span>
+          <span class="pips" title="{{ a.corroborators }} redaksi të pavarura">
+            {% for n in range(5) %}<i class="{{ '' if n < a.corroborators else 'off' }}"></i>{% endfor %}
+            <span style="margin-left:4px;">
+              {% if a.corroborators > 1 %}{{ a.corroborators }} të pavarura{% else %}asnjë burim tjetër{% endif %}
+            </span>
+          </span>
+        </div>
+
+        {# Shiriti i provës: gjerësia e segmentit = pesha e përbërësit, mbushja = nota. #}
+        <div class="evidence" title="Përbërja e notës">
+          {% for p in a.components | prova %}
+            {% set sc = 'good' if p.score >= 0.7 else 'ok' if p.score >= 0.5 else 'warn' if p.score >= 0.3 else 'bad' %}
+            <span class="seg {{ sc }}" style="flex-grow: {{ p.weight }}"
+                  title="{{ p.label }}: {{ (p.score * 100) | round | int }}%">
+              <i style="width: {{ (p.score * 100) | round | int }}%"></i>
+            </span>
+          {% endfor %}
+        </div>
+        <div class="evidence-key">
+          {% for p in a.components | prova %}<span><b>{{ p.label }}</b> {{ (p.score*100)|round|int }}</span>{% endfor %}
+        </div>
+
+        {% if a.summary %}
+          <p class="preview">{{ a.summary }}</p>
         {% endif %}
-      </span>
+        {% if a.reasons %}
+          {# reasons[0] = përbërësi që e dëmton më shumë notën. #}
+          <p class="why">{{ a.reasons[0] }}</p>
+        {% endif %}
+      </div>
     </div>
-    {% if a.reasons %}
-      {# reasons[0] = përbërësi që e dëmton më shumë notën. #}
-      <p class="why">{{ a.reasons[0] }}</p>
-    {% endif %}
   </article>
 {% endfor %}
 

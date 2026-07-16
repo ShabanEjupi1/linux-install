@@ -71,6 +71,39 @@
   .why { font-size: 14.5px; color: var(--muted); margin: 12px 0 0;
          padding-left: 12px; border-left: 2px solid var(--line); }
 
+  /* Kartë me avatar: rreshti [monogram] [përmbajtja]. Asnjë imazh i palës së
+     tretë — avatari gjenerohet nga emri, prova nga nota. Vetëm të dhënat tona. */
+  .item { display: flex; gap: 14px; align-items: flex-start; }
+  .avatar {
+    flex: 0 0 auto; width: 44px; height: 44px; border-radius: 11px;
+    display: grid; place-items: center; font-size: 15px; font-weight: 700;
+    color: #fff; letter-spacing: -.02em; user-select: none;
+    background: linear-gradient(135deg,
+      hsl(var(--h) 58% 52%), hsl(calc(var(--h) + 24) 58% 44%));
+  }
+  .item-body { min-width: 0; flex: 1; }
+
+  /* Shiriti i provës: katër segmente, gjerësia = pesha, mbushja = nota. */
+  .evidence { display: flex; gap: 3px; height: 7px; margin: 12px 0 2px;
+              border-radius: 999px; overflow: hidden; }
+  .seg { position: relative; background: color-mix(in srgb, var(--muted) 22%, transparent);
+         border-radius: 999px; }
+  .seg > i { position: absolute; inset: 0; border-radius: 999px; display: block; }
+  .seg.good > i { background: var(--good); } .seg.ok > i { background: var(--ok); }
+  .seg.warn > i { background: var(--warn); } .seg.bad > i { background: var(--bad); }
+  .evidence-key { font-size: 11.5px; color: var(--muted); display: flex;
+                  gap: 12px; flex-wrap: wrap; margin-top: 6px; }
+  .evidence-key b { color: var(--text); font-weight: 600; }
+
+  /* Pika korroborimi: sa redaksi të pavarura, në pamje. */
+  .pips { display: inline-flex; gap: 3px; align-items: center; }
+  .pips i { width: 6px; height: 6px; border-radius: 999px; background: var(--good); display: block; }
+  .pips i.off { background: color-mix(in srgb, var(--muted) 35%, transparent); }
+
+  .preview { font-size: 14px; color: var(--muted); margin: 10px 0 0;
+             display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+             overflow: hidden; }
+
   footer { color: var(--muted); font-size: 13px; padding: 40px 0;
            border-top: 1px solid var(--line); margin-top: 40px; }
 

@@ -7,6 +7,7 @@ Gjithçka që sheh faqja vjen nga cikli i automatizuar.
 
 from __future__ import annotations
 
+import hashlib
 import os
 from datetime import datetime, timezone
 
@@ -16,6 +17,15 @@ from flask import Flask, abort, render_template, request
 
 app = Flask(__name__)
 DSN = os.environ["DATABASE_URL"]
+
+# Rendi i përbërësve në "shiritin e provës" — nga pesha më e madhe te më e vogla.
+# Çelësat vijnë nga score.py; etiketat janë për lexuesin, jo për makinën.
+COMPONENTS = [
+    ("corroboration", "Korroborim"),
+    ("source",        "Burimi"),
+    ("craft",         "Zanati"),
+    ("language",      "Gjuha"),
+]
 
 LABEL_TEXT = {
     "corroborated":   ("E korroboruar gjerësisht", "good"),
@@ -46,6 +56,40 @@ def kur(dt: datetime | None) -> str:
     return f"para {int(secs // 86400)} ditësh"
 
 
+@app.template_filter("inicialet")
+def inicialet(name: str | None) -> str:
+    """Dy shkronjat e para të një burimi, për avatarin-monogram."""
+    parts = [p for p in (name or "?").split() if p[:1].isalnum()]
+    if not parts:
+        return "?"
+    if len(parts) == 1:
+        return parts[0][:2].upper()
+    return (parts[0][:1] + parts[1][:1]).upper()
+
+
+@app.template_filter("ngjyra")
+def ngjyra(seed: str | None) -> int:
+    """Hue 0..359 e qëndrueshme nga domain-i — avatar pa imazh të palës së tretë."""
+    h = hashlib.md5((seed or "").encode()).hexdigest()
+    return int(h[:6], 16) % 360
+
+
+@app.template_filter("prova")
+def prova(components) -> list[dict]:
+    """Përbërësit e notës në rend fiks, gati për shirit vizual."""
+    components = components or {}
+    out = []
+    for key, label in COMPONENTS:
+        c = components.get(key) or {}
+        out.append({
+            "key": key,
+            "label": label,
+            "score": float(c.get("score", 0) or 0),   # 0..1
+            "weight": float(c.get("weight", 0) or 0),  # pesha në notë
+        })
+    return out
+
+
 @app.route("/")
 def index():
     label = request.args.get("filtri")
@@ -57,7 +101,7 @@ def index():
     rows = q(
         f"""SELECT a.id, a.url, a.title, a.published_at, a.summary,
                    s.name AS source_name, s.domain, s.tier,
-                   v.score, v.label, v.reasons,
+                   v.score, v.label, v.reasons, v.components,
                    (SELECT COUNT(DISTINCT s2.domain)
                       FROM articles a2 JOIN sources s2 ON s2.id = a2.source_id
                      WHERE a2.cluster_id = a.cluster_id) AS corroborators
